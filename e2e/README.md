@@ -1,6 +1,6 @@
 # KCS product e2e (Playwright)
 
-Browser journeys for the **composed** stack: `apps/web` + `apps/api` + **PostgreSQL** + **S3/MinIO**.
+Browser journeys for the **composed** stack: `apps/nuxt-app` (TinyShip panel) + `apps/api` + **PostgreSQL** + **S3/MinIO**.
 
 HTTP-only TDD is `pnpm test:blackbox`. TinyShip SaaS catalog is `pnpm test:e2e:tinyship`.
 
@@ -14,9 +14,9 @@ pnpm exec playwright install chromium
 # infra (same compose fullstack uses)
 docker compose up -d postgres minio minio-init
 
-# web :7001 + api :7100 (when they exist)
-# docker compose --profile full up -d
-# or: pnpm dev:nuxt  /  pnpm --filter @kcs/api dev
+# TinyShip panel :7001 + api :7100
+# pnpm dev:nuxt
+# pnpm --filter @kcs/api dev
 
 pnpm test:e2e:seed
 pnpm test:e2e
