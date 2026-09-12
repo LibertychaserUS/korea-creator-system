@@ -65,4 +65,4 @@ Key 只用环境变量或本地未跟踪配置。`config/settings.example.json` 
 
 ## 完成标准（文档任务）
 
-本约定被遵守，当且仅当：后续代理读完本文件 + `STACK.md` + `ROADMAP.md` 后，会把第一刀同时用上 tinyship、forge、overlay，**并且**宿主带 `zh-CN` / `en` / `ko` 语言切换（`KCS-TS-01I`，不是 Later），把旧 Demo 当成 `archive/` 冻结物，把 `docs/` 留在原处，并且不会去建 Harness.io 项目。
+本约定被遵守，当且仅当：后续代理读完本文件 + `STACK.md` + `ROADMAP.md` 后，会把第一刀同时用上 tinyship、forge、overlay，**并且**宿主带 `zh-CN` / `en` / `ko` 语言切换（`KCS-TS-01I`，不是 Later），不把旧 Python Demo 加回仓库，把 `docs/` 留在原处，并且不会去建 Harness.io 项目。
