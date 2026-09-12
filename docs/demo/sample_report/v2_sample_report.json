@@ -1,0 +1,660 @@
+{
+  "generated_at": "2026-07-02T17:12:09",
+  "batch": {
+    "batch_id": "default_batch",
+    "name": "????????????",
+    "source_file": "data/output/scores_full.csv",
+    "source_type": "case_excel",
+    "created_at": "2026-07-02T15:00:16.854130",
+    "creator_count": 1725,
+    "note": "基于当前主系统已有评分结果自动初始化"
+  },
+  "analysis_run": {
+    "run_id": "latest_run",
+    "batch_id": "default_batch",
+    "rule_version": "v1-stage1",
+    "compare_scope": "global",
+    "created_at": "2026-07-02T15:00:16.854130",
+    "input_file": "data/output/scores_full.csv",
+    "output_files": {
+      "full_csv": "data/output/scores_full.csv",
+      "top10_csv": "data/output/scores_top10.csv",
+      "top50_csv": "data/output/scores_top50.csv",
+      "excel": "data/output/scores_full.xlsx"
+    },
+    "summary": {
+      "total_count": 1725,
+      "top50_count": 50,
+      "top10_count": 10,
+      "grade_distribution": {
+        "C": 951,
+        "B": 452,
+        "D": 268,
+        "A": 54
+      }
+    }
+  },
+  "rule_version": {
+    "rule_version": "v1-stage1",
+    "name": "当前默认评分规则快照",
+    "created_at": "2026-07-02T15:00:16.854130",
+    "source_file": "config/default_rules.json",
+    "weights": {
+      "layered_match": 0.25,
+      "keyword_combo": 0.15,
+      "korea_brand": 0.25,
+      "cooperation_potential": 0.2,
+      "performance": 0.1,
+      "cost_effectiveness": 0.05
+    },
+    "risk_deduction_max": 10,
+    "status": "active",
+    "note": "从现有 default_rules.json 自动生成"
+  },
+  "summary": {
+    "creator_count": 1725,
+    "review_count": 0,
+    "contact_count": 0,
+    "quote_count": 0,
+    "shortlisted_count": 0,
+    "manual_review_total": 1,
+    "grade_distribution": {
+      "C": 951,
+      "B": 452,
+      "D": 268,
+      "A": 54
+    }
+  },
+  "screening": {
+    "top10": [
+      {
+        "rank": 1,
+        "creator_name": "????01",
+        "grade_short": "A",
+        "score_final": 75.79695652173912
+      },
+      {
+        "rank": 2,
+        "creator_name": "????02",
+        "grade_short": "A",
+        "score_final": 73.49695652173914
+      },
+      {
+        "rank": 3,
+        "creator_name": "????03",
+        "grade_short": "A",
+        "score_final": 72.45811594202898
+      },
+      {
+        "rank": 4,
+        "creator_name": "????04",
+        "grade_short": "A",
+        "score_final": 71.67811594202898
+      },
+      {
+        "rank": 5,
+        "creator_name": "????05",
+        "grade_short": "A",
+        "score_final": 71.38260869565217
+      },
+      {
+        "rank": 6,
+        "creator_name": "????06",
+        "grade_short": "A",
+        "score_final": 71.18333333333332
+      },
+      {
+        "rank": 7,
+        "creator_name": "????07",
+        "grade_short": "A",
+        "score_final": 71.00565217391305
+      },
+      {
+        "rank": 8,
+        "creator_name": "????08",
+        "grade_short": "A",
+        "score_final": 70.90115942028984
+      },
+      {
+        "rank": 9,
+        "creator_name": "????09",
+        "grade_short": "A",
+        "score_final": 70.78434782608696
+      },
+      {
+        "rank": 10,
+        "creator_name": "????10",
+        "grade_short": "A",
+        "score_final": 70.70115942028986
+      }
+    ],
+    "top50": [
+      {
+        "rank": 1,
+        "creator_name": "????01",
+        "grade_short": "A",
+        "score_final": 75.79695652173912
+      },
+      {
+        "rank": 2,
+        "creator_name": "????02",
+        "grade_short": "A",
+        "score_final": 73.49695652173914
+      },
+      {
+        "rank": 3,
+        "creator_name": "????03",
+        "grade_short": "A",
+        "score_final": 72.45811594202898
+      },
+      {
+        "rank": 4,
+        "creator_name": "????04",
+        "grade_short": "A",
+        "score_final": 71.67811594202898
+      },
+      {
+        "rank": 5,
+        "creator_name": "????05",
+        "grade_short": "A",
+        "score_final": 71.38260869565217
+      },
+      {
+        "rank": 6,
+        "creator_name": "????06",
+        "grade_short": "A",
+        "score_final": 71.18333333333332
+      },
+      {
+        "rank": 7,
+        "creator_name": "????07",
+        "grade_short": "A",
+        "score_final": 71.00565217391305
+      },
+      {
+        "rank": 8,
+        "creator_name": "????08",
+        "grade_short": "A",
+        "score_final": 70.90115942028984
+      },
+      {
+        "rank": 9,
+        "creator_name": "????09",
+        "grade_short": "A",
+        "score_final": 70.78434782608696
+      },
+      {
+        "rank": 10,
+        "creator_name": "????10",
+        "grade_short": "A",
+        "score_final": 70.70115942028986
+      },
+      {
+        "rank": 11,
+        "creator_name": "????11",
+        "grade_short": "A",
+        "score_final": 70.40405797101448
+      },
+      {
+        "rank": 12,
+        "creator_name": "????12",
+        "grade_short": "A",
+        "score_final": 69.82724637681159
+      },
+      {
+        "rank": 13,
+        "creator_name": "????13",
+        "grade_short": "A",
+        "score_final": 69.75057971014493
+      },
+      {
+        "rank": 14,
+        "creator_name": "????14",
+        "grade_short": "A",
+        "score_final": 69.39608695652173
+      },
+      {
+        "rank": 15,
+        "creator_name": "????15",
+        "grade_short": "A",
+        "score_final": 69.33333333333333
+      },
+      {
+        "rank": 16,
+        "creator_name": "????16",
+        "grade_short": "A",
+        "score_final": 69.03695652173913
+      },
+      {
+        "rank": 17,
+        "creator_name": "????17",
+        "grade_short": "A",
+        "score_final": 68.99666666666667
+      },
+      {
+        "rank": 18,
+        "creator_name": "????18",
+        "grade_short": "A",
+        "score_final": 68.75159420289854
+      },
+      {
+        "rank": 19,
+        "creator_name": "????19",
+        "grade_short": "A",
+        "score_final": 68.5449275362319
+      },
+      {
+        "rank": 20,
+        "creator_name": "????20",
+        "grade_short": "A",
+        "score_final": 68.48971014492754
+      },
+      {
+        "rank": 21,
+        "creator_name": "????21",
+        "grade_short": "A",
+        "score_final": 68.13333333333333
+      },
+      {
+        "rank": 22,
+        "creator_name": "????22",
+        "grade_short": "A",
+        "score_final": 68.10014492753623
+      },
+      {
+        "rank": 23,
+        "creator_name": "????23",
+        "grade_short": "A",
+        "score_final": 68.02971014492752
+      },
+      {
+        "rank": 24,
+        "creator_name": "????24",
+        "grade_short": "A",
+        "score_final": 67.94376811594204
+      },
+      {
+        "rank": 25,
+        "creator_name": "????25",
+        "grade_short": "A",
+        "score_final": 67.8263768115942
+      },
+      {
+        "rank": 26,
+        "creator_name": "????26",
+        "grade_short": "A",
+        "score_final": 67.68376811594203
+      },
+      {
+        "rank": 27,
+        "creator_name": "????27",
+        "grade_short": "A",
+        "score_final": 67.59942028985508
+      },
+      {
+        "rank": 28,
+        "creator_name": "????28",
+        "grade_short": "A",
+        "score_final": 67.5659420289855
+      },
+      {
+        "rank": 29,
+        "creator_name": "????29",
+        "grade_short": "A",
+        "score_final": 67.10478260869566
+      },
+      {
+        "rank": 30,
+        "creator_name": "????30",
+        "grade_short": "A",
+        "score_final": 67.06072463768116
+      },
+      {
+        "rank": 31,
+        "creator_name": "????31",
+        "grade_short": "A",
+        "score_final": 66.81347826086956
+      },
+      {
+        "rank": 32,
+        "creator_name": "????32",
+        "grade_short": "A",
+        "score_final": 66.81304347826087
+      },
+      {
+        "rank": 33,
+        "creator_name": "????33",
+        "grade_short": "A",
+        "score_final": 66.80797101449275
+      },
+      {
+        "rank": 34,
+        "creator_name": "????34",
+        "grade_short": "A",
+        "score_final": 66.6840579710145
+      },
+      {
+        "rank": 35,
+        "creator_name": "????35",
+        "grade_short": "A",
+        "score_final": 66.63507246376811
+      },
+      {
+        "rank": 36,
+        "creator_name": "????36",
+        "grade_short": "A",
+        "score_final": 66.59420289855073
+      },
+      {
+        "rank": 37,
+        "creator_name": "????37",
+        "grade_short": "A",
+        "score_final": 66.42724637681158
+      },
+      {
+        "rank": 38,
+        "creator_name": "????38",
+        "grade_short": "A",
+        "score_final": 66.41347826086955
+      },
+      {
+        "rank": 39,
+        "creator_name": "????39",
+        "grade_short": "A",
+        "score_final": 66.29652173913043
+      },
+      {
+        "rank": 40,
+        "creator_name": "????40",
+        "grade_short": "A",
+        "score_final": 66.21695652173914
+      },
+      {
+        "rank": 41,
+        "creator_name": "????41",
+        "grade_short": "A",
+        "score_final": 66.17492753623189
+      },
+      {
+        "rank": 42,
+        "creator_name": "????42",
+        "grade_short": "A",
+        "score_final": 66.12521739130435
+      },
+      {
+        "rank": 43,
+        "creator_name": "????43",
+        "grade_short": "A",
+        "score_final": 66.09463768115941
+      },
+      {
+        "rank": 44,
+        "creator_name": "????44",
+        "grade_short": "A",
+        "score_final": 66.05202898550725
+      },
+      {
+        "rank": 45,
+        "creator_name": "????45",
+        "grade_short": "A",
+        "score_final": 65.96
+      },
+      {
+        "rank": 46,
+        "creator_name": "????46",
+        "grade_short": "A",
+        "score_final": 65.88144927536231
+      },
+      {
+        "rank": 47,
+        "creator_name": "????47",
+        "grade_short": "A",
+        "score_final": 65.67826086956521
+      },
+      {
+        "rank": 48,
+        "creator_name": "????48",
+        "grade_short": "A",
+        "score_final": 65.5704347826087
+      },
+      {
+        "rank": 49,
+        "creator_name": "????49",
+        "grade_short": "A",
+        "score_final": 65.52492753623189
+      },
+      {
+        "rank": 50,
+        "creator_name": "????50",
+        "grade_short": "A",
+        "score_final": 65.35217391304347
+      }
+    ]
+  },
+  "ai_summary": {
+    "top_reasons": [
+      {
+        "name": "性价比评分高，报价相对合理",
+        "count": 2
+      },
+      {
+        "name": "命中品牌词marithe，有相关合作经验",
+        "count": 2
+      },
+      {
+        "name": "命中品牌词marithe，有韩国品牌关联",
+        "count": 2
+      },
+      {
+        "name": "粉丝基数大，品牌曝光潜力强",
+        "count": 2
+      },
+      {
+        "name": "内容关键词匹配品牌方向",
+        "count": 2
+      },
+      {
+        "name": "六维综合评价较好",
+        "count": 2
+      },
+      {
+        "name": "粉丝量34.1万，具备一定影响力",
+        "count": 1
+      },
+      {
+        "name": "内容标签为美妆韩系，与品牌方向匹配",
+        "count": 1
+      }
+    ],
+    "top_risks": [
+      {
+        "name": "未命中韩国品牌关键词，韩国品牌关联度弱",
+        "count": 3
+      },
+      {
+        "name": "身份画像缺失，人设不清晰，影响品牌信任度",
+        "count": 3
+      },
+      {
+        "name": "身份画像缺失，人设不明确",
+        "count": 2
+      },
+      {
+        "name": "风险扣分-4，合作ER<1%",
+        "count": 2
+      },
+      {
+        "name": "风险扣分-4，因合作ER<1%和身份缺失",
+        "count": 2
+      },
+      {
+        "name": "身份画像缺失",
+        "count": 2
+      },
+      {
+        "name": "未命中品牌词，品牌关联度弱",
+        "count": 2
+      },
+      {
+        "name": "未命中任何韩国关键词，韩国品牌关联度弱",
+        "count": 2
+      }
+    ],
+    "review_hints": [
+      "需重点核实粉丝真实性和互动质量，避免高投入低回报",
+      "人工审核需确认达人粉丝活跃度及近期互动趋势",
+      "需人工确认达人是否愿意调整内容方向，以及粉丝画像是否与品牌目标人群重叠",
+      "人工需核实达人粉丝真实性及日常内容互动质量，确认是否适合长期合作",
+      "重点审核其粉丝画像真实性及过往合作笔记的评论区质量，确认是否存在刷量嫌疑",
+      "需人工确认达人粉丝质量及合作笔记互动真实性",
+      "需人工确认达人粉丝活跃度及内容真实互动情况",
+      "重点审核达人粉丝真实性及过往合作效果，确认是否适合韩国品牌调性"
+    ]
+  },
+  "manual_review": {
+    "total_reviews": 0,
+    "aligned_count": 0,
+    "disagreed_count": 0,
+    "disagreement_types": {},
+    "reason_tag_counts": {},
+    "rule_suggestions": [
+      "当前分歧样本较少，先继续积累人工复核历史，再进行规则回放优化。"
+    ],
+    "recent_reviews": []
+  },
+  "rule_suggestions": [
+    "当前分歧样本较少，先继续积累人工复核历史，再进行规则回放优化。"
+  ],
+  "contact_summary": {
+    "total": 0,
+    "status_counts": {},
+    "shortlisted_count": 0,
+    "quote_received_count": 0,
+    "avg_platform_reference_price": null,
+    "avg_inquiry_price": null,
+    "avg_final_price": null,
+    "price_gap_summary": {
+      "avg_platform_to_inquiry_gap": null,
+      "avg_inquiry_to_final_gap": null,
+      "records_with_platform_reference": 0,
+      "records_with_final_price": 0
+    },
+    "recent_contact_records": [],
+    "recent_quote_records": []
+  },
+  "shortlisted_creators": [],
+  "source_summary": {
+    "version": "v3-stage3",
+    "total_creators": 1725,
+    "excluded_creators": 0,
+    "score_max": 75.8,
+    "score_min": 20.03,
+    "top10": [
+      {
+        "rank": 1,
+        "昵称": "居猫夫人",
+        "score_final": 75.79695652173912,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 2,
+        "昵称": "清潭洞娜娜西🥨",
+        "score_final": 73.49695652173914,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 3,
+        "昵称": "鹿鹿不迷糊",
+        "score_final": 72.45811594202898,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 4,
+        "昵称": "章鱼小妮子",
+        "score_final": 71.67811594202898,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 5,
+        "昵称": "十月和凡翼",
+        "score_final": 71.38260869565217,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 6,
+        "昵称": "amandathemeow",
+        "score_final": 71.18333333333332,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 7,
+        "昵称": "宋黛cony",
+        "score_final": 71.00565217391305,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 8,
+        "昵称": "神田优作",
+        "score_final": 70.90115942028984,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 9,
+        "昵称": "里奥奈",
+        "score_final": 70.78434782608696,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      },
+      {
+        "rank": 10,
+        "昵称": "Yhixn",
+        "score_final": 70.70115942028986,
+        "recommend_grade": "A级(推荐)",
+        "grade_short": "A",
+        "exclude_flag": false
+      }
+    ],
+    "top50_grade_distribution": {
+      "A级(推荐)": 50
+    },
+    "full_grade_distribution": {
+      "C级(观望)": 951,
+      "B级(可考虑)": 452,
+      "D级(不推荐)": 268,
+      "A级(推荐)": 54
+    },
+    "dimension_averages": {
+      "layered_match": 62.87,
+      "keyword_combo": 50.03,
+      "korea_brand": 31.48,
+      "cooperation_potential": 50.03,
+      "performance": 50.03,
+      "cost_effectiveness": 49.97,
+      "risk_deduction": -3.43,
+      "final": 45.17
+    },
+    "output_files": {
+      "full_csv": "K:\\Trae_workk\\paqu\\work\\data\\output\\scores_full.csv",
+      "top10_csv": "K:\\Trae_workk\\paqu\\work\\data\\output\\scores_top10.csv",
+      "top50_csv": "K:\\Trae_workk\\paqu\\work\\data\\output\\scores_top50.csv",
+      "excel": "K:\\Trae_workk\\paqu\\work\\data\\output\\scores_full.xlsx"
+    }
+  }
+}

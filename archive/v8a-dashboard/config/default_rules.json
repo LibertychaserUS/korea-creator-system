@@ -1,0 +1,17 @@
+{
+  "version": "v1-stage1",
+  "score_weights": {
+    "layered_match": 0.25,
+    "keyword_combo": 0.15,
+    "korea_brand": 0.25,
+    "cooperation_potential": 0.20,
+    "performance": 0.10,
+    "cost_effectiveness": 0.05
+  },
+  "risk_deduction_max": 10,
+  "creator_key_priority": [
+    "userId",
+    "小红书号",
+    "小红书主页URL"
+  ]
+}

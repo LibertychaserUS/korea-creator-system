@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+*.pyo
+*.pyd
+.Python
+
+# Environment and secrets
+.env
+.env.*
+config/settings.json
+*.pem
+*.key
+
+# Data outputs (generated from source Excel)
+data/output/
+data/cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Browser cache and screenshots (optional, keep docs/screenshots for reference)
+# docs/screenshots/
+
+# Temp leftovers / extracts
+.tmp-v1-plan/
+tmp/

@@ -1,0 +1,55 @@
+# 架构边界
+
+> 项目：`korea-creator-system`。
+> **实现栈硬约束**：tinyship + **forge** + **overlay**（技术名，不是 Harness.io）。缺一不可，不是后期插件。
+> 组装细节 SSOT：[`TINYSHIP-REBUILD.md`](./TINYSHIP-REBUILD.md)。未落地前读 [`../pm/STACK.md`](../pm/STACK.md)。本文件只划产品边界与仓库布局。
+
+## 仓库布局
+
+| 路径 | 状态 |
+|------|------|
+| `docs/` | **留下**。历史 + 产品意图权威处。含编号 `00_*`–`10_*`、`docs/product/`、`docs/pm/`。不要搬进 archive。 |
+| `archive/` | 旧 FastAPI / pandas Demo **冻结** + 墓碑。仓库根不再有可施工的 `app/`。 |
+| tinyship + forge + overlay 绿地 | 新工作唯一落点。三者如何落盘以 `TINYSHIP-REBUILD.md` 为准。 |
+
+## 目标形态
+
+绿地：在 **tinyship + forge + overlay** 上重建 V1 闭环（导入 → 清洗去重 → 规则排序 → 风险复核 → 人工确认 → 导出）。第一刀就必须三件套同时在树上，不能先 tinyship 再补另外两个。
+
+`archive/` 只读对照，**默认零提交**。不要为它做 Stage 8B，不要把它当运行目标。
+
+## 产品管道（与框架无关）
+
+<div style="width:100%;max-width:1100px;box-sizing:border-box;position:relative;background:#fafbfc;padding:16px;border-radius:6px;border:1px solid #e5e7eb;"><style scoped>.arch-title{text-align:center;font-size:16px;font-weight:700;color:#1f2937;margin-bottom:12px;}.arch-pipeline{display:flex;gap:0;align-items:stretch;}.arch-stage{flex:1;padding:10px;border:2px solid #d1d5db;border-radius:6px;background:#fff;}.arch-stage-title{font-size:11px;font-weight:700;text-align:center;margin-bottom:8px;color:#374151;}.arch-arrow{display:flex;align-items:center;justify-content:center;width:28px;flex-shrink:0;color:#9ca3af;}.arch-box{border-radius:4px;padding:6px;text-align:center;font-size:10px;font-weight:600;background:#f9fafb;border:1px solid #e5e7eb;margin:3px 0;color:#1f2937;}.arch-box.highlight{border:2px solid #6b7280;background:#f3f4f6;}</style><div class="arch-title">korea-creator-system 产品管道（绿地）</div><div class="arch-pipeline"><div class="arch-stage"><div class="arch-stage-title">Ingest</div><div class="arch-box">0201 / current.xlsx</div><div class="arch-box">清洗去重</div></div><div class="arch-arrow">→</div><div class="arch-stage"><div class="arch-stage-title">规则排序</div><div class="arch-box highlight">六维 + 风险</div><div class="arch-box">等级 / 排名</div></div><div class="arch-arrow">→</div><div class="arch-stage"><div class="arch-stage-title">风险复核</div><div class="arch-box">DeepSeek Top50</div><div class="arch-box">fallback 模板</div></div><div class="arch-arrow">→</div><div class="arch-stage"><div class="arch-stage-title">人工确认</div><div class="arch-box">四态标注</div><div class="arch-box">不改分</div></div><div class="arch-arrow">→</div><div class="arch-stage"><div class="arch-stage-title">导出</div><div class="arch-box">Excel / CSV</div><div class="arch-box">时间戳快照</div></div></div></div>
+
+## 边界
+
+| 层 | 允许 | 禁止 |
+|----|------|------|
+| 规则引擎 | 读配置算分、写解释字段 | 读 AI / 人工结果来改分 |
+| AI | 读 Creator+Score 摘要，写 AIReview | 写 Score；全量 1725 人打模型（MVP） |
+| 人工 | 写 ManualReview | 覆盖 final / grade / rank |
+| 导出 | 快照当前运行 | 当邮件发送器 |
+| `archive/` 旧 Demo | 只读对照字段与口径 | 新功能、8B 补页、继续扩 V2 API、假装根目录还有 `app/` |
+
+## archive 对照（不要扩展）
+
+核对历史实现时只读 `archive/`（具体子路径看墓碑）以及 **未搬走的** `docs/`：
+
+- 代码：archive 内原 `web` 入口、scoring、AI 模块（含未进编号文档的 `/api/v2/*`）
+- 规则口径：`docs/03_评分规则说明.md`；配置样例若已随代码进 archive，跟墓碑走
+- AI 口径：`docs/04_AI提示词与DeepSeek说明.md`
+- 页面快照：`docs/06_页面说明.md`（`v8a-dashboard`）
+- V2 意图备忘：`docs/devlogs/v2-*.md`
+
+编号文档仍是旧 Demo 的官方说明，不要改写成 tinyship 施工图。不要把 `docs/` 当代码一起 archive。
+
+## 明确不建（本阶段）
+
+- 蒲公英自动登录、小红书抓取、多平台采集、模型训练
+- 自动联系 / SMTP / 群发
+- 完整 AnalysisRun 中心、在线改权重并自动生效（规则页 MVP 只读）
+- IMOK V3 三角色、活动、合同、结算
+- Harness.io 资源、`docs/pm/HARNESS.md`
+
+存储、路由、测试命令、目录、forge/overlay 组装：只写在 `TINYSHIP-REBUILD.md`。冲突以那份为准。三件套约束以 [`../pm/STACK.md`](../pm/STACK.md) 为准，不得降级为 Later。
