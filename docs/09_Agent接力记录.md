@@ -157,5 +157,5 @@ uvicorn app.web:app --reload --port 8000
   - 不要在 archive 上做 Stage 8B 或续写 `/api/v2/*`。
   - 不要在 `TINYSHIP-REBUILD.md` 落地前另起脚手架。
 - 下一阶段入口：
-  - 研究代理落地 `docs/product/TINYSHIP-REBUILD.md`（`KCS-TS-00`）。
-  - 其后第一刀必须同时接入 tinyship + forge + overlay（`KCS-TS-01` / `01F` / `01O`）。
+  - 四端实现线已落地 tinyship + forge + overlay，交接状态、已知 bug 与顺序见 `docs/HANDOFF.md`。
+  - 旧 `main`（仅 `docs/` + `archive/`）通过合并四端线被替换；此后不要再从旧布局起分支。
