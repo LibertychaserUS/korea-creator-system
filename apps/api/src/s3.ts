@@ -1,6 +1,20 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import type { ObjectStore } from './store'
+import { MemoryObjectStore, type ObjectStore } from './store'
+
+export function createStoreFromEnv(): ObjectStore {
+  if (process.env.S3_ENDPOINT && process.env.S3_ACCESS_KEY) {
+    return createS3Store({
+      endpoint: process.env.S3_ENDPOINT,
+      region: process.env.S3_REGION || 'us-east-1',
+      bucket: process.env.S3_BUCKET || 'kcs-assets',
+      accessKey: process.env.S3_ACCESS_KEY,
+      secretKey: process.env.S3_SECRET_KEY || '',
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
+    })
+  }
+  return new MemoryObjectStore()
+}
 
 export function createS3Store(env: {
   endpoint: string

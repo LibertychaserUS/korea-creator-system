@@ -152,4 +152,55 @@ describe('ops batch upload', () => {
     expect(mina, 'parsed xlsx row must become a creator').toBeTruthy()
     expect(mina?.followers).toBe(186000)
   })
+
+  it('stores an ingest snapshot so QC can show 源Excel after proofed edits', async () => {
+    const ops = await ctx.loginJson('ops@kcs.local')
+    const xlsx = buildXlsx([
+      ['昵称', '小红书号', '粉丝数', '报价', '抓取关键词', '合作ER'],
+      ['校对快照_Mina', '582910384', '186000', '8000', '설화수 雪花秀', '4.8%'],
+    ])
+    const form = new FormData()
+    form.append(
+      'file',
+      new File([xlsx], 'qc-snapshot.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    )
+    const uploaded = await ctx.app.request('/api/ops/batches', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ops.token}` },
+      body: form,
+    })
+    expect(uploaded.status).toBe(201)
+
+    const list = await ctx.app.request('/api/ops/creators', {
+      headers: { authorization: `Bearer ${ops.token}` },
+    })
+    const items = (await list.json()).items as Array<{
+      id: string
+      displayName: string
+      followers: number | null
+      ingestSnapshot?: { followers?: number | null; xhsId?: string | null; price?: number | null }
+    }>
+    const mina = items.find((row) => row.displayName === '校对快照_Mina')
+    expect(mina?.ingestSnapshot?.followers).toBe(186000)
+    expect(mina?.ingestSnapshot?.xhsId).toBe('582910384')
+    expect(mina?.ingestSnapshot?.price).toBe(8000)
+
+    const patched = await ctx.app.request(`/api/ops/creators/${mina!.id}`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${ops.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ followers: 200000 }),
+    })
+    expect(patched.status).toBe(200)
+    const again = await ctx.app.request(`/api/ops/creators/${mina!.id}`, {
+      headers: { authorization: `Bearer ${ops.token}` },
+    })
+    const body = await again.json()
+    expect(body.followers).toBe(200000)
+    expect(body.ingestSnapshot?.followers).toBe(186000)
+  })
 })

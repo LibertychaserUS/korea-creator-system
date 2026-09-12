@@ -4,14 +4,23 @@ import { cors } from 'hono/cors'
 import {
   can,
   creatorToScoreInput,
+  gradeFor,
   rankInCohort,
   scoreCreator,
   type Permission,
   type Role,
 } from '@kcs/contract'
+import {
+  applyCompanyLens,
+  loadCollaborators,
+  loadCompany,
+  loadRulePack,
+  presentUser,
+} from './company'
 import { creatorKeyFromRow, parseXlsx, type SheetRow } from './xlsx-sheet'
 import type { Db } from './db'
 import { hashPassword, verifyPassword } from './password'
+import { assetPublicUrl } from './seed-media'
 import type { ObjectStore } from './store'
 
 const DEMO_PASSWORDS = new Set(['Kcs!demo2026', 'KcsE2e!2026'])
@@ -109,11 +118,12 @@ export function createApp(env: AppEnv) {
   app.get('/api/openapi.json', (c) =>
     c.json({
       openapi: '3.0.3',
-      info: { title: '全球达人情报系统 API', version: '0.1.0' },
+      info: { title: '听潮 API', version: '0.1.0' },
       paths: {
         '/api/auth/login': { post: { summary: '登录' } },
         '/api/ops/creators': { get: {}, post: {} },
         '/api/select/pool': { get: {} },
+        '/api/select/company': { get: {} },
         '/api/select/projects': { get: {}, post: {} },
         '/api/dev/health': { get: {} },
         '/api/ingest/jobs': { get: {}, post: {} },
@@ -137,9 +147,19 @@ export function createApp(env: AppEnv) {
       new Date(env.now().getTime() + 7 * 24 * 3600 * 1000),
     ])
     await audit(env.db, user.id, 'login', 'user', user.id, `login ${user.email}`)
+    const company = await loadCompany(env.db, user.org_id)
     const payload = {
       token,
-      user: { id: user.id, email: user.email, role: user.role, displayName: user.display_name },
+      user: presentUser(
+        {
+          id: user.id,
+          orgId: user.org_id,
+          email: user.email,
+          role: user.role,
+          displayName: user.display_name,
+        },
+        company,
+      ),
     }
     c.header('set-cookie', `kcs_session=${token}; Path=/; HttpOnly; SameSite=Lax`)
     return c.json(payload)
@@ -186,7 +206,8 @@ export function createApp(env: AppEnv) {
   app.get('/api/auth/me', async (c) => {
     const { user, denied } = await requireAuth(c)
     if (denied) return denied
-    return c.json({ user })
+    const company = await loadCompany(env.db, user!.orgId)
+    return c.json({ user: presentUser(user!, company) })
   })
 
   app.get('/api/ops/overview', async (c) => {
@@ -207,11 +228,16 @@ export function createApp(env: AppEnv) {
   })
 
   app.get('/api/ops/creators', async (c) => {
-    const { denied } = await requireAuth(c, 'ops.read')
+    const { user, denied } = await requireAuth(c, 'ops.read')
     if (denied) return denied
+    const scoped = user!.role === 'platform_admin'
     const { rows } = await env.db.query(
-      `SELECT c.*, ${hasCollabSql()}::int AS collab_count
-       FROM creators c ORDER BY c.updated_at DESC`,
+      scoped
+        ? `SELECT c.*, ${hasCollabSql()}::int AS collab_count
+           FROM creators c ORDER BY c.updated_at DESC`
+        : `SELECT c.*, ${hasCollabSql()}::int AS collab_count
+           FROM creators c WHERE c.org_id = $1 ORDER BY c.updated_at DESC`,
+      scoped ? [] : [user!.orgId],
     )
     return c.json({ items: await attachCreatorMeta(env.db, rows, true) })
   })
@@ -226,8 +252,8 @@ export function createApp(env: AppEnv) {
     const key = body.creatorKey || `ck_${id.slice(0, 8)}`
     await env.db.query(
       `INSERT INTO creators
-        (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, note, avatar_key)
-       VALUES ($1,$2,$3,'draft',false,$4,$5,$6,$7,$8,$9,$10)`,
+        (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, note, avatar_key, org_id)
+       VALUES ($1,$2,$3,'draft',false,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         id,
         key,
@@ -239,6 +265,7 @@ export function createApp(env: AppEnv) {
         body.rating ?? null,
         body.note ?? null,
         body.avatarKey ?? null,
+        user!.orgId,
       ],
     )
     await saveRelations(env.db, id, body)
@@ -305,7 +332,11 @@ export function createApp(env: AppEnv) {
     if (!item.displayName) return jsonError(c, 400, 'VALIDATION', 'incomplete')
     if (!(item.regions?.length || item.verticals?.length)) return jsonError(c, 400, 'VALIDATION', 'incomplete')
     if (item.followers == null && !item.followersUnknown) return jsonError(c, 400, 'VALIDATION', 'incomplete')
-    await env.db.query(`UPDATE creators SET status = 'released', updated_at = now() WHERE id = $1`, [id])
+    const locked = scoreOf(item)
+    await env.db.query(
+      `UPDATE creators SET status = 'released', locked_final = $2, updated_at = now() WHERE id = $1`,
+      [id, locked.final],
+    )
     await env.db.query(`UPDATE assignments SET pool_gone = false WHERE creator_id = $1`, [id])
     await audit(env.db, user!.id, 'creator.publish', 'creator', id, item.displayName)
     return c.json({ ok: true, status: 'released' })
@@ -417,12 +448,35 @@ export function createApp(env: AppEnv) {
     return c.json(job, 201)
   })
 
+  app.get('/api/select/company', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.read')
+    if (denied) return denied
+    const company = await loadCompany(env.db, user!.orgId)
+    if (!company) return jsonError(c, 404, 'NOT-FOUND', 'company_not_found')
+    const rulePack = await loadRulePack(env.db, user!.orgId)
+    const collaborators = await loadCollaborators(env.db, user!.orgId)
+    return c.json({
+      company: { id: company.id, slug: company.slug, name: company.name },
+      prefs: company.prefs,
+      rulePack,
+      collaborators,
+    })
+  })
+
   app.get('/api/select/pool', async (c) => {
-    const { denied } = await requireAuth(c, 'select.read')
+    const { user, denied } = await requireAuth(c, 'select.read')
     if (denied) return denied
     const q = c.req.query()
-    const items = (await queryPool(env.db, q)).map(publicPoolRow)
-    return c.json({ items, total: items.length })
+    const company = await loadCompany(env.db, user!.orgId)
+    const rulePack = await loadRulePack(env.db, user!.orgId)
+    const items = (await queryPool(env.db, q, { companyId: user!.orgId, role: user!.role, defaultSort: company?.prefs.defaultSort })).map(publicPoolRow)
+    return c.json({
+      items,
+      total: items.length,
+      company: company ? { id: company.id, slug: company.slug, name: company.name } : null,
+      prefs: company?.prefs ?? null,
+      rulePack,
+    })
   })
 
   app.get('/api/select/creators/:id', async (c) => {
@@ -469,9 +523,11 @@ export function createApp(env: AppEnv) {
     ])
     if (!rows[0]) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
     const assigned = await env.db.query(
-      `SELECT a.id, a.creator_id, a.status, a.pool_gone, a.assigned_at,
+      `SELECT a.id, a.creator_id, a.status, a.pool_gone, a.assigned_at, a.note,
               c.display_name, c.followers, c.rating, c.creator_key, c.status AS creator_status,
-              c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key
+              c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
+              c.avatar_url, c.photo_urls,
+              c.xhs_id, c.label, c.locked_final, c.note AS creator_note, c.er
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1 ORDER BY a.assigned_at DESC`,
       [c.req.param('id')],
@@ -490,20 +546,28 @@ export function createApp(env: AppEnv) {
         needs_review: r.needs_review,
         followers_unknown: r.followers_unknown,
         avatar_key: r.avatar_key,
+        avatar_url: r.avatar_url,
+        photo_urls: r.photo_urls,
+        xhs_id: r.xhs_id,
+        label: r.label,
+        locked_final: r.locked_final,
+        note: r.creator_note,
+        er: r.er,
       })),
       false,
     )
-    const poolFinals = (await queryPool(env.db, {})).map((row) => scoreOf(row).final)
+    const poolFinals = (await queryPool(env.db, {}, { companyId: user!.orgId, role: user!.role })).map((row) => displayScore(row).final)
     return c.json({
       ...rows[0],
       assignments: meta.map((item, index) => {
-        const score = scoreOf(item)
+        const score = displayScore(item)
         const raw = assigned.rows[index]
         return {
           id: raw.id,
           creatorId: item.id,
           creatorKey: item.creatorKey,
           status: raw.status,
+          note: raw.note ?? null,
           displayName: item.displayName,
           poolGone: raw.pool_gone,
           followers: item.followers,
@@ -512,6 +576,10 @@ export function createApp(env: AppEnv) {
           grade: score.grade,
           final: score.final,
           rank: rankInCohort(score.final, poolFinals),
+          xhsId: item.xhsId,
+          label: item.label ?? null,
+          avatarUrl: item.avatarUrl ?? null,
+          photoUrls: item.photoUrls ?? [],
         }
       }),
     })
@@ -523,6 +591,7 @@ export function createApp(env: AppEnv) {
     const projectId = c.req.param('id')
     const body = await c.req.json()
     const ids: string[] = body.creatorIds || []
+    const note = typeof body.note === 'string' ? String(body.note).slice(0, 200) : null
     if (!ids.length) return jsonError(c, 400, 'empty')
     for (const rawId of ids) {
       let creatorId = rawId
@@ -542,9 +611,9 @@ export function createApp(env: AppEnv) {
       )
       if (exists.rowCount) return jsonError(c, 409, 'already_assigned')
       await env.db.query(
-        `INSERT INTO assignments (id, project_id, creator_id, status, assigned_by)
-         VALUES ($1,$2,$3,'assigned',$4)`,
-        [randomUUID(), projectId, creatorId, user!.id],
+        `INSERT INTO assignments (id, project_id, creator_id, status, assigned_by, note)
+         VALUES ($1,$2,$3,'assigned',$4,$5)`,
+        [randomUUID(), projectId, creatorId, user!.id, note],
       )
     }
     await env.db.query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId])
@@ -569,11 +638,14 @@ export function createApp(env: AppEnv) {
     if (denied) return denied
     const { rows } = await env.db.query(
       `SELECT s.org_id, s.creator_id, s.added_at, c.display_name, c.followers, c.rating, c.creator_key,
-              c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key
+              c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
+              c.avatar_url, c.photo_urls,
+              c.label, c.locked_final, c.xhs_id, c.note, c.er
        FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
        WHERE s.org_id = $1 ORDER BY s.added_at DESC`,
       [user!.orgId],
     )
+    const org = await env.db.query('SELECT budget_note FROM orgs WHERE id = $1', [user!.orgId])
     const meta = await attachCreatorMeta(
       env.db,
       rows.map((r) => ({
@@ -588,12 +660,20 @@ export function createApp(env: AppEnv) {
         needs_review: r.needs_review,
         followers_unknown: r.followers_unknown,
         avatar_key: r.avatar_key,
+        avatar_url: r.avatar_url,
+        photo_urls: r.photo_urls,
+        label: r.label,
+        locked_final: r.locked_final,
+        xhs_id: r.xhs_id,
+        note: r.note,
+        er: r.er,
       })),
       false,
     )
     return c.json({
+      budgetNote: org.rows[0]?.budget_note ?? '',
       items: meta.map((item, index) => {
-        const score = scoreOf(item)
+        const score = displayScore(item)
         return {
           org_id: rows[index].org_id,
           creator_id: item.id,
@@ -607,9 +687,22 @@ export function createApp(env: AppEnv) {
           price: item.price,
           grade: score.grade,
           final: score.final,
+          label: item.label ?? null,
+          status: item.label || 'pending',
+          avatarUrl: item.avatarUrl ?? null,
+          photoUrls: item.photoUrls ?? [],
         }
       }),
     })
+  })
+
+  app.patch('/api/select/shortlist', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.write')
+    if (denied) return denied
+    const body = await c.req.json().catch(() => ({}))
+    const budgetNote = typeof body.budgetNote === 'string' ? String(body.budgetNote).slice(0, 200) : ''
+    await env.db.query('UPDATE orgs SET budget_note = $2 WHERE id = $1', [user!.orgId, budgetNote])
+    return c.json({ ok: true, budgetNote })
   })
 
   app.post('/api/select/shortlist', async (c) => {
@@ -859,7 +952,7 @@ export function createApp(env: AppEnv) {
         authorization: c.req.header('authorization') || '',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ creatorIds: [creatorId] }),
+      body: JSON.stringify({ creatorIds: [creatorId], note: body.note }),
     })
     return res
   })
@@ -875,11 +968,6 @@ export function createApp(env: AppEnv) {
   return app
 }
 
-function assetPublicUrl(key: string) {
-  const base = (process.env.API_PUBLIC_URL || 'http://localhost:7100').replace(/\/$/, '')
-  return `${base}/api/assets/raw/${key}`
-}
-
 function mutexCoop(categories: unknown): boolean {
   if (!Array.isArray(categories)) return false
   return categories.includes('collaborated') && categories.includes('never_collaborated')
@@ -889,8 +977,17 @@ function scoreOf(item: Record<string, any>) {
   return scoreCreator(creatorToScoreInput(item))
 }
 
+function displayScore(item: Record<string, any>) {
+  const locked = item.lockedFinal ?? item.locked_final
+  if (locked != null && locked !== '') {
+    const final = Number(locked)
+    return { final, grade: gradeFor(final) }
+  }
+  return scoreOf(item)
+}
+
 function publicPoolRow(item: Record<string, any>) {
-  const score = scoreOf(item)
+  const score = displayScore(item)
   return {
     id: item.id,
     creatorKey: item.creatorKey,
@@ -908,6 +1005,8 @@ function publicPoolRow(item: Record<string, any>) {
     grade: score.grade,
     final: score.final,
     label: item.label ?? null,
+    avatarUrl: item.avatarUrl ?? null,
+    photoUrls: Array.isArray(item.photoUrls) ? item.photoUrls : [],
   }
 }
 
@@ -956,9 +1055,11 @@ async function runWorkbookIngest(
   let written = 0
   let skipped = 0
   let failed = 0
+  const actor = await env.db.query('SELECT org_id FROM users WHERE id = $1', [openedBy])
+  const orgId = actor.rows[0]?.org_id || null
   for (const row of rows) {
     try {
-      const persisted = await persistSheetRow(env, id, row)
+      const persisted = await persistSheetRow(env, id, row, orgId)
       if (persisted === 'written') written += 1
       else if (persisted === 'skipped') skipped += 1
       else failed += 1
@@ -976,7 +1077,12 @@ async function runWorkbookIngest(
   return camelJobs(jobs)[0]
 }
 
-async function persistSheetRow(env: AppEnv, jobId: string, row: SheetRow): Promise<'written' | 'skipped' | 'failed'> {
+async function persistSheetRow(
+  env: AppEnv,
+  jobId: string,
+  row: SheetRow,
+  orgId: string | null,
+): Promise<'written' | 'skipped' | 'failed'> {
   const displayName = row.displayName || row.xhsId || row.userId
   if (!displayName) return 'failed'
   const key = creatorKeyFromRow(row) || `ck_${randomUUID().slice(0, 8)}`
@@ -994,22 +1100,31 @@ async function persistSheetRow(env: AppEnv, jobId: string, row: SheetRow): Promi
       price: price != null ? { amountMin: price } : null,
     }),
   )
+  const snapshot = {
+    followers: Number.isFinite(followers) ? followers : null,
+    xhsId: row.xhsId || null,
+    price: Number.isFinite(price) ? price : null,
+    displayName,
+    keywords: row.keywords || null,
+    persona: row.persona || null,
+  }
   const found = await env.db.query('SELECT id FROM creators WHERE creator_key = $1', [key])
   if (found.rows[0]) {
     await env.db.query(
       `UPDATE creators SET
         display_name = $2, followers = COALESCE($3, followers), regions = $4, verticals = $5,
-        rating = $6, xhs_id = COALESCE($7, xhs_id), last_ingest_job_id = $8, needs_review = true, updated_at = now()
+        rating = $6, xhs_id = COALESCE($7, xhs_id), last_ingest_job_id = $8, needs_review = true,
+        ingest_snapshot = COALESCE(ingest_snapshot, $9::jsonb), updated_at = now()
        WHERE creator_key = $1`,
-      [key, displayName, Number.isFinite(followers) ? followers : null, regions, verticals, score.final, row.xhsId || null, jobId],
+      [key, displayName, Number.isFinite(followers) ? followers : null, regions, verticals, score.final, row.xhsId || null, jobId, JSON.stringify(snapshot)],
     )
     return 'skipped'
   }
   const creatorId = randomUUID()
   await env.db.query(
     `INSERT INTO creators
-      (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, xhs_id, last_ingest_job_id, note)
-     VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, xhs_id, last_ingest_job_id, note, org_id, ingest_snapshot)
+     VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
     [
       creatorId,
       key,
@@ -1022,6 +1137,8 @@ async function persistSheetRow(env: AppEnv, jobId: string, row: SheetRow): Promi
       row.xhsId || null,
       jobId,
       row.persona || null,
+      orgId,
+      JSON.stringify(snapshot),
     ],
   )
   await env.db.query(
@@ -1101,10 +1218,14 @@ async function attachCreatorMeta(db: Db, rows: Array<Record<string, unknown>>, f
       verticals: r.verticals,
       rating: r.rating === null ? null : Number(r.rating),
       avatarKey: r.avatar_key ?? null,
+      avatarUrl: (r.avatar_url as string | null) || (r.avatar_key ? assetPublicUrl(String(r.avatar_key)) : null),
+      photoUrls: Array.isArray(r.photo_urls) ? (r.photo_urls as string[]) : [],
       xhsId: r.xhs_id ?? null,
       qcNotes: r.qc_notes ?? null,
       note: r.note ?? null,
       label: r.label ?? null,
+      lockedFinal: r.locked_final == null ? null : Number(r.locked_final),
+      ingestSnapshot: r.ingest_snapshot ?? null,
       categories,
       hasCollaborated: collaborations.length > 0,
       collabCount: collaborations.length,
@@ -1129,14 +1250,27 @@ async function loadCreator(db: Db, id: string, full: boolean) {
   return item
 }
 
-async function queryPool(db: Db, q: Record<string, string>) {
-  const { rows } = await db.query(`SELECT * FROM creators WHERE status = 'released'`)
-  let items = await attachCreatorMeta(db, rows, false)
+async function queryPool(
+  db: Db,
+  q: Record<string, string>,
+  scope: { companyId: string; role: string; defaultSort?: string },
+) {
+  const { rows } =
+    scope.role === 'platform_admin'
+      ? await db.query(`SELECT * FROM creators WHERE status = 'released'`)
+      : await db.query(`SELECT * FROM creators WHERE status = 'released' AND org_id = $1`, [scope.companyId])
+  let items = await applyCompanyLens(db, await attachCreatorMeta(db, rows, false), scope.companyId)
   items = items.filter((item) => !item.categories.includes('blacklist'))
   if (q.followersMin) items = items.filter((i) => (i.followers ?? -1) >= Number(q.followersMin))
   if (q.followersMax) items = items.filter((i) => (i.followers ?? Infinity) <= Number(q.followersMax))
   if (q.hasCollaborated === 'true') items = items.filter((i) => i.hasCollaborated)
   if (q.hasCollaborated === 'false') items = items.filter((i) => !i.hasCollaborated)
+  if (q.advice) items = items.filter((i) => i.advice === q.advice)
+  if (q.followersBand) items = items.filter((i) => i.followersBand === q.followersBand)
+  if (q.outreach) items = items.filter((i) => i.outreach === q.outreach)
+  if (q.koreaRelation) items = items.filter((i) => i.koreaRelation === q.koreaRelation)
+  if (q.conclusion) items = items.filter((i) => i.conclusion === q.conclusion)
+  if (q.risk) items = items.filter((i) => i.risk === q.risk)
   if (q.priceMin || q.priceMax) {
     const min = q.priceMin ? Number(q.priceMin) : 0
     const max = q.priceMax ? Number(q.priceMax) : Number.MAX_SAFE_INTEGER
@@ -1176,7 +1310,7 @@ async function queryPool(db: Db, q: Record<string, string>) {
       return wanted.some((w) => blob.includes(w))
     })
   }
-  const sort = q.sort || 'rating'
+  const sort = q.sort || scope.defaultSort || 'rating'
   const order = q.order === 'asc' ? 1 : -1
   items.sort((a, b) => {
     if (sort === 'collab_count') return (a.collabCount - b.collabCount) * order
@@ -1234,10 +1368,11 @@ async function runIngest(
     )
   } else {
     const creatorId = randomUUID()
+    const actor = await env.db.query('SELECT org_id FROM users WHERE id = $1', [openedBy])
     await env.db.query(
-      `INSERT INTO creators (id, creator_key, display_name, status, needs_review, followers_unknown, regions, last_ingest_job_id)
-       VALUES ($1,$2,$3,'draft',true,true,$4,$5)`,
-      [creatorId, key, `投递达人 ${id.slice(0, 4)}`, ['서울'], id],
+      `INSERT INTO creators (id, creator_key, display_name, status, needs_review, followers_unknown, regions, last_ingest_job_id, org_id)
+       VALUES ($1,$2,$3,'draft',true,true,$4,$5,$6)`,
+      [creatorId, key, `投递达人 ${id.slice(0, 4)}`, ['서울'], id, actor.rows[0]?.org_id || null],
     )
     await env.db.query(
       `INSERT INTO creator_categories (creator_id, category_slug) VALUES ($1,'never_collaborated')`,

@@ -22,6 +22,7 @@ export const API = {
   opsBatches: { method: 'GET', path: '/api/ops/batches', perm: 'ops.read' },
   opsBatchUpload: { method: 'POST', path: '/api/ops/batches', perm: 'ops.write' },
   pool: { method: 'GET', path: '/api/select/pool', perm: 'select.read' },
+  company: { method: 'GET', path: '/api/select/company', perm: 'select.read' },
   poolCreator: { method: 'GET', path: '/api/select/creators/:id', perm: 'select.read' },
   projects: { method: 'GET', path: '/api/select/projects', perm: 'select.read' },
   projectCreate: { method: 'POST', path: '/api/select/projects', perm: 'select.write' },
