@@ -25,6 +25,7 @@ describe('project assignment', () => {
         regions: ['서울'],
         followers: 10000,
         categories: ['never_collaborated'],
+        price: { amountMin: 3500, currency: 'CNY' },
       }),
     })
     const { id: creatorId } = await created.json()
@@ -66,6 +67,8 @@ describe('project assignment', () => {
     })
     const boardBody = await board.json()
     expect(boardBody.assignments).toHaveLength(1)
+    expect(boardBody.assignments[0].price?.amountMin).toBe(3500)
+    expect(boardBody.assignments[0].rank).toBeGreaterThan(0)
     const remove = await ctx.app.request(
       `/api/select/projects/${projectId}/assignments/${creatorId}`,
       { method: 'DELETE', headers: { authorization: `Bearer ${sel.token}` } },

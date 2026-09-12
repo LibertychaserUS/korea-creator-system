@@ -1,7 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { can, creatorToScoreInput, scoreCreator, type Permission, type Role } from '@kcs/contract'
+import {
+  can,
+  creatorToScoreInput,
+  rankInCohort,
+  scoreCreator,
+  type Permission,
+  type Role,
+} from '@kcs/contract'
 import { creatorKeyFromRow, parseXlsx, type SheetRow } from './xlsx-sheet'
 import type { Db } from './db'
 import { hashPassword, verifyPassword } from './password'
@@ -462,21 +469,51 @@ export function createApp(env: AppEnv) {
     ])
     if (!rows[0]) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
     const assigned = await env.db.query(
-      `SELECT a.*, c.display_name, c.followers, c.rating, c.creator_key
+      `SELECT a.id, a.creator_id, a.status, a.pool_gone, a.assigned_at,
+              c.display_name, c.followers, c.rating, c.creator_key, c.status AS creator_status,
+              c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1 ORDER BY a.assigned_at DESC`,
       [c.req.param('id')],
     )
+    const meta = await attachCreatorMeta(
+      env.db,
+      assigned.rows.map((r) => ({
+        id: r.creator_id,
+        creator_key: r.creator_key,
+        display_name: r.display_name,
+        followers: r.followers,
+        rating: r.rating,
+        status: r.creator_status,
+        regions: r.regions,
+        verticals: r.verticals,
+        needs_review: r.needs_review,
+        followers_unknown: r.followers_unknown,
+        avatar_key: r.avatar_key,
+      })),
+      false,
+    )
+    const poolFinals = (await queryPool(env.db, {})).map((row) => scoreOf(row).final)
     return c.json({
       ...rows[0],
-      assignments: assigned.rows.map((r) => ({
-        id: r.id,
-        creatorId: r.creator_id,
-        creatorKey: r.creator_key,
-        status: r.status,
-        displayName: r.display_name,
-        poolGone: r.pool_gone,
-      })),
+      assignments: meta.map((item, index) => {
+        const score = scoreOf(item)
+        const raw = assigned.rows[index]
+        return {
+          id: raw.id,
+          creatorId: item.id,
+          creatorKey: item.creatorKey,
+          status: raw.status,
+          displayName: item.displayName,
+          poolGone: raw.pool_gone,
+          followers: item.followers,
+          rating: item.rating,
+          price: item.price,
+          grade: score.grade,
+          final: score.final,
+          rank: rankInCohort(score.final, poolFinals),
+        }
+      }),
     })
   })
 
@@ -531,11 +568,48 @@ export function createApp(env: AppEnv) {
     const { user, denied } = await requireAuth(c, 'select.read')
     if (denied) return denied
     const { rows } = await env.db.query(
-      `SELECT s.*, c.display_name FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
+      `SELECT s.org_id, s.creator_id, s.added_at, c.display_name, c.followers, c.rating, c.creator_key,
+              c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key
+       FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
        WHERE s.org_id = $1 ORDER BY s.added_at DESC`,
       [user!.orgId],
     )
-    return c.json({ items: rows })
+    const meta = await attachCreatorMeta(
+      env.db,
+      rows.map((r) => ({
+        id: r.creator_id,
+        creator_key: r.creator_key,
+        display_name: r.display_name,
+        followers: r.followers,
+        rating: r.rating,
+        status: r.status,
+        regions: r.regions,
+        verticals: r.verticals,
+        needs_review: r.needs_review,
+        followers_unknown: r.followers_unknown,
+        avatar_key: r.avatar_key,
+      })),
+      false,
+    )
+    return c.json({
+      items: meta.map((item, index) => {
+        const score = scoreOf(item)
+        return {
+          org_id: rows[index].org_id,
+          creator_id: item.id,
+          creatorId: item.id,
+          display_name: item.displayName,
+          displayName: item.displayName,
+          added_at: rows[index].added_at,
+          addedAt: rows[index].added_at,
+          followers: item.followers,
+          rating: item.rating,
+          price: item.price,
+          grade: score.grade,
+          final: score.final,
+        }
+      }),
+    })
   })
 
   app.post('/api/select/shortlist', async (c) => {
@@ -811,7 +885,12 @@ function mutexCoop(categories: unknown): boolean {
   return categories.includes('collaborated') && categories.includes('never_collaborated')
 }
 
+function scoreOf(item: Record<string, any>) {
+  return scoreCreator(creatorToScoreInput(item))
+}
+
 function publicPoolRow(item: Record<string, any>) {
+  const score = scoreOf(item)
   return {
     id: item.id,
     creatorKey: item.creatorKey,
@@ -826,6 +905,9 @@ function publicPoolRow(item: Record<string, any>) {
     collabCount: item.collabCount,
     collabBrands: item.collabBrands,
     price: item.price,
+    grade: score.grade,
+    final: score.final,
+    label: item.label ?? null,
   }
 }
 
@@ -1019,13 +1101,22 @@ async function attachCreatorMeta(db: Db, rows: Array<Record<string, unknown>>, f
       verticals: r.verticals,
       rating: r.rating === null ? null : Number(r.rating),
       avatarKey: r.avatar_key ?? null,
+      xhsId: r.xhs_id ?? null,
+      qcNotes: r.qc_notes ?? null,
+      note: r.note ?? null,
+      label: r.label ?? null,
       categories,
       hasCollaborated: collaborations.length > 0,
       collabCount: collaborations.length,
       collabBrands: collaborations.map((x) => x.brand),
       collaborations: full ? collaborations : undefined,
       price: price
-        ? { amountMin: price.amount_min, amountMax: price.amount_max, currency: price.currency, unit: price.unit }
+        ? {
+            amountMin: price.amount_min == null ? null : Number(price.amount_min),
+            amountMax: price.amount_max == null ? null : Number(price.amount_max),
+            currency: price.currency,
+            unit: price.unit,
+          }
         : null,
     }
   })
@@ -1067,6 +1158,24 @@ async function queryPool(db: Db, q: Record<string, string>) {
   }
   if (q.collabCountMin) items = items.filter((i) => i.collabCount >= Number(q.collabCountMin))
   if (q.collabCountMax) items = items.filter((i) => i.collabCount <= Number(q.collabCountMax))
+  if (q.grade) {
+    const wanted = q.grade.split(',').filter(Boolean)
+    items = items.filter((i) => wanted.includes(scoreOf(i).grade))
+  }
+  if (q.brand) {
+    const wanted = q.brand.split(',').map((w) => w.toLowerCase()).filter(Boolean)
+    items = items.filter((i) => {
+      const blob = [
+        ...(i.collabBrands || []),
+        ...((i.verticals as string[]) || []),
+        i.displayName,
+        ...(i.categories || []),
+      ]
+        .join(' ')
+        .toLowerCase()
+      return wanted.some((w) => blob.includes(w))
+    })
+  }
   const sort = q.sort || 'rating'
   const order = q.order === 'asc' ? 1 : -1
   items.sort((a, b) => {

@@ -84,4 +84,26 @@ describe('select pool filter and sort', () => {
     const body = await res.json()
     expect(body.items[0].displayName).toBe('低粉未合作')
   })
+
+  it('filters by rule grade and collab brand', async () => {
+    const all = await ctx.app.request('/api/select/pool', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const high = (await all.json()).items.find((row: { displayName: string }) => row.displayName === '高粉合作')
+    expect(high.grade).toMatch(/^[SABC]$/)
+
+    const byGrade = await ctx.app.request(`/api/select/pool?grade=${high.grade}`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect((await byGrade.json()).items.map((row: { displayName: string }) => row.displayName)).toContain(
+      '高粉合作',
+    )
+
+    const byBrand = await ctx.app.request('/api/select/pool?brand=兰芝', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect((await byBrand.json()).items.map((row: { displayName: string }) => row.displayName)).toEqual([
+      '高粉合作',
+    ])
+  })
 })
