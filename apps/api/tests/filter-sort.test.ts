@@ -56,16 +56,35 @@ describe('select pool filter and sort', () => {
     await ctx.close()
   })
 
-  it('defaults to rating desc then followers, with unrated after rated', async () => {
+  it('defaults to computed score desc instead of the raw rating column', async () => {
     const res = await ctx.app.request('/api/select/pool', {
       headers: { authorization: `Bearer ${token}` },
     })
     const body = await res.json()
-    const wanted = ['高粉合作', '低粉未合作', '中粉无评分']
-    const names = body.items
-      .map((row: { displayName: string }) => row.displayName)
-      .filter((name: string) => wanted.includes(name))
-    expect(names).toEqual(wanted)
+    const wanted = new Set(['高粉合作', '低粉未合作', '中粉无评分'])
+    const rows = body.items.filter((row: { displayName: string }) => wanted.has(row.displayName))
+    expect(rows.map((row: { displayName: string }) => row.displayName)).toEqual([
+      '高粉合作',
+      '中粉无评分',
+      '低粉未合作',
+    ])
+    expect(rows.map((row: { final: number }) => row.final)).toEqual(
+      [...rows].map((row: { final: number }) => row.final).sort((a: number, b: number) => b - a),
+    )
+  })
+
+  it('keeps order=asc semantics for computed score', async () => {
+    const res = await ctx.app.request('/api/select/pool?sort=rating&order=asc', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const body = await res.json()
+    const wanted = new Set(['高粉合作', '低粉未合作', '中粉无评分'])
+    const rows = body.items.filter((row: { displayName: string }) => wanted.has(row.displayName))
+    expect(rows.map((row: { displayName: string }) => row.displayName)).toEqual([
+      '低粉未合作',
+      '中粉无评分',
+      '高粉合作',
+    ])
   })
 
   it('filters by follower range, collaboration, and overlapping price', async () => {

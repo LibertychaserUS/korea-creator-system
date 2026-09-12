@@ -1194,15 +1194,22 @@ async function queryPool(db: Db, q: Record<string, string>) {
       return (ap - bp) * (q.order === 'desc' ? -1 : 1)
     }
     if (sort === 'followers') return ((a.followers ?? -1) - (b.followers ?? -1)) * order
-    const ar = a.rating
-    const br = b.rating
-    if (ar == null && br == null) return (b.followers ?? 0) - (a.followers ?? 0)
-    if (ar == null) return 1
-    if (br == null) return -1
-    if (br !== ar) return (br - ar) * (q.order === 'asc' ? -1 : 1)
-    return (b.followers ?? 0) - (a.followers ?? 0)
+    const aFinal = scoreOf(a).final
+    const bFinal = scoreOf(b).final
+    if (aFinal == null && bFinal == null) return compareFollowersDesc(a, b)
+    if (aFinal == null) return 1
+    if (bFinal == null) return -1
+    if (aFinal !== bFinal) return (aFinal - bFinal) * order
+    return compareFollowersDesc(a, b)
   })
   return items
+}
+
+function compareFollowersDesc(a: Record<string, any>, b: Record<string, any>) {
+  if (a.followers == null && b.followers == null) return 0
+  if (a.followers == null) return 1
+  if (b.followers == null) return -1
+  return b.followers - a.followers
 }
 
 async function runIngest(
