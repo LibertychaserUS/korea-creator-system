@@ -34,16 +34,16 @@
   - [x] 工单前缀 `KCS-`；产品显示名与项目标识分开
   - [x] 无 `docs/pm/HARNESS.md`、无 Harness.io 配置
   - [x] `docs/pm/STACK.md` 写明 tinyship + forge + overlay 为硬约束
-  - [ ] `TINYSHIP-REBUILD.md` 落地后，本 backlog 的 TS 票仍能对上（若冲突，改本文件）
+  - [x] `TINYSHIP-REBUILD.md` 已落地；TS-01 / 01F / 01O 按真实命令对齐
 - **deps:** 无
 
 ### KCS-TS-00 阅读三件套重建说明
 
 - **why:** 脚手架、forge、overlay 的真实命令只以研究代理那份为准。
 - **acceptance:**
-  - [ ] `docs/product/TINYSHIP-REBUILD.md` 已存在
-  - [ ] 该文件写明 tinyship / forge / overlay **各自角色、初始化命令、落盘目录**
-  - [ ] 未在本仓库擅自另起框架脚手架
+  - [x] `docs/product/TINYSHIP-REBUILD.md` 已存在
+  - [x] 该文件写明 tinyship / forge / overlay **各自角色、初始化命令、落盘目录**
+  - [x] 未在本仓库擅自另起框架脚手架
 - **deps:** 研究代理
 
 ---
@@ -56,31 +56,30 @@
 
 - **why:** 没有同时装上三件套的宿主，后面每张票都会焊回旧 FastAPI 或只剩空 tinyship。
 - **acceptance:**
-  - [ ] 按 `TINYSHIP-REBUILD.md` 启动 tinyship 应用；健康检查或首页 200
-  - [ ] 同一棵活树上能指出 forge 产物或配置（路径写进 `docs/01_开发日志.md`）
-  - [ ] 同一棵活树上能指出 overlay 产物或配置（路径写进开发日志）
-  - [ ] 缺 forge 或 overlay 则本票失败，不得标完成
+  - [ ] rsync 排除 `docs/` `archive/` 后 `pnpm dev:nuxt`；`http://localhost:7001/api/health` 有响应
+  - [ ] `KCS-TS-01F` 与 `KCS-TS-01O` 同绿；缺一则本票失败
   - [ ] 未把 `archive/` 里的进程当运行入口
-- **deps:** KCS-TS-00, KCS-TS-01F, KCS-TS-01O
+- **deps:** KCS-TS-00（用户先批 `TINYSHIP-REBUILD.md` §9）, KCS-TS-01F, KCS-TS-01O
 
 ### KCS-TS-01F forge 接入（必做）
 
 - **why:** 用户要求第一刀就用 forge，不是可选项。
 - **acceptance:**
-  - [ ] 只使用 `TINYSHIP-REBUILD.md` 里的 forge 命令 / 约定（不发明 CLI）
-  - [ ] 仓库中出现该文件列出的 forge 落盘（目录或配置文件）
-  - [ ] `docs/01_开发日志.md` 记下一句：用了哪条命令、产物在哪
-  - [ ] 没有「先跳过 forge」的分支或 TODO
-- **deps:** KCS-TS-00
+  - [ ] 根上薄 `forge.yaml`（抄 AIOps `forge/forge.example.yaml` 形状）
+  - [ ] `PYTHONPATH=/tmp/AIOps python3 -m forge check --root .` 退出 0
+  - [ ] 未 vendor `forge/`；未 live `apply`；未发明 `brief|credential|ops-chain|revoke`
+  - [ ] `docs/01_开发日志.md` 记下 pin tag 与命令
+- **deps:** KCS-TS-00, KCS-TS-01O（check 会跑 overlay validate/cover）
 
 ### KCS-TS-01O overlay 接入（必做）
 
 - **why:** 用户要求第一刀就用 overlay，不是可选项。
 - **acceptance:**
-  - [ ] 只使用 `TINYSHIP-REBUILD.md` 里的 overlay 命令 / 约定
-  - [ ] 仓库中出现该文件列出的 overlay 落盘，且被宿主加载（按该文件的验收方式）
-  - [ ] `docs/01_开发日志.md` 记下一句：用了哪条命令、产物在哪
-  - [ ] 没有「先跳过 overlay」的分支或 TODO
+  - [ ] 根上 `overlay.yaml` `inbox/` `suites/<id>/{suite.yaml,cases.md,trace.yaml}` `invariants.yaml`
+  - [ ] 叶子 `### Functional/Negative/Edge`；invariant = Score 不被 AI/人工改写
+  - [ ] `product_command` 指向真实产品测试
+  - [ ] `python3 -m overlay validate --root .` 与 `cover` 退出 0
+  - [ ] 未 vendor `overlay/`；未代签人审
 - **deps:** KCS-TS-00
 
 ### KCS-TS-02 导入清洗去重

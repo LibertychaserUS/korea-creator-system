@@ -10,10 +10,10 @@
 
 - 产品 / PM 文档留在 `docs/product/`、`docs/pm/`（不要搬进 archive）。
 - 旧 Demo 由另一代理迁入 `archive/` + 墓碑；本文档按「根上已无施工用 `app/`」书写。
-- 另一代理写 `TINYSHIP-REBUILD.md`（必须写明 tinyship、forge、overlay 如何组装）。等那份文件再脚手架。
+- `TINYSHIP-REBUILD.md` 已写清三件套来源与组装。脚手架等用户批准该文件 §9。
 - 编号文档 `v8a-dashboard` 只当历史快照。
 
-不做：Stage 8B、在 archive 里扩 V2、删除或搬迁 `docs/`、在本任务里擅自搭栈、把 forge/overlay 推到 Later。
+不做：Stage 8B、在 archive 里扩 V2、删除或搬迁 `docs/`、未批准就 rsync TinyShip、把 forge/overlay 推到 Later。
 
 ## Next（绿地 MVP = V1 闭环）
 
