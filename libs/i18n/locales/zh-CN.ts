@@ -2,7 +2,7 @@ import type { Locale } from './types'
 
 export const zhCN: Locale = {
   common: {
-    welcome: "欢迎来到听潮",
+    welcome: "欢迎使用听潮",
     siteName: "听潮",
     login: "登录",
     signup: "注册",
@@ -1995,7 +1995,35 @@ export const zhCN: Locale = {
       confirmAssign: "确认分配",
       health: "监测",
       sqlOk: "库连得上",
-      jobs: "任务"
+      jobs: "任务",
+      detail: "详情",
+      addToProject: "加入项目",
+      chooseProject: "选择项目",
+      failures: "失败",
+      pipeline: "管道",
+      recommended: "推荐",
+      library: "选人库",
+      sampleData: "IMOK 样例",
+      rulePack: "规则包",
+      visibleFields: "可见字段",
+      weights: "权重",
+      defaultSort: "默认排序",
+      advice: "建议",
+      contact: "对接",
+      koreaRelation: "韩国关系",
+      risk: "风险",
+      conclusion: "结论",
+      org: "公司",
+      gallery: "相册",
+      readOnly: "只读"
+    },
+    prefs: {
+      currency: "货币",
+      consentTitle: "Cookie 偏好",
+      consentBody: "必要 cookie 维持登录与安全；偏好 cookie 记住语言、货币与外观。拒绝偏好也能正常登录。",
+      consentNecessary: "仅必要",
+      consentPreferences: "允许偏好",
+      demo: "演示数据"
     },
     toolbar: {
       language: "语言",
