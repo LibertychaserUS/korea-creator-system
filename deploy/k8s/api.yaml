@@ -53,7 +53,7 @@ spec:
             - name: S3_FORCE_PATH_STYLE
               value: "true"
             - name: WEB_ORIGIN
-              value: https://kcs.example.com
+              value: https://kcs.example.com,https://legacy.kcs.example.com,https://ops.kcs.example.com,https://dev.kcs.example.com,https://select.kcs.example.com
           readinessProbe:
             httpGet:
               path: /api/health

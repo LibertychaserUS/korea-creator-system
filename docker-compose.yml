@@ -68,7 +68,7 @@ services:
       S3_ACCESS_KEY: kcsminio
       S3_SECRET_KEY: kcsminio123
       S3_FORCE_PATH_STYLE: "true"
-      WEB_ORIGIN: http://localhost:7001
+      WEB_ORIGIN: http://localhost:7000,http://localhost:7001,http://localhost:7002,http://localhost:7003,http://localhost:7004
       SESSION_SECRET: local-dev-session-secret-change-me
     ports:
       - "7100:7100"
