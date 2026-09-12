@@ -49,6 +49,7 @@ python3 -m forge check --root .
 产品测试：`pnpm exec vitest run tests/kcs/score-immutability.test.ts`
 
 规格黑盒（HTTP + Postgres，不是 Playwright）：见 [`tests/blackbox/README.md`](tests/blackbox/README.md)。
+浏览器旅程（Playwright + Postgres + MinIO）：`pnpm test:e2e`，合同 [`e2e/CONTRACT.md`](e2e/CONTRACT.md)。
 
 ```text
 docker compose up -d postgres

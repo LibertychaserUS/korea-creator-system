@@ -22,6 +22,7 @@
           <div class="relative">
             <Input
               id="email"
+              data-testid="login-email"
               v-bind="emailAttrs"
               v-model="email"
               type="email"
@@ -50,6 +51,7 @@
           <div class="relative">
             <Input
               id="password"
+              data-testid="login-password"
               v-bind="passwordAttrs"
               v-model="password"
               type="password"
@@ -95,7 +97,8 @@
 
         <!-- Submit button -->
         <Button 
-          type="submit" 
+          type="submit"
+          data-testid="login-submit"
           class="w-full" 
           :disabled="loading || isSubmitting || (captchaEnabled && !turnstileToken)"
         >

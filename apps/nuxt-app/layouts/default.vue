@@ -18,7 +18,7 @@
       </nav>
 
       <div class="kcs-tools">
-        <div class="kcs-seg" role="group" :aria-label="t('kcs.toolbar.language')">
+        <div class="kcs-seg" role="group" data-testid="locale-switch" :aria-label="t('kcs.toolbar.language')">
           <button
             v-for="item in localeButtons"
             :key="item.code"
@@ -29,7 +29,7 @@
             {{ item.name }}
           </button>
         </div>
-        <div class="kcs-seg" role="group" :aria-label="t('kcs.toolbar.theme')">
+        <div class="kcs-seg" role="group" data-testid="theme-toggle" :aria-label="t('kcs.toolbar.theme')">
           <button
             v-for="item in themeButtons"
             :key="item.value"
