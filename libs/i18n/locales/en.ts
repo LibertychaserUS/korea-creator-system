@@ -1936,7 +1936,7 @@ export const en: Locale = {
     },
     panel: {
       signIn: "Sign in",
-      signInLead: "The world never answers first. It always stirs — a sound, then a swell.",
+      signInLead: "Sign in with your work email. You will land in the workspace your role belongs to.",
       email: "Email",
       password: "Password",
       enter: "Enter",

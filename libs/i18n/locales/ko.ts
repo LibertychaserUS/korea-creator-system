@@ -69,7 +69,7 @@ export const ko: Locale = {
     },
     panel: {
       signIn: "로그인",
-      signInLead: "세상은 답을 먼저 주지 않는다. 언제나 작은 소리부터 인다.",
+      signInLead: "업무 이메일로 로그인하면 역할에 맞는 워크스페이스로 들어갑니다.",
       email: "이메일",
       password: "비밀번호",
       enter: "들어가기",

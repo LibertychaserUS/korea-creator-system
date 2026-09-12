@@ -1943,7 +1943,7 @@ export const zhCN: Locale = {
     },
     panel: {
       signIn: "登录",
-      signInLead: "世界从不会先给出答案，它总是先泛起一点声音。",
+      signInLead: "用工作邮箱登录，按角色进入对应工作台。",
       email: "邮箱",
       password: "密码",
       enter: "进入",
