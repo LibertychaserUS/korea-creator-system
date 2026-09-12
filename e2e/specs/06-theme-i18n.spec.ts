@@ -3,8 +3,8 @@ import { PAGES, TIMEOUTS } from '../helpers/constants';
 import { tid } from '../helpers/tid';
 
 /**
- * Break this catches: chrome cannot switch light/dark or zh-CN/en/ko
- * on Chromium (URL + html lang / dark class).
+ * Break this catches: TinyShip panel chrome cannot switch light/dark or
+ * zh-CN / en / ko on Chromium (URL + html lang / dark class).
  */
 test.describe('Light/dark and locale chrome', () => {
   test('home chrome switches theme and zh-CN / en / ko', async ({ page }) => {
@@ -12,10 +12,10 @@ test.describe('Light/dark and locale chrome', () => {
 
     const theme = page.getByTestId(tid.themeToggle);
     await expect(theme).toBeVisible();
-    await theme.getByRole('button', { name: '深色' }).click();
+    await theme.click();
     await expect(page.locator('html')).toHaveClass(/dark/);
 
-    await theme.getByRole('button', { name: '浅色' }).click();
+    await theme.click();
     await expect(page.locator('html')).not.toHaveClass(/dark/);
 
     const locales = page.getByTestId(tid.localeSwitch);

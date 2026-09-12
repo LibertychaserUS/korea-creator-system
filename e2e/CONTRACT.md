@@ -2,6 +2,8 @@
 
 SSOT for roles, HTTP, and the first testid set is **`packages/kcs-contract`** (`TESTID`, `SEED_USERS`, `API`, `screenPath`). Black-box HTTP lives in `tests/blackbox/`. This file only adds **browser journey** hooks those modules do not name yet.
 
+The browser shell is the official TinyShip Nuxt **admin panel** (`apps/nuxt-app` `layouts/default.vue` + `AppSidebar` + `ThemeToggle`). Do not target the retired `apps/web` paper-ledger chrome. Locale/theme testids live on the TinyShip header; workspace links are sidebar items `nav-ops` / `nav-select` / `nav-dev`.
+
 Do not invent a second user list or a second assign URL.
 
 ## Seeded users (`SEED_USERS`)
