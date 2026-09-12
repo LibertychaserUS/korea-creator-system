@@ -129,7 +129,7 @@ async function assign() {
     body: JSON.stringify({ creatorIds: picked.value }),
   })
   confirming.value = false
-  await navigateTo(localePath(`/select/projects/${project}`))
+  await navigateTo(localePath(`/projects/${project}`))
 }
 
 onMounted(load)

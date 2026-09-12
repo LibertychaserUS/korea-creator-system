@@ -1,36 +1,37 @@
-import { can } from '@kcs/contract'
+import { can, type Permission } from '@kcs/contract'
 
+type KcsAppConfig = {
+  key?: string
+  perm?: Permission | null
+}
+
+/**
+ * 四端各自独立部署：权限按「当前 app」判定，不再按路径前缀。
+ * - marketing（perm: null）：全站公开。
+ * - select/ops/dev：除登录页外都要求登录 + 本端权限。
+ * 记住最近工作区（kcs_last_ws）仍受 cookie 同意门控。
+ */
 export default defineNuxtRouteMiddleware(async (to) => {
   const localePath = useLocalePath()
-  const publicPaths = ['/', '/login', '/signin']
+  const kcs = useAppConfig().kcs as KcsAppConfig | undefined
+  const perm = kcs?.perm ?? null
+  if (!perm) return // 公开端（marketing）：不设门
+
+  const publicPaths = ['/login', '/signin', '/denied']
   const bare = to.path.replace(/^\/(zh-CN|en|ko)/, '') || '/'
   const { user, refresh, token } = useSession()
   if (!user.value && token.value) await refresh()
 
   if (publicPaths.includes(bare)) return
   if (!user.value) return navigateTo(localePath('/login'))
-  if (bare === '/denied') return
+  if (!can(user.value.role, perm)) return navigateTo(localePath('/denied'))
 
-  const workspace = bare.startsWith('/ops')
-    ? 'ops.read'
-    : bare.startsWith('/dev')
-      ? 'dev.read'
-      : bare.startsWith('/ingest')
-        ? 'ingest.read'
-        : bare.startsWith('/select')
-          ? 'select.read'
-          : null
-  if (workspace && !can(user.value.role, workspace)) return navigateTo(localePath('/denied'))
-
-  // Remember last workspace for multi-workspace roles (preference cookie, consent-gated).
-  if (workspace && import.meta.client) {
+  // Remember the workspace for cross-app login handoff (preference cookie, consent-gated).
+  if (import.meta.client && kcs?.key) {
     const { allowsPreferences } = useConsent()
     if (allowsPreferences.value) {
-      const ws = bare.startsWith('/ops') ? 'ops' : bare.startsWith('/dev') ? 'dev' : bare.startsWith('/select') ? 'select' : null
-      if (ws) {
-        const last = useCookie<string | null>('kcs_last_ws', { sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 180 })
-        last.value = ws
-      }
+      const last = useCookie<string | null>('kcs_last_ws', { sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 180 })
+      last.value = kcs.key
     }
   }
 })

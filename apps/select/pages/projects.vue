@@ -2,7 +2,7 @@
   <PanelPage testid="screen-c-projects" :title="t('kcs.panel.projects')" :eyebrow="t('kcs.nav.select')">
     <template #actions>
       <Button as-child>
-        <NuxtLink data-testid="btn-create-project" :to="localePath('/select/projects/new')">
+        <NuxtLink data-testid="btn-create-project" :to="localePath('/projects/new')">
           {{ t('kcs.panel.createProject') }}
         </NuxtLink>
       </Button>
@@ -20,7 +20,7 @@
           <TableBody>
             <TableRow v-for="row in items" :key="row.id">
               <TableCell>
-                <NuxtLink class="font-medium hover:underline" :to="localePath(`/select/projects/${row.id}`)">
+                <NuxtLink class="font-medium hover:underline" :to="localePath(`/projects/${row.id}`)">
                   {{ row.name }}
                 </NuxtLink>
               </TableCell>

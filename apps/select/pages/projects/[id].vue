@@ -7,7 +7,7 @@
   >
     <template #actions>
       <Button as-child>
-        <NuxtLink data-testid="btn-open-library" :to="localePath(`/select/pool?project=${id}`)">
+        <NuxtLink data-testid="btn-open-library" :to="localePath(`/?project=${id}`)">
           {{ t('kcs.panel.openLibrary') }}
         </NuxtLink>
       </Button>

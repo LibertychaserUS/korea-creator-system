@@ -9,30 +9,30 @@ function workspacesFor(role: Role): string[] {
   return ws
 }
 
-function homeFor(role: Role, lastWorkspace?: string) {
-  const allowed = workspacesFor(role)
-  if (allowed.length === 0) return '/denied'
-  if (allowed.length === 1) return `/${allowed[0]}`
-  // Multi-workspace roles (admin): last used workspace, else the chooser home.
-  if (lastWorkspace && allowed.includes(lastWorkspace)) return `/${lastWorkspace}`
-  return '/'
-}
-
+/**
+ * 登录后落点（四端各自独立源站）：
+ * - 在工作端（select/ops/dev）登录 → 落在本端首页 `/${locale}/`。
+ * - 在宣传站（marketing）登录 → 按角色交接给对应工作端源站；
+ *   多工作区角色优先尊重 kcs_last_ws（受同意门控写入）。
+ */
 export default defineEventHandler(async (event) => {
   const contentType = getHeader(event, 'content-type') || ''
   let email = ''
   let password = ''
   let locale = 'zh-CN'
+  let appKey = ''
   if (contentType.includes('application/json')) {
     const body = await readBody(event)
     email = String(body?.email || '')
     password = String(body?.password || '')
     locale = String(body?.locale || 'zh-CN')
+    appKey = String(body?.app || '')
   } else {
     const form = await readFormData(event)
     email = String(form.get('email') || '')
     password = String(form.get('password') || '')
     locale = String(form.get('locale') || 'zh-CN')
+    appKey = String(form.get('app') || '')
   }
   const apiBase = useRuntimeConfig().public.apiBase || 'http://localhost:7100'
   const res = await fetch(`${apiBase}/api/auth/login`, {
@@ -52,6 +52,24 @@ export default defineEventHandler(async (event) => {
     sameSite: 'lax',
     httpOnly: false,
   })
+
+  // Workspace apps: land on the app's own home; the route middleware
+  // re-checks this app's perm and sends misuse to /denied.
+  if (appKey && appKey !== 'marketing') {
+    return sendRedirect(event, `/${locale}/`)
+  }
+
+  // Marketing hands off to the role's workspace origin.
+  const pub = useRuntimeConfig().public
+  const origins: Record<string, string | undefined> = {
+    select: pub.selectUrl as string | undefined,
+    ops: pub.opsUrl as string | undefined,
+    dev: pub.devUrl as string | undefined,
+  }
+  const allowed = workspacesFor(data.user.role)
   const lastWorkspace = getCookie(event, 'kcs_last_ws') || undefined
-  return sendRedirect(event, `/${locale}${homeFor(data.user.role, lastWorkspace)}`)
+  const target = (lastWorkspace && allowed.includes(lastWorkspace) ? lastWorkspace : allowed[0]) ?? null
+  const base = target ? origins[target] : undefined
+  if (!base) return sendRedirect(event, `/${locale}/denied`)
+  return sendRedirect(event, `${base}/${locale}/`)
 })

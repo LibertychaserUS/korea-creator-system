@@ -6,17 +6,17 @@
   >
     <Button
       v-for="item in items"
-      :key="item.to"
+      :key="item.key"
       as-child
       type="button"
       variant="ghost"
       size="sm"
       class="h-7 px-2.5 text-xs"
-      :class="isActive(item.to) ? 'bg-muted text-foreground' : 'text-muted-foreground'"
+      :class="item.key === currentKey ? 'bg-muted text-foreground' : 'text-muted-foreground'"
     >
-      <NuxtLink :to="localePath(item.to)" :data-testid="item.testid">
+      <a :href="item.href" :data-testid="item.testid">
         {{ t(item.label) }}
-      </NuxtLink>
+      </a>
     </Button>
   </nav>
 </template>
@@ -24,22 +24,25 @@
 <script setup lang="ts">
 import { can } from '@kcs/contract'
 
-const { t } = useI18n()
-const localePath = useLocalePath()
-const route = useRoute()
+/**
+ * 跨端切换：四个 app 各自独立源站（7000/7002/7003/7004），
+ * 切换即跨源跳转，URL 取自 runtimeConfig.public（可用环境变量覆盖）。
+ */
+const { t, locale } = useI18n()
 const { user } = useSession()
+const config = useRuntimeConfig()
+const kcs = useAppConfig().kcs as { key?: string } | undefined
+const currentKey = computed(() => kcs?.key ?? '')
 
-const catalog = [
-  { to: '/select', label: 'kcs.nav.select', testid: 'ws-switch-select', perm: 'select.read' as const },
-  { to: '/ops', label: 'kcs.nav.ops', testid: 'ws-switch-ops', perm: 'ops.read' as const },
-  { to: '/dev', label: 'kcs.nav.monitor', testid: 'ws-switch-dev', perm: 'dev.read' as const },
-]
+const catalog = computed(() => [
+  { key: 'select', label: 'kcs.nav.select', testid: 'ws-switch-select', perm: 'select.read' as const, base: config.public.selectUrl as string },
+  { key: 'ops', label: 'kcs.nav.ops', testid: 'ws-switch-ops', perm: 'ops.read' as const, base: config.public.opsUrl as string },
+  { key: 'dev', label: 'kcs.nav.monitor', testid: 'ws-switch-dev', perm: 'dev.read' as const, base: config.public.devUrl as string },
+])
 
-const items = computed(() => {
-  if (!user.value) return catalog
-  return catalog.filter(item => can(user.value!.role, item.perm))
-})
-
-const barePath = computed(() => route.path.replace(/^\/(zh-CN|en|ko)/, '') || '/')
-const isActive = (path: string) => barePath.value === path || barePath.value.startsWith(`${path}/`)
+const items = computed(() =>
+  catalog.value
+    .filter(item => !user.value || can(user.value.role, item.perm))
+    .map(item => ({ ...item, href: `${item.base}/${locale.value}/` })),
+)
 </script>

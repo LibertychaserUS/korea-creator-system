@@ -5,6 +5,11 @@ export default defineNuxtConfig({
   devServer: {
     port: 7000,
   },
+  vite: {
+    server: {
+      hmr: { port: 7400 },
+    },
+  },
   appConfig: {
     kcs: {
       key: 'marketing',

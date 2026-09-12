@@ -7,6 +7,7 @@
     <CardContent>
       <form method="post" :action="loginAction" class="grid gap-4" enctype="application/x-www-form-urlencoded">
         <input type="hidden" name="locale" :value="locale" />
+        <input type="hidden" name="app" :value="appKey" />
         <div class="grid gap-2">
           <Label for="email">{{ t('kcs.panel.email') }}</Label>
           <Input
@@ -43,6 +44,7 @@ definePageMeta({ layout: 'auth' })
 const { t, locale } = useI18n()
 const route = useRoute()
 const req = useRequestURL()
+const appKey = computed(() => String((useAppConfig().kcs as { key?: string } | undefined)?.key ?? ''))
 const loginAction = computed(() => `${req.origin}/__login`)
 const error = computed(() => (route.query.error ? t('kcs.panel.loginError') : ''))
 </script>

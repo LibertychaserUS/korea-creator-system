@@ -32,6 +32,6 @@ async function save() {
     method: 'POST',
     body: JSON.stringify({ name: name.value, note: note.value }),
   })
-  await navigateTo(localePath(`/select/projects/${data.id}`))
+  await navigateTo(localePath(`/projects/${data.id}`))
 }
 </script>
