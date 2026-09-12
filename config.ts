@@ -34,7 +34,7 @@ export const config = {
      * Application Name
      * This will be used throughout the application for branding
      */
-    name: '全球达人情报系统',
+    name: '听潮',
 
     /**
      * Logo Configuration
@@ -61,7 +61,7 @@ export const config = {
        * Use this to add background color, border, rounded corners, padding, etc.
        * @example 'bg-primary rounded-full p-1' or 'bg-white shadow-sm rounded-lg'
        */
-      iconClassName: 'bg-chart-1 rounded-full p-2' as string,
+      iconClassName: '' as string,
     },
 
     /**
@@ -85,9 +85,9 @@ export const config = {
 
       /**
        * Default color scheme
-       * @type {'default' | 'claude' | 'cosmic-night' | 'modern-minimal' | 'ocean-breeze'}
+       * @type {'default' | 'claude' | 'cosmic-night' | 'modern-minimal' | 'ocean-breeze' | 'perplexity' | 'tide'}
        */
-      defaultColorScheme: 'default' as const,
+      defaultColorScheme: 'tide' as const,
 
       /**
        * Storage key for theme persistence
@@ -101,10 +101,11 @@ export const config = {
      */
     i18n: {
       /**
-       * Default locale
-       * @type {'en' | 'zh-CN'}
+       * Default locale when browser language cannot be matched
+       * (zh* → zh-CN, ko* → ko, en* → en, otherwise en)
+       * @type {'en' | 'zh-CN' | 'ko'}
        */
-      defaultLocale: 'zh-CN' as const,
+      defaultLocale: 'en' as const,
       /**
        * Available locales
        */
@@ -121,7 +122,7 @@ export const config = {
        * When false, always uses defaultLocale for new users
        * Cookie preferences always take priority when set
        */
-      autoDetect: false
+      autoDetect: true
     },
 
     /**
