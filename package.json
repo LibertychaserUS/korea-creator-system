@@ -39,6 +39,8 @@
     "test:ui": "vitest --ui",
     "test:e2e": "npx playwright test --config=tests/e2e/playwright.config.ts",
     "test:e2e:ui": "npx playwright test --config=tests/e2e/playwright.config.ts --ui",
+    "test:blackbox": "vitest run --config tests/blackbox/vitest.config.ts",
+    "test:blackbox:compose": "bash tests/blackbox/scripts/run.sh",
     "typecheck": "turbo run typecheck",
     "typecheck:next": "turbo run typecheck --filter=@tinyship/next-app",
     "typecheck:nuxt": "turbo run typecheck --filter=@tinyship/nuxt-app",

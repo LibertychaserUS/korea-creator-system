@@ -48,6 +48,13 @@ python3 -m forge check --root .
 
 产品测试：`pnpm exec vitest run tests/kcs/score-immutability.test.ts`
 
+规格黑盒（HTTP + Postgres，不是 Playwright）：见 [`tests/blackbox/README.md`](tests/blackbox/README.md)。
+
+```text
+docker compose up -d postgres
+pnpm test:blackbox
+```
+
 ## TinyShip 来源
 
 见 [`docs/product/TINYSHIP-PIN.md`](docs/product/TINYSHIP-PIN.md)。官方仓 `TinyshipCN/tinyship` @ `v2.2.0` / `54ddc7a`。应用树里没有 Ascendia 产品代码。
