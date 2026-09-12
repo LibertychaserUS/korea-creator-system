@@ -1,26 +1,30 @@
 <template>
-  <ScreenFrame testid="screen-b-i18n-theme" title="语言 / 主题状态">
+  <ScreenFrame testid="screen-b-i18n-theme" :title="t('devDesk.i18n')">
     <div class="cards">
-      <div class="card"><div class="muted">当前语言</div><strong>{{ locale }}</strong></div>
-      <div class="card"><div class="muted">当前主题</div><strong>{{ theme }}</strong></div>
+      <div class="card"><div class="muted">locale</div><strong>{{ locale }}</strong></div>
+      <div class="card"><div class="muted">theme</div><strong>{{ theme }}</strong></div>
     </div>
-    <table>
+    <table class="ledger-table">
       <thead>
-        <tr><th>支持语言</th><th>支持主题</th></tr>
+        <tr><th>zh-CN / en / ko</th><th>theme</th></tr>
       </thead>
       <tbody>
         <tr>
-          <td>{{ (info.locales || []).join(' / ') }}</td>
+          <td>{{ (info.locales || ['zh-CN', 'en', 'ko']).join(' / ') }}</td>
           <td>{{ (info.themes || []).join(' / ') }}</td>
         </tr>
       </tbody>
     </table>
+    <div class="token-preview">
+      <div class="swatch"><i style="background:#f4f0e6" /><i style="background:#1f4d3a" /><i style="background:#1a1916" /></div>
+      <span>paper / pine / ink</span>
+    </div>
     <AppChrome />
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
-const { locale } = useI18n()
+const { t, locale } = useI18n()
 const { request } = useApi()
 const info = ref<{ locales?: string[]; themes?: string[] }>({})
 const theme = ref('light')

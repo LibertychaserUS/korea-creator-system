@@ -1,14 +1,21 @@
 <template>
-  <ScreenFrame testid="screen-c-project-new" title="新建项目">
-    <form @submit.prevent="save">
-      <label class="field">名称<input v-model="name" data-testid="project-name" required /></label>
-      <label class="field">备注<textarea v-model="note" /></label>
-      <button class="btn" data-testid="btn-create-project" type="submit" :disabled="!name">创建</button>
+  <ScreenFrame testid="screen-c-project-new" :title="t('selectDesk.newProject')">
+    <form class="ledger-form" @submit.prevent="save">
+      <label class="field inline">
+        <span>{{ t('selectDesk.newProject') }}</span>
+        <input v-model="name" data-testid="project-name" required />
+      </label>
+      <label class="field inline">
+        <span>note</span>
+        <textarea v-model="note" />
+      </label>
+      <button class="btn" data-testid="btn-create-project" type="submit" :disabled="!name">{{ t('createProject') }}</button>
     </form>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const { request } = useApi()
 const localePath = useLocalePath()
 const name = ref('')

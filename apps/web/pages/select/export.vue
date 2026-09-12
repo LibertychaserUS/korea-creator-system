@@ -1,19 +1,25 @@
 <template>
-  <ScreenFrame testid="screen-c-export" title="导出项目名单">
+  <ScreenFrame testid="screen-c-export" :title="t('selectDesk.export')">
     <label class="field">
-      项目
+      {{ t('selectDesk.projects') }}
       <select v-model="projectId">
         <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
     </label>
-    <p class="muted">格式 CSV · 已分配名单</p>
-    <button class="btn" type="button" :disabled="!projectId" @click="download">生成导出</button>
+    <div class="export-scope">
+      <span>{{ t('selectDesk.export') }} · 范围</span>
+      <label><input type="radio" checked /> {{ t('selectDesk.board') }}</label>
+      <label><input type="radio" disabled /> {{ t('selectDesk.shortlist') }}</label>
+    </div>
+    <p class="muted">Excel .xlsx / CSV</p>
+    <button class="btn" type="button" :disabled="!projectId" @click="download">CSV</button>
     <pre v-if="csv" class="panel">{{ csv }}</pre>
-    <a v-if="href" class="btn ghost" :href="href" download="project.csv">下载</a>
+    <a v-if="href" class="btn ghost" :href="href" download="project.csv">CSV</a>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const { request } = useApi()
 const projects = ref<any[]>([])
 const projectId = ref('')

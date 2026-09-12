@@ -1,35 +1,50 @@
 <template>
-  <ScreenFrame testid="screen-a-score-preview" title="六维规则分预览（只读）">
-    <p class="muted">规则引擎只读 · AI / 人工不改分</p>
-    <div v-for="row in items" :key="row.id" class="panel">
-      <h2>{{ row.displayName }} · {{ row.rating ?? '—' }}</h2>
-      <table>
-        <tr v-for="dim in dimensions(row)" :key="dim.id">
-          <td>{{ dim.label }}</td>
-          <td>{{ dim.value }}/{{ dim.max }}</td>
-        </tr>
-      </table>
+  <ScreenFrame testid="screen-a-score-preview" :title="t('score.title')">
+    <p class="muted">{{ t('score.readonly') }} · {{ t('score.locked') }}</p>
+    <div v-for="row in items" :key="row.id" class="panel ledger-2">
+      <div>
+        <h2>{{ row.displayName }} · {{ preview(row).grade }} · {{ preview(row).final }}</h2>
+        <p class="muted">{{ t('score.engine') }} {{ preview(row).ruleVersion }}</p>
+        <div v-for="dim in preview(row).dimensions" :key="dim.id" class="score-bar">
+          <span>{{ t(labelOf(dim.id)) }}</span>
+          <div class="bar"><i :style="{ width: (dim.contribution / dim.weight) * 100 + '%' }" /></div>
+          <span>{{ dim.contribution }}/{{ dim.weight }}</span>
+        </div>
+        <div class="score-bar">
+          <span>{{ t('score.risk') }}</span>
+          <div class="bar"><i style="width: 8%; background: var(--bad)" /></div>
+          <span>{{ preview(row).riskDeduction }}</span>
+        </div>
+        <p>{{ t('score.formula') }} {{ preview(row).formula }}</p>
+      </div>
+      <aside>
+        <h2>{{ t('score.hits') }}</h2>
+        <p>{{ preview(row).hits.join(' ') || '—' }}</p>
+        <p class="muted">{{ t('score.grades') }} S≥85 A≥75 B≥65</p>
+      </aside>
     </div>
-    <p v-if="!items.length" class="muted">还没有可预览的分数</p>
+    <p v-if="!items.length" class="muted">—</p>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+import { RULE_DIMENSIONS, creatorToScoreInput, scoreCreator } from '@kcs/contract'
+
+const { t } = useI18n()
 const { request } = useApi()
 const items = ref<any[]>([])
+const cache = new Map<string, ReturnType<typeof scoreCreator>>()
+
 onMounted(async () => {
   items.value = (await request<any>('/api/ops/creators')).items || []
 })
 
-function dimensions(row: { rating?: number; followers?: number; price?: { amountMin?: number }; hasCollaborated?: boolean }) {
-  const rating = Number(row.rating ?? 0)
-  return [
-    { id: 'layer', label: '分层筛选', value: Math.min(25, Math.round(rating * 5)), max: 25 },
-    { id: 'keyword', label: '关键词组合', value: Math.min(15, Math.round(rating * 3)), max: 15 },
-    { id: 'brand', label: '韩国品牌', value: Math.min(25, Math.round(rating * 5)), max: 25 },
-    { id: 'potential', label: '潜力合作', value: Math.min(20, row.hasCollaborated ? 16 : 10), max: 20 },
-    { id: 'look', label: '表现', value: Math.min(10, Math.round((row.followers || 0) / 20000)), max: 10 },
-    { id: 'price', label: '性价比', value: Math.min(5, row.price?.amountMin ? 4 : 2), max: 5 },
-  ]
+function preview(row: any) {
+  if (!cache.has(row.id)) cache.set(row.id, scoreCreator(creatorToScoreInput(row)))
+  return cache.get(row.id)!
+}
+
+function labelOf(id: string) {
+  return RULE_DIMENSIONS.find((d) => d.id === id)?.labelKey || id
 }
 </script>

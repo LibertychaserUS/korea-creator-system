@@ -1,18 +1,21 @@
 <template>
-  <ScreenFrame testid="screen-c-assign" title="分配到项目">
-    <p>已选 {{ ids.length }} 人</p>
-    <label class="field">目标项目
-      <select v-model="projectId">
-        <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-      </select>
-    </label>
-    <button class="btn" data-testid="select-assign-confirm" type="button" :disabled="!ids.length || !projectId" @click="confirm">
-      确认分配
-    </button>
+  <ScreenFrame testid="screen-c-assign" :title="t('selectDesk.assign')">
+    <div class="assign-dialog">
+      <p>{{ t('selectDesk.assign') }} · {{ ids.length }}</p>
+      <label class="field">{{ t('selectDesk.assign') }}
+        <select v-model="projectId">
+          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </select>
+      </label>
+      <button class="btn" data-testid="select-assign-confirm" type="button" :disabled="!ids.length || !projectId" @click="confirm">
+        {{ t('assign') }}
+      </button>
+    </div>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const route = useRoute()
 const localePath = useLocalePath()
 const { request } = useApi()

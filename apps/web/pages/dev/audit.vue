@@ -1,8 +1,8 @@
 <template>
-  <ScreenFrame testid="screen-b-audit" title="操作审计">
-    <table>
+  <ScreenFrame testid="screen-b-audit" :title="t('devDesk.audit')">
+    <table class="ledger-table">
       <thead>
-        <tr><th>时间</th><th>动作</th><th>对象</th><th>摘要</th></tr>
+        <tr><th>time</th><th>action</th><th>target</th><th>审计</th></tr>
       </thead>
       <tbody>
         <tr v-for="row in items" :key="row.id">
@@ -13,11 +13,12 @@
         </tr>
       </tbody>
     </table>
-    <p v-if="!items.length" class="muted">还没有审计记录</p>
+    <p v-if="!items.length" class="muted">{{ t('devDesk.audit') }}</p>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const { request } = useApi()
 const items = ref<any[]>([])
 onMounted(async () => {

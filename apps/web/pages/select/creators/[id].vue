@@ -1,12 +1,22 @@
 <template>
-  <ScreenFrame testid="screen-c-creator" :title="item.displayName || '达人详情'">
-    <p>粉丝 {{ item.followers }} · 评分 {{ item.rating }} · 报价 {{ item.price?.amountMin }}</p>
-    <p>分类 {{ (item.categories || []).join(' / ') }}</p>
-    <p>合作 {{ item.hasCollaborated ? item.collabBrands?.join(', ') : '尚未合作' }}</p>
+  <ScreenFrame testid="screen-c-creator" :title="item.displayName || t('selectDesk.cleanDossier')">
+    <div class="ledger-2">
+      <div class="panel clean-dossier">
+        <h2>{{ t('selectDesk.cleanDossier') }}</h2>
+        <p>fans {{ item.followers }} · {{ item.rating }} · {{ item.price?.amountMin }}</p>
+        <p>{{ (item.categories || []).join(' / ') }}</p>
+        <p>{{ item.hasCollaborated ? item.collabBrands?.join(', ') : '—' }}</p>
+      </div>
+      <aside class="panel hide-raw">
+        <p>{{ t('selectDesk.hideRaw') }}</p>
+        <p class="muted">{{ t('score.locked') }}</p>
+      </aside>
+    </div>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const route = useRoute()
 const { request } = useApi()
 const item = ref<any>({})

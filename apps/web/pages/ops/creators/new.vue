@@ -1,46 +1,65 @@
 <template>
-  <ScreenFrame testid="screen-a-creator-form" title="单条达人录入">
-    <form @submit.prevent="save">
-      <label class="field">显示名<input v-model="form.displayName" data-testid="creator-display-name" required /></label>
-      <label class="field">粉丝量<input v-model.number="form.followers" data-testid="creator-followers" type="number" /></label>
-      <label class="field">最低报价<input v-model.number="form.priceMin" data-testid="creator-price-min" type="number" /></label>
-      <label class="field">头像<input data-testid="creator-avatar" type="file" accept="image/*" @change="onFile" /></label>
-      <a
-        v-if="avatarUrl"
-        data-testid="creator-avatar-url"
-        :href="avatarUrl"
-        :src="avatarUrl"
-        :data-object-key="avatarKey"
-      >头像</a>
-      <button
-        type="button"
-        data-testid="category-collaborated"
-        class="btn ghost"
-        :aria-pressed="coopPressed(form.category, 'collaborated')"
-        @click.prevent="form.category = selectCoop(form.category, 'collaborated')"
-      >合作过的</button>
-      <button
-        type="button"
-        data-testid="category-never-collaborated"
-        class="btn ghost"
-        :aria-pressed="coopPressed(form.category, 'never_collaborated')"
-        @click.prevent="form.category = selectCoop(form.category, 'never_collaborated')"
-      >没合作过的</button>
-      <button class="btn" data-testid="btn-save-creator" type="submit">保存</button>
+  <ScreenFrame testid="screen-a-creator-form" :title="t('navCreatorNew')">
+    <form class="ledger-form ledger-2" @submit.prevent="save">
+      <div>
+        <label class="field inline"><span>{{ t('createCreator') }}</span>
+          <input v-model="form.displayName" data-testid="creator-display-name" required />
+        </label>
+        <label class="field inline"><span>XHS</span><input v-model="form.xhsId" /></label>
+        <label class="field inline"><span>{{ t('home.draft') }}</span>
+          <input v-model.number="form.followers" data-testid="creator-followers" type="number" />
+        </label>
+        <label class="field inline"><span>CNY</span>
+          <input v-model.number="form.priceMin" data-testid="creator-price-min" type="number" />
+        </label>
+        <label class="field">
+          avatar
+          <input data-testid="creator-avatar" type="file" accept="image/*" @change="onFile" />
+        </label>
+        <a
+          v-if="avatarUrl"
+          data-testid="creator-avatar-url"
+          :href="avatarUrl"
+          :src="avatarUrl"
+          :data-object-key="avatarKey"
+        >avatar</a>
+        <div class="filters">
+          <button
+            type="button"
+            data-testid="category-collaborated"
+            class="btn ghost"
+            :aria-pressed="coopPressed(form.category, 'collaborated')"
+            @click.prevent="form.category = selectCoop(form.category, 'collaborated')"
+          >合作过的</button>
+          <button
+            type="button"
+            data-testid="category-never-collaborated"
+            class="btn ghost"
+            :aria-pressed="coopPressed(form.category, 'never_collaborated')"
+            @click.prevent="form.category = selectCoop(form.category, 'never_collaborated')"
+          >没合作过的</button>
+        </div>
+        <button class="btn" data-testid="btn-save-creator" type="submit">{{ t('createCreator') }}</button>
+      </div>
+      <div>
+        <p v-if="saved.creatorKey" data-testid="creator-key" :data-creator-key="saved.creatorKey">{{ saved.creatorKey }}</p>
+        <p v-if="saved.id" data-testid="creator-status" :data-status="saved.status">{{ saved.status }}</p>
+        <button v-if="saved.id" class="btn" data-testid="btn-publish" type="button" @click="confirming = true">{{ t('publish') }}</button>
+        <button v-if="confirming" class="btn" data-testid="btn-publish-confirm" type="button" @click="publish">{{ t('publish') }}</button>
+        <p class="muted">{{ t('score.locked') }}</p>
+      </div>
     </form>
-    <p v-if="saved.creatorKey" data-testid="creator-key" :data-creator-key="saved.creatorKey">{{ saved.creatorKey }}</p>
-    <p v-if="saved.id" data-testid="creator-status" :data-status="saved.status">{{ saved.status }}</p>
-    <button v-if="saved.id" class="btn" data-testid="btn-publish" type="button" @click="confirming = true">发布</button>
-    <button v-if="confirming" class="btn" data-testid="btn-publish-confirm" type="button" @click="publish">确认发布</button>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
 import { coopPressed, selectCoop, type CoopSlug } from '~/utils/coop-category'
 
+const { t } = useI18n()
 const { request } = useApi()
 const form = reactive({
   displayName: '',
+  xhsId: '',
   followers: 10000,
   category: '' as CoopSlug | '',
   priceMin: 3000,

@@ -1,26 +1,26 @@
 <template>
-  <ScreenFrame testid="screen-a-human-label" title="人工推荐 / 不推荐">
-    <table>
-      <thead>
-        <tr><th>达人</th><th>状态</th><th>标签</th><th></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in items" :key="row.id">
-          <td>{{ row.displayName }}</td>
-          <td>{{ row.status }}</td>
-          <td>{{ row.label || '—' }}</td>
-          <td>
-            <button class="btn ghost" type="button" @click="label(row.id, 'recommended')">推荐</button>
-            <button class="btn ghost" type="button" @click="label(row.id, 'rejected')">不推荐</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-if="!items.length" class="muted">没有待标注的人</p>
+  <ScreenFrame testid="screen-a-human-label" :title="t('label.title')">
+    <div v-for="row in items" :key="row.id" class="panel ledger-2">
+      <div>
+        <h2>{{ row.displayName }}</h2>
+        <div class="label-choice filters">
+          <button class="btn ghost" type="button" @click="label(row.id, 'recommended')">{{ t('label.recommend') }}</button>
+          <button class="btn ghost" type="button" @click="label(row.id, 'rejected')">{{ t('label.reject') }}</button>
+          <button class="btn ghost" type="button" @click="label(row.id, 'pending')">{{ t('label.pending') }}</button>
+        </div>
+        <p>{{ row.label || '—' }} · {{ row.status }}</p>
+      </div>
+      <div class="score-lock">
+        <div class="muted">{{ t('label.locked') }} / 规则分</div>
+        <strong>{{ row.rating ?? '—' }}</strong>
+      </div>
+    </div>
+    <p v-if="!items.length" class="muted">—</p>
   </ScreenFrame>
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const { request } = useApi()
 const items = ref<any[]>([])
 async function load() {

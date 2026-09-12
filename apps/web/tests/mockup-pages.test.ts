@@ -37,6 +37,37 @@ const PAGE_BY_ROUTE: Record<string, string> = {
 
 const DUMP = /JSON\.stringify\(await request|dump\.value = 'ok'/
 
+/** Paper-ledger widgets the mockup set requires — generic tables are not enough. */
+const LANDMARKS: Partial<Record<MockupId, RegExp[]>> = {
+  'A-login': [/login-a/, /screen-a-login/],
+  'A-home': [/metric-tile|ledger-metrics/, /近期批次|home\.recentBatches/],
+  'A-batch-upload': [/dropzone/, /accept=["']\.xlsx/, /batch-file/],
+  'A-batch-list': [/ledger-table/, /batch-status|status-chip/],
+  'A-batch-clean': [/pipeline-steps/, /clean-progress|progress-bar/],
+  'A-creator-form': [/ledger-form/, /creator-display-name/],
+  'A-creator-qc': [/qc-split|qc-queue/, /qc-compare/],
+  'A-score-preview': [/scoreCreator|RULE_DIMENSIONS/, /score-bar/],
+  'A-ai-queue': [/ai-queue-metrics|metric-tile/, /查看结论/],
+  'A-ai-detail': [/score-lock|分数锁定/, /不改/],
+  'A-human-label': [/label-choice|人工标注/, /score-lock|规则分/],
+  'A-publish': [/publish-preview|发布预览/, /选人池|pub\.title/],
+  'B-health': [/health-tiles|metric-tile/, /dev-sql-ok/],
+  'B-jobs': [/pipeline-mini|pipeline-steps/, /table-jobs/],
+  'B-failures': [/failure-stack|error-stack/, /btn-retry-job/],
+  'B-pipeline': [/pipe-stage/, /Excel/],
+  'B-audit': [/ledger-table/, /审计/],
+  'B-i18n-theme': [/swatch|token-preview/, /zh-CN/],
+  'C-login': [/login-c/, /screen-c-login/],
+  'C-projects': [/table-projects/, /btn-create-project/],
+  'C-project-new': [/ledger-form/, /project-name/],
+  'C-project-board': [/row-project-assignment/, /btn-open-library/],
+  'C-pool': [/table-pool/, /filter-followers-min/],
+  'C-creator': [/clean-dossier|干净档案/, /hide-raw|不展示/],
+  'C-shortlist': [/quote-sum|报价合计/, /短名单/],
+  'C-assign': [/assign-dialog/, /select-assign-confirm|btn-assign-confirm/],
+  'C-export': [/export-scope|范围/, /xlsx|Excel/],
+}
+
 describe('mockup pages match screen ids', () => {
   it('maps every mockup id to a vue file that is not a JSON dump', () => {
     const missing: MockupId[] = []
@@ -53,5 +84,18 @@ describe('mockup pages match screen ids', () => {
     }
     expect(missing, 'unmapped mockup routes').toEqual([])
     expect(dumps, 'JSON-dump stub screens').toEqual([])
+  })
+
+  it('keeps paper-ledger landmarks so screens are not generic tables', () => {
+    const weak: string[] = []
+    for (const [id, patterns] of Object.entries(LANDMARKS)) {
+      const route = screenPath(id as MockupId)
+      const rel = PAGE_BY_ROUTE[route]
+      const src = readFileSync(resolve(__dirname, '..', rel), 'utf8')
+      for (const pattern of patterns) {
+        if (!pattern.test(src)) weak.push(`${id} missing ${pattern}`)
+      }
+    }
+    expect(weak, 'mockup-faithful landmarks').toEqual([])
   })
 })
