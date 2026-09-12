@@ -8,7 +8,8 @@
 
 - 技术名 `korea-creator-system`；UI 显示「全球达人情报系统」。
 - 新栈必用 **tinyship + forge + overlay**。命令与目录只抄 `TINYSHIP-REBUILD.md`，不要发明 API。
-- **规则排序 / 风险复核 / 人工确认**；AI 与人工不改 `score` / `grade` / `rank`。
+- **产品语言**：`zh-CN` / `en` / `ko` 从第一刀起。第一刀必须有语言切换，禁止中文-only 宿主。实现只走模板 `libs/i18n` + `@nuxtjs/i18n`（见 `TINYSHIP-REBUILD.md` §5.1）。
+- **规则排序 / 风险复核 / 人工确认**；AI 与人工不改 `score` / `grade` / `rank`。切语言也不改分。
 - 不改 `archive/` 冻结代码，除非票面写明「只读对照」。不搬 `docs/`。
 - 不引入 Harness.io。harness = `AGENTS.md` + superpowers + writing-for-agents + writing-plans。
 
@@ -20,6 +21,7 @@
 |----|--------|------|
 | 8B-01～8B-04 | 旧 SPA 人工复核 / 邮件 / 导出 / 规则空页 | 用户判定旧代码与逻辑大体不可用 |
 | V2-DOC-CLOSE | 把 `/api/v2/*` 收进旧编号文档并在旧页收尾 | 文档可引用意图；实现面已换成绿地 |
+| KCS-LATER-01 | 三语（计划书 V1.1 / 中期） | 用户改为硬约束：第一刀就要 `zh-CN` / `en` / `ko`。由 `KCS-TS-01I` + 后续票同步补 key 取代 |
 
 ---
 
@@ -34,7 +36,8 @@
   - [x] 工单前缀 `KCS-`；产品显示名与项目标识分开
   - [x] 无 `docs/pm/HARNESS.md`、无 Harness.io 配置
   - [x] `docs/pm/STACK.md` 写明 tinyship + forge + overlay 为硬约束
-  - [x] `TINYSHIP-REBUILD.md` 已落地；TS-01 / 01F / 01O 按真实命令对齐
+  - [x] `TINYSHIP-REBUILD.md` 已落地；TS-01 / 01F / 01O / 01I 按真实命令与真实 i18n 对齐
+  - [x] 三语是 Now 硬约束，不是 `KCS-LATER-01`
 - **deps:** 无
 
 ### KCS-TS-00 阅读三件套重建说明
@@ -57,9 +60,10 @@
 - **why:** 没有同时装上三件套的宿主，后面每张票都会焊回旧 FastAPI 或只剩空 tinyship。
 - **acceptance:**
   - [ ] rsync 排除 `docs/` `archive/` 后 `pnpm dev:nuxt`；`http://localhost:7001/api/health` 有响应
-  - [ ] `KCS-TS-01F` 与 `KCS-TS-01O` 同绿；缺一则本票失败
+  - [ ] `KCS-TS-01F`、`KCS-TS-01O` 与 `KCS-TS-01I` 同绿；缺一则本票失败
+  - [ ] 宿主不是中文-only：顶栏能切 `zh-CN` / `en` / `ko`
   - [ ] 未把 `archive/` 里的进程当运行入口
-- **deps:** KCS-TS-00（用户先批 `TINYSHIP-REBUILD.md` §9）, KCS-TS-01F, KCS-TS-01O
+- **deps:** KCS-TS-00（用户先批 `TINYSHIP-REBUILD.md` §9）, KCS-TS-01F, KCS-TS-01O, KCS-TS-01I
 
 ### KCS-TS-01F forge 接入（必做）
 
@@ -82,6 +86,19 @@
   - [ ] 未 vendor `overlay/`；未代签人审
 - **deps:** KCS-TS-00
 
+### KCS-TS-01I 中英韩 i18n（必做，紧接 hello-world）
+
+- **why:** 产品硬约束：tinyship 应用必须是 `zh-CN` / `en` / `ko`。旧 Demo 已用切换 + URL 进某语演示；不能再排成 Later / 「中文先可用」。
+- **acceptance:**
+  - [ ] 沿用模板：`config.app.i18n` + `libs/i18n` + Nuxt `@nuxtjs/i18n` `strategy: 'prefix'`；cookie `NEXT_LOCALE`；`defaultLocale: 'zh-CN'`；`autoDetect: false`
+  - [ ] 在同一登记表扩 `ko`（`libs/i18n/locales/ko.ts` + `locales` / `translations` + `config.app.i18n.locales`）。官方模板只有 en / zh-CN，**不要**另起一套
+  - [ ] 顶栏切换 中文 / EN / 한국어；`useSwitchLocalePath` + `navigateTo`。不要抄 Ascendia 顶栏「en vs 中文」二元文案
+  - [ ] `/zh-CN` `/en` `/ko` 可打开；`?lang=zh-CN|en|ko` 薄适配到前缀（保留旧演示入口，不搬 archive 字典）
+  - [ ] 产品显示名与宿主 chrome 走 `t()`，三语文件都有 key
+  - [ ] 豁免原文：昵称 / 小红书号 / 原始关键词 / 手写备注
+  - [ ] 未从 `archive/` 拷扁平 `t()`；未发明第二套 i18n
+- **deps:** KCS-TS-00（可与 01 / 01F / 01O 同做；hello-world 之后立刻做，不得推迟到六个页面之后）
+
 ### KCS-TS-02 导入清洗去重
 
 - **why:** V1 计划第一步：0201 → 稳定 Creator 集合。
@@ -90,7 +107,7 @@
   - [ ] `creator_key` 规则与 [`../product/DOMAIN.md`](../product/DOMAIN.md) 一致
   - [ ] 输出可数的原始行 / 去重人数 / 缺主键行
   - [ ] 缺文件时失败信息明确，不写空名单冒充成功
-- **deps:** KCS-TS-01, KCS-TS-01F, KCS-TS-01O
+- **deps:** KCS-TS-01, KCS-TS-01F, KCS-TS-01O, KCS-TS-01I
 
 ### KCS-TS-03 规则排序
 
@@ -140,8 +157,9 @@
   - [ ] 控制台 / 榜单 / 详情 / 规则只读 / 人工复核 / 导出 可点通
   - [ ] 图表：Top10 条形、六维雷达、等级分布、关键词排行
   - [ ] 无 Key 走完主路径（见 `UX-FLOWS.md`）
-  - [ ] 中文先可用
-- **deps:** KCS-TS-04, KCS-TS-05, KCS-TS-06
+  - [ ] 六个面的 chrome / 标签 / 空态 / 图表标题在 `zh-CN` / `en` / `ko` 都可切；豁免原文四类保持原文
+  - [ ] 新 key 必须同时写入 `en.ts` / `zh-CN.ts` / `ko.ts`
+- **deps:** KCS-TS-04, KCS-TS-05, KCS-TS-06, KCS-TS-01I
 
 ### KCS-TS-08 规则只读页
 
@@ -179,12 +197,6 @@
 - **why:** 人工分歧沉淀为下一版规则，而不是改当前分。
 - **acceptance:** 复核日志、分歧统计、建议列表；启用新规则 = 新 RuleVersion + 重跑，不是 patch 旧分。
 - **deps:** KCS-TS-05, KCS-TS-08
-
-### KCS-LATER-01 三语
-
-- **why:** 计划书 V1.1；旧 Demo 已做过一轮，新栈按需重做。
-- **acceptance:** zh-CN / en / ko 覆盖六个面；豁免原文四类。
-- **deps:** KCS-TS-07
 
 ### KCS-LATER-02 平台化（不排期）
 

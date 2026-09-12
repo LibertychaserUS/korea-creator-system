@@ -15,7 +15,7 @@
 
 ## 目标形态
 
-绿地：在 **tinyship + forge + overlay** 上重建 V1 闭环（导入 → 清洗去重 → 规则排序 → 风险复核 → 人工确认 → 导出）。第一刀就必须三件套同时在树上，不能先 tinyship 再补另外两个。
+绿地：在 **tinyship + forge + overlay** 上重建 V1 闭环（导入 → 清洗去重 → 规则排序 → 风险复核 → 人工确认 → 导出）。第一刀就必须三件套同时在树上，不能先 tinyship 再补另外两个。产品 UI 从第一刀起就是 `zh-CN` / `en` / `ko`（`libs/i18n` + Nuxt 前缀），不能先中文-only。
 
 `archive/` 只读对照，**默认零提交**。不要为它做 Stage 8B，不要把它当运行目标。
 
@@ -31,6 +31,7 @@
 | AI | 读 Creator+Score 摘要，写 AIReview | 写 Score；全量 1725 人打模型（MVP） |
 | 人工 | 写 ManualReview | 覆盖 final / grade / rank |
 | 导出 | 快照当前运行 | 当邮件发送器 |
+| i18n | `libs/i18n` + `@nuxtjs/i18n` 前缀；扩 `ko`；cookie `NEXT_LOCALE` | 搬 archive 扁平 `t()` / `dashboard-locale`；中文-only 宿主；把三语写成 Later |
 | `archive/` 旧 Demo | 只读对照字段与口径 | 新功能、8B 补页、继续扩 V2 API、假装根目录还有 `app/` |
 
 ## archive 对照（不要扩展）
@@ -53,8 +54,8 @@
 - IMOK V3 三角色、活动、合同、结算
 - Harness.io 资源、`docs/pm/HARNESS.md`
 
-存储、路由、测试命令、目录、forge/overlay 组装：只写在 `TINYSHIP-REBUILD.md`。冲突以那份为准。三件套约束以 [`../pm/STACK.md`](../pm/STACK.md) 为准，不得降级为 Later。
+存储、路由、测试命令、目录、forge/overlay 组装、i18n API：只写在 `TINYSHIP-REBUILD.md`。冲突以那份为准。三件套与三语约束以 [`../pm/STACK.md`](../pm/STACK.md) 为准，不得降级为 Later。
 
 ## 三件套在树上的位置
 
-<div style="width:100%;max-width:1100px;box-sizing:border-box;position:relative;background:#fafbfc;padding:16px;border-radius:6px;border:1px solid #e5e7eb;"><style scoped>.arch-title{text-align:center;font-size:16px;font-weight:700;color:#1f2937;margin-bottom:12px;}.arch-layer{margin:8px 0;padding:12px;border-radius:6px;}.arch-layer-title{font-size:12px;font-weight:700;text-align:center;margin-bottom:8px;}.arch-grid{display:grid;gap:8px;grid-template-columns:repeat(3,1fr);}.arch-box{border-radius:4px;padding:8px;text-align:center;font-size:11px;font-weight:600;background:#fff;border:1px solid #e5e7eb;color:#1f2937;}.arch-box.highlight{border:2px solid #6b7280;background:#f3f4f6;}.arch-layer.user{background:#eff6ff;border:2px solid #3b82f6;}.arch-layer.application{background:#fffbeb;border:2px solid #d97706;}.arch-layer.ai{background:#f0fdf4;border:2px solid #16a34a;}.arch-layer.infra{background:#f3f4f6;border:2px solid #6b7280;}</style><div class="arch-title">活树：tinyship 宿主 + forge/overlay 门</div><div class="arch-layer user"><div class="arch-layer-title">产品 UI（tinyship Nuxt）</div><div class="arch-grid"><div class="arch-box">控制台 / 榜单</div><div class="arch-box">详情 / 复核</div><div class="arch-box">规则只读 / 导出</div></div></div><div class="arch-layer application"><div class="arch-layer-title">领域（新建 libs/kcs-domain）</div><div class="arch-grid"><div class="arch-box highlight">ScoreEngine</div><div class="arch-box">Ingest / Review</div><div class="arch-box">禁止从 archive 搬文件</div></div></div><div class="arch-layer ai"><div class="arch-layer-title">门（同一产品仓根，工具在 /tmp/AIOps）</div><div class="arch-grid"><div class="arch-box">overlay validate/cover/run</div><div class="arch-box">forge check/submit</div><div class="arch-box">不 live-apply</div></div></div><div class="arch-layer infra"><div class="arch-layer-title">不动</div><div class="arch-grid"><div class="arch-box">docs/ 留下</div><div class="arch-box">archive/ 墓碑</div><div class="arch-box">无 Harness.io</div></div></div></div>
+<div style="width:100%;max-width:1100px;box-sizing:border-box;position:relative;background:#fafbfc;padding:16px;border-radius:6px;border:1px solid #e5e7eb;"><style scoped>.arch-title{text-align:center;font-size:16px;font-weight:700;color:#1f2937;margin-bottom:12px;}.arch-layer{margin:8px 0;padding:12px;border-radius:6px;}.arch-layer-title{font-size:12px;font-weight:700;text-align:center;margin-bottom:8px;}.arch-grid{display:grid;gap:8px;grid-template-columns:repeat(3,1fr);}.arch-box{border-radius:4px;padding:8px;text-align:center;font-size:11px;font-weight:600;background:#fff;border:1px solid #e5e7eb;color:#1f2937;}.arch-box.highlight{border:2px solid #6b7280;background:#f3f4f6;}.arch-layer.user{background:#eff6ff;border:2px solid #3b82f6;}.arch-layer.application{background:#fffbeb;border:2px solid #d97706;}.arch-layer.ai{background:#f0fdf4;border:2px solid #16a34a;}.arch-layer.infra{background:#f3f4f6;border:2px solid #6b7280;}</style><div class="arch-title">活树：tinyship 宿主 + forge/overlay 门</div><div class="arch-layer user"><div class="arch-layer-title">产品 UI（tinyship Nuxt · zh-CN / en / ko）</div><div class="arch-grid"><div class="arch-box">控制台 / 榜单</div><div class="arch-box">详情 / 复核</div><div class="arch-box">规则只读 / 导出</div></div></div><div class="arch-layer application"><div class="arch-layer-title">领域（新建 libs/kcs-domain）</div><div class="arch-grid"><div class="arch-box highlight">ScoreEngine</div><div class="arch-box">Ingest / Review</div><div class="arch-box">禁止从 archive 搬文件</div></div></div><div class="arch-layer ai"><div class="arch-layer-title">门（同一产品仓根，工具在 /tmp/AIOps）</div><div class="arch-grid"><div class="arch-box">overlay validate/cover/run</div><div class="arch-box">forge check/submit</div><div class="arch-box">不 live-apply</div></div></div><div class="arch-layer infra"><div class="arch-layer-title">不动</div><div class="arch-grid"><div class="arch-box">docs/ 留下</div><div class="arch-box">archive/ 墓碑</div><div class="arch-box">无 Harness.io</div></div></div></div>

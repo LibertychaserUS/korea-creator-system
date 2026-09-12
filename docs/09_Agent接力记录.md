@@ -1,5 +1,12 @@
 # Agent接力记录
 
+## 2026-09-12 文档棒：三语升为第一刀
+
+- 分支：`docs/tinyship-rebuild`（SSOT）。
+- 完成：把 `zh-CN` / `en` / `ko` 写成绿地硬约束；i18n 抄 TinyShip 真实 API，不搬旧 SPA。
+- 下一棒入口：用户批 `TINYSHIP-REBUILD.md` §9（现含三语）后，writing-plans 写 `KCS-TS-01`（含 `01I`），再脚手架。
+- 不要做：中文-only 宿主、`KCS-LATER-01`、archive `t()` 字典、Harness.io。
+
 ## 2026-06-16 第一棒
 - 负责人：Codex
 - 完成内容：项目骨架、文档骨架、配置骨架、`0201` 只读统计入口。
