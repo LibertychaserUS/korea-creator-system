@@ -138,3 +138,17 @@ uvicorn app.web:app --reload --port 8000
 - 下一阶段入口：
   - 第八阶段 B 继续做四个独立页面
   - 浏览器验证非豁免中文残留
+
+## 2026-09-12 旧 Python Demo 重新归档
+- 负责人：Cloud Agent
+- 当前状态：
+  - 旧 FastAPI / pandas Demo 已冻回 `archive/v8a-dashboard/`。
+  - 墓碑在 `archive/README.md`。
+  - 仓库根只留 `docs/`、入口说明与 Git 规则；没有可施工的 `app/`。
+- 不要做：
+  - 不要把 archive 里的 `uvicorn` 当运行入口。
+  - 不要在 archive 上做 Stage 8B 或续写 `/api/v2/*`。
+  - 不要在 `TINYSHIP-REBUILD.md` 落地前另起脚手架。
+- 下一阶段入口：
+  - 研究代理落地 `docs/product/TINYSHIP-REBUILD.md`（`KCS-TS-00`）。
+  - 其后第一刀必须同时接入 tinyship + forge + overlay（`KCS-TS-01` / `01F` / `01O`）。

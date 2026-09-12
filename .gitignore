@@ -18,6 +18,9 @@ config/settings.json
 # Data outputs (generated from source Excel)
 data/output/
 data/cache/
+archive/**/data/output/
+archive/**/data/cache/
+archive/**/config/settings.json
 
 # IDE
 .vscode/
