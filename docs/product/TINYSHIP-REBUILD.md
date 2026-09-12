@@ -4,6 +4,7 @@
 > 本文件是**实现栈 SSOT**。产品意图在 `VISION.md` / `PRD.md` / `DOMAIN.md`。
 > 三件套都是技术名，不是产品品牌，也 **不是** Harness.io。
 > **设计已写、实现未开始。** 用户批准「必须批准」一节之前，不要导入代码、不要跑 setup 向导、不要覆盖 `docs/` / `archive/`。
+> **产品语言硬约束：** 宿主必须是 `zh-CN` / `en` / `ko` 三语，第一刀就要有语言切换。不是 Later，也不是「中文先可用」。
 
 分类：架构设计（绿地重建）。本轮交付是设计，不是脚手架。
 
@@ -239,9 +240,73 @@ Tinyship 侧复用：`libs/ai`（`DEEPSEEK_API_KEY`、`createAIHandler({ provide
 
 ---
 
-## 6. 第一刀（必须三件套一起绿）
+## 5.1 产品 i18n（硬约束；抄真实模板，禁止自造 API）
 
-**不要**先只起 tinyship、把 forge/overlay 写成 Later。缺一则 `KCS-TS-01` 失败。
+对照本：本机 TinyShip / Ascendia 冻结点 `v2.2.0` / `54ddc7a`，树在 `/Users/nihao/Documents/Ascendia-code`。权威说明：该树 `libs/i18n/README.md`、`libs/i18n/AGENTS.md`，以及 [docs.tinyship.cn 基础配置](https://docs.tinyship.cn/zh-CN/user-guide/basic-config)。**官方模板只自带 `en` + `zh-CN`。** 本产品必须在同一套登记表上**扩 `ko`**，不要另写一套字典或 FastAPI `?lang=` 引擎。
+
+### 模板里真实怎么做（Nuxt 线）
+
+| 层 | 真实位置与 API | 不要发明 |
+|----|----------------|----------|
+| 登记 | 根 `config.ts` → `app.i18n`：`defaultLocale`、`locales`、`cookieKey: 'NEXT_LOCALE'`、`autoDetect` | 不要新 cookie 名；不要 `dashboard-locale` |
+| 文案 | `libs/i18n/locales/en.ts`（结构真理源）+ `zh-CN.ts`；入口 `libs/i18n/index.ts` 导出 `translations` / `locales` / `isValidLocale` / `getTranslation` | 不要页面内硬编码用户可见文案；不要 archive 那种扁平 `translations["zh-CN"][key]` |
+| Nuxt 模块 | `apps/nuxt-app` 的 `@nuxtjs/i18n`；`nuxt.config.ts`：`strategy: 'prefix'`；`apps/nuxt-app/i18n/i18n.config.ts`：`legacy: false`，`messages: translations` | 不要 query-only 路由当主方案 |
+| 组件 | `useI18n()` → `t` / `locale` / `locales`；链接 `useLocalePath()`；切换 `useSwitchLocalePath()` + `navigateTo(path)`（见 `GlobalHeader.vue` 的 `changeLanguage`） | 不要抄 Ascendia 顶栏 `locale === 'en' ? english : chinese` 二元判断——加上 `ko` 后会把韩语藏掉 |
+
+`tinyship-feature` 已写：新文案进 `libs/i18n`。`en.ts` 先加 key，再补 `zh-CN.ts` 与（本仓必加的）`ko.ts`，形状对齐。
+
+### 本仓必须扩的第三语
+
+在**同一登记路径**上加 `ko`，不要平行系统：
+
+1. 新增 `libs/i18n/locales/ko.ts`（嵌套对象，与 `en.ts` 同形）。
+2. `locales/index.ts` 再导出 `ko`。
+3. `libs/i18n/index.ts`：`locales` 含 `'ko'`，`translations` 增加 `ko`。
+4. `config.ts`：`app.i18n.locales` 为 `['en', 'zh-CN', 'ko']`；**`defaultLocale: 'zh-CN'`**（与旧 Demo 和官方默认一致；`autoDetect: false`，新访客不跟浏览器语）。
+5. `nuxt.config.ts` 的 `locales.map` 名称表改成显式映射（模板里 `code === 'en' ? 'English' : '中文'` 只有两语）：`en` → English，`zh-CN` → 中文，`ko` → 한국어。
+
+URL（模板前缀策略，不是旧 SPA）：
+
+```text
+http://localhost:7001/zh-CN/
+http://localhost:7001/en/
+http://localhost:7001/ko/
+```
+
+持久化：`@nuxtjs/i18n` + cookie `NEXT_LOCALE`。刷新后仍是上次语言。
+
+### 旧 Demo 要保留的是产品行为，不是实现
+
+`archive/` 里 FastAPI SPA 用 `?lang=zh-CN|en|ko` + `localStorage["dashboard-locale"]` + 扁平 `t(key)`。那套 **JS/接口不要搬**。要对齐的产品行为：
+
+| 产品行为 | 旧实现（只读对照） | 新栈（模板 API） |
+|----------|-------------------|------------------|
+| 三种语言 | `zh-CN` / `en` / `ko` | 同上，登记进 `config.app.i18n.locales` |
+| 顶栏切换 中文 / EN / 한국어 | `.lang-btn[data-locale]` | `useSwitchLocalePath` + `navigateTo` |
+| URL 可直接进某语（演示/截图） | `?lang=` | 主入口是前缀 `/zh-CN` `/en` `/ko`。第一刀加一层薄适配：若出现 `?lang=` 且 `isValidLocale(lang)`，`navigateTo` 到对应前缀路径。**不要**再写 `dashboard-locale` |
+| 刷新保持 | `localStorage` | cookie `NEXT_LOCALE` |
+| 界面文案 `t()` | 扁平 key | Nuxt：`t('kcs.brand.title')`（嵌套 key）；Next 不用本仓默认框架 |
+| 豁免原文 | 昵称、小红书号、原始关键词、手写备注 | 照旧；这些不是 i18n key |
+| 切语言不改分 | 只重渲染 | Score / grade / rank 字节级不变；不重跑导入/排序/AI |
+| 默认中文 | `resolveInitialLocale` 回落 `zh-CN` | `defaultLocale: 'zh-CN'` |
+
+AI 自然语言（Top50 说明）是**展示层**翻译：分析一次，切语言时不重跑主复核。旧 `POST /api/ai/translate` + 本地缓存是意图，等 `KCS-TS-04` / `KCS-TS-07` 再用 `libs/ai` 做，**不要**把 archive 的 FastAPI 路由抄过来。fallback 用三语本地模板。第一刀只要求宿主 chrome + 切换器三语，不要求 AI 译文缓存。
+
+### 第一刀 i18n 完成线
+
+`KCS-TS-01I` 与三件套同绿。完成当且仅当：
+
+1. `config.app.i18n.locales` 含 `en` / `zh-CN` / `ko`；默认 `zh-CN`。
+2. 顶栏能切三种语言；刷新后仍在所选语言。
+3. `/zh-CN`、`/en`、`/ko` 都能打开；`?lang=ko`（及 zh-CN / en）能落到对应前缀。
+4. 产品显示名「全球达人情报系统」及宿主可见 chrome（导航/按钮/空态）走 `t()`，三语文件都有 key；没有中文-only 宿主。
+5. 未从 `archive/` 拷 `static/app.js` 字典。未自造第二套 i18n。
+
+---
+
+## 6. 第一刀（必须三件套 + 三语切换一起绿）
+
+**不要**先只起 tinyship、把 forge/overlay 写成 Later，也**不要**先做一个中文-only 宿主再把三语写成 Later。缺 forge、缺 overlay、或缺三语切换，则 `KCS-TS-01` 失败。
 
 完成当且仅当下列**全部**为真（在本仓根，不是 archive）：
 
@@ -261,10 +326,12 @@ python3 -m forge check --root .
 三条都退出 0。红 → 不停工去写页面。
 
 6. 未 `git add forge/` 或 `overlay/` 工具包。未 live-`forge apply`。未代填 Overlay 人签字段。未改 `archive/`。
+7. **三语切换已在宿主上**：`KCS-TS-01I` 同绿（§5.1）。hello-world / health 页就不能是中文-only。
 
-第一刀**不做**：六个页面、Top50 DeepSeek、导出、三语、支付、三端 parity、Ruleset。
+第一刀**不做**：六个业务页面、Top50 DeepSeek、导出、支付、三端 parity、Ruleset、AI 译文缓存。
+第一刀**要做**：语言切换 + `zh-CN` / `en` / `ko` 宿主 chrome。
 
-随后 `KCS-TS-02`… 仍在同一树上加领域与页面；每张票结束再跑上面三条门。
+随后 `KCS-TS-02`… 仍在同一树上加领域与页面；每张票的新文案必须同时进 `en.ts` / `zh-CN.ts` / `ko.ts`；每张票结束再跑上面三条门。
 
 ---
 
@@ -273,6 +340,7 @@ python3 -m forge check --root .
 | 留（意图 / 口径） | 扔（不迁实现） |
 |-------------------|----------------|
 | V1 闭环：导入 → 规则排序 → 风险复核 → 人工确认 → 导出 | FastAPI、pandas 流水线、静态三页 SPA、CSV 当主库 |
+| 中英韩三语产品行为（切换、URL 进某语、刷新保持、豁免原文） | 搬 archive `t()` 扁平字典 / `dashboard-locale` / FastAPI `?lang=` 引擎 |
 | 六维名与权重 25/15/25/20/10/5；AI 不改分 | 把 archive 里的 Stage 8B 空页补完 |
 | 去重键 `userId > 小红书号 > 主页 URL` | 人工缓存用 rank 当键 |
 | DeepSeek 只打 Top50 + fallback | 全量 1725 调模型 |
@@ -291,6 +359,7 @@ python3 -m forge check --root .
 | 把 Learning Guide 的 `required_checks` 抄过来 | 对不上 CI 则 `forge check` / Ruleset 假红。本仓 job 名以将来 PR 页为准 |
 | 把 forge 当成「生成后端」 | 它不生成应用。生成/跑应用是 tinyship |
 | Agent live-apply / 自合 | 禁止。与 Learning Guide 相同 |
+| 中文-only 或另写 i18n | 第一刀就扩 `ko`；只改 `config.app.i18n` + `libs/i18n` + Nuxt 前缀。不要 archive 字典，不要顶栏 en/中文二元判断 |
 
 ---
 
@@ -302,5 +371,6 @@ python3 -m forge check --root .
 4. 产品框架 Nuxt、库 SQLite、不做三端 parity、不做 live-apply。
 5. 第一刀 = tinyship 能起 **并且** overlay validate/cover **并且** forge check 同绿；第一条 Overlay 叶子是「分不可变」。
 6. 导入用排除 rsync，不整仓覆盖。
+7. 产品语言从第一刀起就是 `zh-CN` / `en` / `ko`（§5.1）。用模板的 `libs/i18n` + `@nuxtjs/i18n` 前缀 + `NEXT_LOCALE`，扩 `ko`；不要中文-only，不要把三语推到 Later。
 
 人批之后：用 writing-plans 写 `KCS-TS-01` 实施计划，再脚手架。
