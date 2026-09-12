@@ -1,7 +1,7 @@
 # Backlog
 
 > 项目：`korea-creator-system`。工单前缀：`KCS-`。
-> **For agentic workers:** 实现前读 [`STACK.md`](./STACK.md)、[`../product/PRD.md`](../product/PRD.md)、[`../product/TINYSHIP-REBUILD.md`](../product/TINYSHIP-REBUILD.md)。旧 Demo 在 `archive/`，不要默认仓库根还有 `app/`。
+> **For agentic workers:** 实现前读 [`STACK.md`](./STACK.md)、[`../product/PRD.md`](../product/PRD.md)、[`../product/TINYSHIP-REBUILD.md`](../product/TINYSHIP-REBUILD.md)。旧 Python Demo 已删除（历史 git `f31c882`），不要默认仓库根还有 `app/`。
 > 已取消：旧仪表盘 Stage 8B；以及「先 tinyship、forge/overlay 以后再说」。
 
 全局约束（每张票默认带上）：
@@ -10,7 +10,7 @@
 - 新栈必用 **tinyship + forge + overlay**。命令与目录只抄 `TINYSHIP-REBUILD.md`，不要发明 API。
 - **产品语言**：`zh-CN` / `en` / `ko` 从第一刀起。第一刀必须有语言切换，禁止中文-only 宿主。实现只走模板 `libs/i18n` + `@nuxtjs/i18n`（见 `TINYSHIP-REBUILD.md` §5.1）。
 - **规则排序 / 风险复核 / 人工确认**；AI 与人工不改 `score` / `grade` / `rank`。切语言也不改分。
-- 不改 `archive/` 冻结代码，除非票面写明「只读对照」。不搬 `docs/`。
+- 不把旧 Python 代码加回仓库；对照口径只读 `docs/02`–`04`。不搬 `docs/`。
 - 不引入 Harness.io。harness = `AGENTS.md` + superpowers + writing-for-agents + writing-plans。
 
 ---

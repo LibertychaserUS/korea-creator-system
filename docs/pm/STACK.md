@@ -17,7 +17,7 @@
 
 ## 不在此列
 
-- 旧 Demo：只在 `archive/`（墓碑）。仓库根没有可施工的 `app/`。
+- 旧 Python Demo：已从工作树删除（历史 git `f31c882`）。仓库根没有可施工的 `app/`，也不要把它加回来。
 - `docs/`：留下，历史 + 产品意图。
 - Harness.io、`docs/pm/HARNESS.md`。
 

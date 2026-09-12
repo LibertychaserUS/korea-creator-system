@@ -60,4 +60,4 @@ pnpm test:blackbox
 
 见 [`docs/product/TINYSHIP-PIN.md`](docs/product/TINYSHIP-PIN.md)。官方仓 `TinyshipCN/tinyship` @ `v2.2.0` / `54ddc7a`。应用树里没有 Ascendia 产品代码。
 
-`docs/` 与 `archive/` 未覆盖。
+`docs/` 未覆盖。旧 Python / FastAPI Demo 已从工作树删除；要考古看 git `f31c882`（`archive/v8a-dashboard/`）和 `docs/00_*`–`10_*`。

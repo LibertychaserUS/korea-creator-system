@@ -3,7 +3,7 @@
 > 项目标识：`korea-creator-system`（仓库、分支、工单前缀一律用这个）。
 > 产品显示名：全球达人情报系统。
 > 历史计划名：韩国品牌小红书达人 AI 筛选 Demo（V1 计划书，勿当仓库名）。
-> 实现目标：**tinyship + forge + overlay** 绿地重建（三件套必用）。旧 Demo 在 `archive/`。
+> 实现目标：**tinyship + forge + overlay** 绿地重建（三件套必用）。旧 Demo 已删除，只留 `docs/`。
 > 栈硬约束：[`../pm/STACK.md`](../pm/STACK.md)。细则：[`TINYSHIP-REBUILD.md`](./TINYSHIP-REBUILD.md)。
 
 ## 一句话
@@ -50,7 +50,7 @@ V1 计划书原话口径（意译，非逐字照抄）：先做「可展示、�
 | 位置 | 角色 |
 |------|------|
 | `docs/`（含 `00_*`–`10_*`、`product/`、`pm/`） | **留下**。历史口径与产品意图的权威处。编号文档停在 `v8a-dashboard` 快照，不要改写成新栈说明书。 |
-| `archive/` + 墓碑 | 旧 FastAPI Demo **冻结**。不要当仓库根还活着 `app/`。只读对照，默认零提交。 |
+| 旧 FastAPI Demo | **已删除**（历史 git `f31c882`）。不要当仓库根还活着 `app/`，口径只看 `docs/`。 |
 | tinyship + forge + overlay | 唯一实现面。见 [`../pm/STACK.md`](../pm/STACK.md) 与 [`TINYSHIP-REBUILD.md`](./TINYSHIP-REBUILD.md)。 |
 
-未写入编号文档的 V2（`/api/v2/*`、联系跟进、规则复盘）意图可迁到新栈中期票；**不要在 archive 里续写**。
+未写入编号文档的 V2（`/api/v2/*`、联系跟进、规则复盘）意图可迁到新栈中期票；**不要把旧代码加回来续写**。

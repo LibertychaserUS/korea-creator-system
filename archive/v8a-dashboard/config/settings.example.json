@@ -1,5 +1,0 @@
-{
-  "source_excel": "../材料/0201小红书蒲公英抓取数据详情表1.0.xlsx",
-  "sheet_name": "筛选结果",
-  "output_cache_dir": "data/cache"
-}
