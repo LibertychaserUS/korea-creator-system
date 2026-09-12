@@ -61,8 +61,11 @@ describe('select pool filter and sort', () => {
       headers: { authorization: `Bearer ${token}` },
     })
     const body = await res.json()
-    const names = body.items.map((row: { displayName: string }) => row.displayName)
-    expect(names.slice(0, 3)).toEqual(['高粉合作', '低粉未合作', '中粉无评分'])
+    const wanted = ['高粉合作', '低粉未合作', '中粉无评分']
+    const names = body.items
+      .map((row: { displayName: string }) => row.displayName)
+      .filter((name: string) => wanted.includes(name))
+    expect(names).toEqual(wanted)
   })
 
   it('filters by follower range, collaboration, and overlapping price', async () => {

@@ -2,12 +2,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: false },
   css: ['~/assets/css/main.css'],
-  modules: ['@nuxtjs/i18n', '@nuxtjs/color-mode'],
-  colorMode: {
-    classSuffix: '',
-    preference: 'light',
-    storageKey: 'kcs-ui-theme-pref',
-  },
+  modules: ['@nuxtjs/i18n'],
   i18n: {
     locales: [
       { code: 'zh-CN', language: 'zh-CN', name: '中文', file: 'zh-CN.ts' },

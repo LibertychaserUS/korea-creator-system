@@ -11,15 +11,8 @@ export async function loginViaUi(page: Page, role: SeedRole) {
   await page.getByTestId(tid.loginSubmit).click();
 
   const session = page.getByTestId(tid.session);
-  if (await session.count()) {
-    await expect(session).toHaveAttribute('data-role', role);
-    return;
-  }
-
-  const me = await page.request.get(new URL(API.me, API_URL).toString());
-  expect(me.ok(), `GET ${API.me} after UI login → ${me.status()}`).toBeTruthy();
-  const body = (await me.json()) as { role?: string; user?: { role?: string } };
-  expect(body.role ?? body.user?.role).toBe(role);
+  await expect(session).toBeVisible({ timeout: TIMEOUTS.action });
+  await expect(session).toHaveAttribute('data-role', role);
 }
 
 export async function postAssignment(

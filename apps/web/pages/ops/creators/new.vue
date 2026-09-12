@@ -1,35 +1,33 @@
 <template>
   <ScreenFrame testid="screen-a-creator-form" title="单条达人录入">
-    <ClientOnly>
-      <form @submit.prevent="save">
-        <label class="field">显示名<input v-model="form.displayName" data-testid="creator-display-name" required /></label>
-        <label class="field">粉丝量<input v-model.number="form.followers" data-testid="creator-followers" type="number" /></label>
-        <label class="field">最低报价<input v-model.number="form.priceMin" data-testid="creator-price-min" type="number" /></label>
-        <label class="field">头像<input data-testid="creator-avatar" type="file" accept="image/*" @change="onFile" /></label>
-        <a
-          v-if="avatarUrl"
-          data-testid="creator-avatar-url"
-          :href="avatarUrl"
-          :src="avatarUrl"
-          :data-object-key="avatarKey"
-        >头像</a>
-        <button
-          type="button"
-          data-testid="category-collaborated"
-          class="btn ghost"
-          :aria-pressed="form.category === 'collaborated' ? 'true' : 'false'"
-          @click="setCategory('collaborated')"
-        >合作过的</button>
-        <button
-          type="button"
-          data-testid="category-never-collaborated"
-          class="btn ghost"
-          :aria-pressed="form.category === 'never_collaborated' ? 'true' : 'false'"
-          @click="setCategory('never_collaborated')"
-        >没合作过的</button>
-        <button class="btn" data-testid="btn-save-creator" type="submit">保存</button>
-      </form>
-    </ClientOnly>
+    <form @submit.prevent="save">
+      <label class="field">显示名<input v-model="form.displayName" data-testid="creator-display-name" required /></label>
+      <label class="field">粉丝量<input v-model.number="form.followers" data-testid="creator-followers" type="number" /></label>
+      <label class="field">最低报价<input v-model.number="form.priceMin" data-testid="creator-price-min" type="number" /></label>
+      <label class="field">头像<input data-testid="creator-avatar" type="file" accept="image/*" @change="onFile" /></label>
+      <a
+        v-if="avatarUrl"
+        data-testid="creator-avatar-url"
+        :href="avatarUrl"
+        :src="avatarUrl"
+        :data-object-key="avatarKey"
+      >头像</a>
+      <button
+        type="button"
+        data-testid="category-collaborated"
+        class="btn ghost"
+        :aria-pressed="coopPressed(form.category, 'collaborated')"
+        @click.prevent="form.category = selectCoop(form.category, 'collaborated')"
+      >合作过的</button>
+      <button
+        type="button"
+        data-testid="category-never-collaborated"
+        class="btn ghost"
+        :aria-pressed="coopPressed(form.category, 'never_collaborated')"
+        @click.prevent="form.category = selectCoop(form.category, 'never_collaborated')"
+      >没合作过的</button>
+      <button class="btn" data-testid="btn-save-creator" type="submit">保存</button>
+    </form>
     <p v-if="saved.creatorKey" data-testid="creator-key" :data-creator-key="saved.creatorKey">{{ saved.creatorKey }}</p>
     <p v-if="saved.id" data-testid="creator-status" :data-status="saved.status">{{ saved.status }}</p>
     <button v-if="saved.id" class="btn" data-testid="btn-publish" type="button" @click="confirming = true">发布</button>
@@ -38,21 +36,19 @@
 </template>
 
 <script setup lang="ts">
+import { coopPressed, selectCoop, type CoopSlug } from '~/utils/coop-category'
+
 const { request } = useApi()
 const form = reactive({
   displayName: '',
   followers: 10000,
-  category: '',
+  category: '' as CoopSlug | '',
   priceMin: 3000,
 })
 const avatarUrl = ref('')
 const avatarKey = ref('')
 const confirming = ref(false)
 const saved = reactive({ id: '', creatorKey: '', status: 'draft' })
-
-function setCategory(slug: 'collaborated' | 'never_collaborated') {
-  form.category = slug
-}
 
 async function onFile(ev: Event) {
   const file = (ev.target as HTMLInputElement).files?.[0]

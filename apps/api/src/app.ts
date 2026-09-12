@@ -391,7 +391,7 @@ export function createApp(env: AppEnv) {
   app.post('/api/ops/batches', async (c) => {
     const { user, denied } = await requireAuth(c, 'ops.write')
     if (denied) return denied
-    const job = await runIngest(env, 'src_file', 'once', 0.1, user!.id)
+    const job = await runIngest(env, 'file-drop', 'once', 0.1, user!.id)
     return c.json(job, 201)
   })
 

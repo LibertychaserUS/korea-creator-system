@@ -2,7 +2,7 @@
   <div class="login-card" data-testid="screen-a-login" data-screen="C-login">
     <div data-testid="screen-c-login">
       <h1>{{ t('brand') }}</h1>
-      <p class="muted">{{ t('login') }}</p>
+      <p class="muted">{{ t('login') }} · 运营录入 / 选人公司</p>
       <form method="post" :action="loginAction" enctype="application/x-www-form-urlencoded">
         <input type="hidden" name="locale" :value="locale" />
         <label class="field">
