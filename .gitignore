@@ -12,12 +12,15 @@ venv/
 .env
 .env.*
 config/settings.json
+archive/v8a-dashboard/config/settings.json
 *.pem
 *.key
 
 # Data outputs (generated from source Excel)
 data/output/
 data/cache/
+archive/v8a-dashboard/data/output/
+archive/v8a-dashboard/data/cache/
 
 # IDE
 .vscode/
