@@ -79,4 +79,50 @@ describe('project assignment', () => {
     })
     expect((await again.json()).assignments).toHaveLength(0)
   })
+
+  it('persists 分配备注 on the assignment row', async () => {
+    const ops = await ctx.loginJson('ops@kcs.local')
+    const created = await ctx.app.request('/api/ops/creators', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${ops.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayName: '带备注分配',
+        regions: ['서울'],
+        followers: 22000,
+        categories: ['never_collaborated'],
+      }),
+    })
+    const { id: creatorId } = await created.json()
+    await ctx.app.request(`/api/ops/creators/${creatorId}/publish`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ops.token}` },
+    })
+    const sel = await ctx.loginJson('selector@kcs.local')
+    const project = await ctx.app.request('/api/select/projects', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${sel.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ name: '备注档' }),
+    })
+    const { id: projectId } = await project.json()
+    const assigned = await ctx.app.request(`/api/select/projects/${projectId}/assignments`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${sel.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ creatorIds: [creatorId], note: '优先核报价' }),
+    })
+    expect(assigned.status).toBe(200)
+    const board = await ctx.app.request(`/api/select/projects/${projectId}`, {
+      headers: { authorization: `Bearer ${sel.token}` },
+    })
+    const row = (await board.json()).assignments[0]
+    expect(row.note).toBe('优先核报价')
+  })
 })

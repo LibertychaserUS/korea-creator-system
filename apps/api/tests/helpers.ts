@@ -17,8 +17,8 @@ export async function createTestApp(): Promise<TestCtx> {
   const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || DEFAULT_URL
   const db = await connectDb(url)
   await migrate(db)
-  await seed(db, { reset: true })
   const store = new MemoryObjectStore()
+  await seed(db, { reset: true, store })
   const env: AppEnv = { db, store, now: () => new Date() }
   const app = createApp(env)
 

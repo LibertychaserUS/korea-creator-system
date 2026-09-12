@@ -1,6 +1,9 @@
 import { SEED_PASSWORD, SEED_USERS } from '@kcs/contract'
 import type { Db } from './db'
+import { HANSOUL_ID, IMOK_ID, PLATFORM_ID, importImokPink, type ImportCounts } from './imok-pink'
 import { hashPassword } from './password'
+import { attachTalentMedia } from './seed-media'
+import type { ObjectStore } from './store'
 
 const CATEGORIES = [
   {
@@ -29,6 +32,7 @@ export type SeedCounts = {
   projects: number
   assignments: number
   ingestJobs: number
+  imported: ImportCounts
 }
 
 type TalentSeed = {
@@ -679,8 +683,8 @@ async function upsertTalent(db: Db, talent: TalentSeed) {
   await db.query(
     `INSERT INTO creators (
         id, creator_key, display_name, status, needs_review, followers, followers_unknown,
-        regions, verticals, rating, note, label, xhs_id, er, locked_final
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        regions, verticals, rating, note, label, xhs_id, er, locked_final, org_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (id) DO UPDATE SET
         creator_key = EXCLUDED.creator_key,
         display_name = EXCLUDED.display_name,
@@ -696,6 +700,7 @@ async function upsertTalent(db: Db, talent: TalentSeed) {
         xhs_id = EXCLUDED.xhs_id,
         er = EXCLUDED.er,
         locked_final = EXCLUDED.locked_final,
+        org_id = EXCLUDED.org_id,
         updated_at = now()`,
     [
       talent.id,
@@ -713,6 +718,7 @@ async function upsertTalent(db: Db, talent: TalentSeed) {
       talent.xhsId ?? null,
       talent.er ?? null,
       talent.lockedFinal ?? null,
+      IMOK_ID,
     ],
   )
   await db.query('DELETE FROM creator_categories WHERE creator_id = $1', [talent.id])
@@ -746,10 +752,11 @@ async function upsertTalent(db: Db, talent: TalentSeed) {
   }
 }
 
-export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<SeedCounts> {
+export async function seed(db: Db, opts: { reset?: boolean; store?: ObjectStore } = {}): Promise<SeedCounts> {
   if (opts.reset) {
     await db.query(`
       TRUNCATE TABLE
+        company_collaborators, company_creator_attrs, company_dataset_rows, company_rule_packs,
         audit_logs, reviews, shortlist_items, assignments, projects,
         prices, collaborations, creator_categories, creators, assets,
         ingest_jobs, ingest_sources, sessions, "user", users, orgs, categories
@@ -757,21 +764,55 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     `)
   }
 
-  const orgId = 'org_platform'
-  await db.query(
-    `INSERT INTO orgs (id, name, budget_note) VALUES ($1, $2, $3)
-     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, budget_note = COALESCE(orgs.budget_note, EXCLUDED.budget_note)`,
-    [orgId, '全球达人情报', '试水单笔 ≤80000 CNY'],
-  )
+  const companies = [
+    {
+      id: IMOK_ID,
+      name: 'IMOK',
+      slug: 'imok',
+      budget: '试水单笔 ≤80000 CNY',
+      prefs: { currency: 'CNY', locale: 'zh-CN', defaultSort: 'rating' },
+    },
+    {
+      id: HANSOUL_ID,
+      name: '韩颂',
+      slug: 'hansoul',
+      budget: null,
+      prefs: { currency: 'USD', locale: 'en', defaultSort: 'followers' },
+    },
+    {
+      id: PLATFORM_ID,
+      name: '全球达人情报',
+      slug: 'platform',
+      budget: '试水单笔 ≤80000 CNY',
+      prefs: { currency: 'KRW', locale: 'ko', defaultSort: 'rating' },
+    },
+  ]
+  for (const company of companies) {
+    await db.query(
+      `INSERT INTO orgs (id, name, budget_note, slug, prefs) VALUES ($1, $2, $3, $4, $5::jsonb)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         slug = EXCLUDED.slug,
+         prefs = EXCLUDED.prefs,
+         budget_note = COALESCE(orgs.budget_note, EXCLUDED.budget_note)`,
+      [company.id, company.name, company.budget, company.slug, JSON.stringify(company.prefs)],
+    )
+  }
+
+  const homeOrg = (role: string) =>
+    role === 'ops' || role === 'selector' || role === 'selector_viewer' ? IMOK_ID : PLATFORM_ID
 
   for (const user of SEED_USERS) {
     await db.query(
       `INSERT INTO users (id, org_id, email, password_hash, role, display_name)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, display_name = EXCLUDED.display_name`,
+       ON CONFLICT (email) DO UPDATE SET
+         role = EXCLUDED.role,
+         display_name = EXCLUDED.display_name,
+         org_id = EXCLUDED.org_id`,
       [
         `user_${user.role}`,
-        orgId,
+        homeOrg(user.role),
         user.email,
         hashPassword(SEED_PASSWORD),
         user.role,
@@ -794,8 +835,8 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     await db.query(
       `INSERT INTO users (id, org_id, email, password_hash, role, display_name)
        VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role`,
-      [extra.id, orgId, extra.email, hashPassword('KcsE2e!2026'), extra.role, extra.name],
+       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, org_id = EXCLUDED.org_id`,
+      [extra.id, homeOrg(extra.role), extra.email, hashPassword('KcsE2e!2026'), extra.role, extra.name],
     )
     await db.query(
       `INSERT INTO "user" (id, email, name, role)
@@ -867,6 +908,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
 
   for (const talent of TALENTS) {
     await upsertTalent(db, talent)
+    await attachTalentMedia(db, talent, opts.store)
   }
 
   for (const project of PROJECTS) {
@@ -874,7 +916,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
       `INSERT INTO projects (id, org_id, name, note, status)
        VALUES ($1,$2,$3,$4,'open')
        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, note = EXCLUDED.note, status = 'open', updated_at = now()`,
-      [project.id, orgId, project.name, project.note],
+      [project.id, IMOK_ID, project.name, project.note],
     )
     await db.query('DELETE FROM assignments WHERE project_id = $1', [project.id])
     for (const member of project.members) {
@@ -888,6 +930,18 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
         [`asgn_${project.id}_${member.creatorId}`, project.id, member.creatorId, member.note],
       )
     }
+  }
+
+  const imported = await importImokPink(db, IMOK_ID)
+  const pink = await db.query<{ id: string; display_name: string; verticals: string[] }>(
+    `SELECT id, display_name, verticals FROM creators WHERE id LIKE 'creator_imok_%'`,
+  )
+  for (const row of pink.rows) {
+    await attachTalentMedia(
+      db,
+      { id: row.id, name: row.display_name, verticals: row.verticals ?? [] },
+      opts.store,
+    )
   }
 
   const emails = SEED_USERS.map((u) => u.email)
@@ -909,5 +963,6 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     projects: projects.rows[0].n,
     assignments: assignments.rows[0].n,
     ingestJobs: ingestJobs.rows[0].n,
+    imported,
   }
 }

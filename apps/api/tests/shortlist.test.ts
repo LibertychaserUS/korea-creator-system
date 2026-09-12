@@ -57,4 +57,21 @@ describe('select shortlist prices', () => {
     expect(row.price?.amountMin).toBe(8000)
     expect(row.price?.currency).toBe('CNY')
   })
+
+  it('persists a shortlist 预算备注', async () => {
+    const sel = await ctx.loginJson('selector@kcs.local')
+    const saved = await ctx.app.request('/api/select/shortlist', {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${sel.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ budgetNote: '≤80000/笔' }),
+    })
+    expect(saved.status).toBe(200)
+    const list = await ctx.app.request('/api/select/shortlist', {
+      headers: { authorization: `Bearer ${sel.token}` },
+    })
+    expect((await list.json()).budgetNote).toBe('≤80000/笔')
+  })
 })
