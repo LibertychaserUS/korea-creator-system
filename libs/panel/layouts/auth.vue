@@ -127,7 +127,11 @@ useHead({
   to { opacity: 0.9; transform: translateY(-1.5%); }
 }
 
-:global(.dark) .tide-auth {
+/*
+ * 深色：scoped 样式里 `:global(.dark) .x` 会被编译成裸 `.dark`（后半段被丢掉），
+ * 整个选择器必须放进 :global() 里，否则暗色下背景仍是浅色、白字不可读。
+ */
+:global(.dark .tide-auth) {
   background: linear-gradient(
     168deg,
     oklch(0.2 0.014 70) 0%,
@@ -136,19 +140,19 @@ useHead({
   );
 }
 
-:global(.dark) .tide-swell--warm {
+:global(.dark .tide-auth .tide-swell--warm) {
   background: radial-gradient(circle, oklch(0.5 0.08 70 / 0.28) 0%, transparent 65%);
 }
 
-:global(.dark) .tide-swell--sea {
+:global(.dark .tide-auth .tide-swell--sea) {
   background: radial-gradient(circle, oklch(0.45 0.07 230 / 0.3) 0%, transparent 65%);
 }
 
-:global(.dark) .tide-swell--sand {
+:global(.dark .tide-auth .tide-swell--sand) {
   background: radial-gradient(circle, oklch(0.48 0.05 90 / 0.22) 0%, transparent 65%);
 }
 
-:global(.dark) .tide-shore {
+:global(.dark .tide-auth .tide-shore) {
   background: linear-gradient(to top, oklch(0.35 0.05 225 / 0.25) 0%, transparent 100%);
 }
 

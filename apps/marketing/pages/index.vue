@@ -179,7 +179,8 @@ useHead({
   to { opacity: 0.9; transform: translateY(-1.5%); }
 }
 
-:global(.dark) .tide-landing {
+/* 深色：整个选择器必须放进 :global()，`:global(.dark) .x` 会被 scoped 编译成裸 `.dark` */
+:global(.dark .tide-landing) {
   background: linear-gradient(
     168deg,
     oklch(0.2 0.014 70) 0%,
@@ -188,19 +189,19 @@ useHead({
   );
 }
 
-:global(.dark) .tide-swell--warm {
+:global(.dark .tide-landing .tide-swell--warm) {
   background: radial-gradient(circle, oklch(0.5 0.08 70 / 0.28) 0%, transparent 65%);
 }
 
-:global(.dark) .tide-swell--sea {
+:global(.dark .tide-landing .tide-swell--sea) {
   background: radial-gradient(circle, oklch(0.45 0.07 230 / 0.3) 0%, transparent 65%);
 }
 
-:global(.dark) .tide-swell--sand {
+:global(.dark .tide-landing .tide-swell--sand) {
   background: radial-gradient(circle, oklch(0.48 0.05 90 / 0.22) 0%, transparent 65%);
 }
 
-:global(.dark) .tide-shore {
+:global(.dark .tide-landing .tide-shore) {
   background: linear-gradient(to top, oklch(0.35 0.05 225 / 0.25) 0%, transparent 100%);
 }
 
