@@ -2,8 +2,8 @@ import type { Locale } from './types'
 
 export const zhCN: Locale = {
   common: {
-    welcome: "欢迎使用全球达人情报系统",
-    siteName: "全球达人情报系统",
+    welcome: "欢迎来到听潮",
+    siteName: "听潮",
     login: "登录",
     signup: "注册",
     logout: "退出登录",
@@ -1904,60 +1904,144 @@ export const zhCN: Locale = {
   },
   kcs: {
     brand: {
-      title: "全球达人情报系统",
-      short: "达人情报",
-      runLabel: "种子批次 · 蒲公英夹具"
+      title: "听潮",
+      short: "听潮",
+      name: "听潮",
+      tagline: "听见影响力的下一次潮起。",
+      story: "世界从不会先给出答案，它总是先泛起一点声音。一条短视频、一次评论、一个刚被看见的创作者，最初都像远海里的一点涟漪。听潮，不追逐喧哗；我们倾听正在发生的改变。",
+      storyExcerpt: "世界从不会先给出答案，它总是先泛起一点声音。",
+      runLabel: "选人，分到项目。"
     },
     nav: {
       overview: "总览",
-      creators: "达人名单",
-      reviews: "AI 复核"
+      creators: "达人",
+      reviews: "风险复核",
+      workspaces: "工作区",
+      ops: "录入",
+      select: "选人",
+      monitor: "监测",
+      ingest: "拉数"
+    },
+    actions: {
+      login: "登录",
+      filter: "筛选",
+      sort: "排序",
+      assign: "分配",
+      publish: "发布",
+      export: "导出"
+    },
+    categories: {
+      collaborated: "合作过的",
+      neverCollaborated: "没合作过的"
+    },
+    states: {
+      empty: "潮水还没到这一岸。",
+      emptyFilter: "这组条件里，没有人上岸。",
+      error: "潮声断了一下。再试一次。",
+      denied: "进不去",
+      deniedBody: "这扇门，此刻不对你开。"
+    },
+    panel: {
+      signIn: "登录",
+      signInLead: "世界从不会先给出答案，它总是先泛起一点声音。",
+      email: "邮箱",
+      password: "密码",
+      enter: "进入",
+      loginError: "邮箱或口令对不上。再试一次。",
+      homeLead: "不必等浪潮抵岸。录入、选人、监测，都在同一片水声里。",
+      opsDesc: "建档、分类，再放到达人库里。",
+      selectDesc: "开项目、筛库、把人分过去。",
+      devDesc: "看任务还活着没有。",
+      openOps: "去录入",
+      openSelect: "去选人",
+      openDev: "去监测",
+      denied: "进不去",
+      deniedBody: "这扇门，此刻不对你开。",
+      opsHome: "录入",
+      createCreator: "录入达人",
+      newCreator: "达人入档",
+      displayName: "显示名",
+      followers: "粉丝",
+      quote: "报价",
+      avatar: "头像",
+      save: "保存",
+      publish: "发布",
+      confirmPublish: "确认发布",
+      collaborated: "合作过的",
+      neverCollaborated: "没合作过的",
+      scoreLocked: "分数锁着。页面改不了。",
+      draft: "草稿",
+      review: "待复核",
+      ready: "已清洗",
+      released: "已发布",
+      status: "状态",
+      recentBatches: "最近批次",
+      emptyBatches: "还没有一批进来。",
+      projects: "项目",
+      createProject: "新建项目",
+      projectName: "项目名",
+      note: "备注",
+      board: "项目上的人",
+      openLibrary: "从库里选",
+      pool: "达人库",
+      emptyPool: "潮水还没到这一岸。",
+      emptyFilter: "这组条件里，没有人上岸。",
+      filter: "筛选",
+      sort: "排序",
+      export: "导出",
+      error: "潮声断了一下。再试一次。",
+      retry: "再试一次",
+      assign: "分配",
+      confirmAssign: "确认分配",
+      health: "监测",
+      sqlOk: "库连得上",
+      jobs: "任务"
     },
     toolbar: {
       language: "语言",
       theme: "外观",
       themeLight: "浅色",
       themeDark: "深色",
-      themeSystem: "跟随系统",
-      ruleFirst: "规则排序，AI 看风险，人做确认。"
+      themeSystem: "跟着系统",
+      ruleFirst: "规则排潮序。AI 辨风险。人来确认。"
     },
     overview: {
-      eyebrow: "筛选台",
-      title: "本批按规则排名",
-      lead: "分数、等级、排名只来自规则引擎。AI 和人工都不写回这三项。",
+      eyebrow: "筛选",
+      title: "这一批，按规则排岸",
+      lead: "分数、等级、排名只来自规则。AI 和人都不写回这三项。",
       statCreators: "达人",
-      statTop50: "进入 AI 复核",
+      statTop50: "进入风险复核",
       statRecommend: "AI 推荐",
       statCautious: "AI 谨慎",
       statReject: "AI 不建议",
       gradeMix: "等级分布",
       nextAction: "打开名单",
-      emptyTitle: "还没有排名批次",
-      emptyBody: "导入蒲公英表后才会出分。这一刀用种子达人，方便把台面走通。"
+      emptyTitle: "还没有潮序",
+      emptyBody: "表进来以后，规则才会把人排上岸。"
     },
     creators: {
-      eyebrow: "名册",
-      title: "达人名单",
-      lead: "排名是规则顺序。昵称和小红书号保持原文。",
-      search: "筛选昵称或账号",
-      emptyTitle: "没有匹配的达人",
-      emptyBody: "清空筛选即可看到完整排名。",
+      eyebrow: "名单",
+      title: "达人",
+      lead: "排名是规则的顺序。昵称和小红书号保持原文。",
+      search: "筛昵称或账号",
+      emptyTitle: "没有对上的人",
+      emptyBody: "放下筛选，完整排名就在。",
       cols: {
         rank: "排名",
         creator: "达人",
         score: "分数",
         grade: "等级",
         fans: "粉丝",
-        ai: "AI 复核",
+        ai: "风险复核",
         manual: "人工"
       }
     },
     reviews: {
-      eyebrow: "风险层",
-      title: "AI 复核",
-      lead: "只解释名单前列。切语言只重绘文案，不重跑评分，也不再调模型。",
-      emptyTitle: "本批还没有 AI 复核",
-      emptyBody: "评分跑完后，Top 50 会出现说明。",
+      eyebrow: "风险",
+      title: "风险复核",
+      lead: "只解释前列。换语言只换文案，不重跑分数，也不再叫模型。",
+      emptyTitle: "这一批还没有复核",
+      emptyBody: "分数出来后，前列会出现说明。",
       source: {
         success: "模型",
         fallback: "模板兜底",
@@ -1978,14 +2062,14 @@ export const zhCN: Locale = {
       fields: {
         reason: "理由",
         risk: "风险说明",
-        alignment: "与规则对照"
+        alignment: "和规则对照"
       }
     },
     manual: {
       recommend: "推荐",
       reject: "不推荐",
-      pending: "待确认",
-      reviewed: "已复核",
+      pending: "先放一放",
+      reviewed: "已看过",
       none: "未标注"
     },
     exempt: {

@@ -2,9 +2,9 @@ import type { Locale } from './types'
 
 export const en: Locale = {
   common: {
-    welcome: "Welcome to Global Creator Intelligence",
-    siteName: "Global Creator Intelligence",
-    login: "Login",
+    welcome: "Welcome to 听潮",
+    siteName: "听潮",
+    login: "Sign in",
     signup: "Sign Up",
     logout: "Logout",
     profile: "Profile",
@@ -1897,60 +1897,144 @@ export const en: Locale = {
   },
   kcs: {
     brand: {
-      title: "Global Creator Intelligence",
-      short: "Creator Intel",
-      runLabel: "Seed run · PGY fixture"
+      title: "听潮",
+      short: "听潮",
+      name: "听潮",
+      tagline: "Hear the next swell of influence.",
+      story: "The world never answers first. It stirs — a short video, a comment, a creator just seen — ripples far offshore. 听潮 does not chase the noise. We listen for the change already underway.",
+      storyExcerpt: "The world never answers first. It always stirs — a sound, then a swell.",
+      runLabel: "Select people. Assign them to a project."
     },
     nav: {
       overview: "Overview",
       creators: "Creators",
-      reviews: "AI review"
+      reviews: "Risk review",
+      workspaces: "Workspaces",
+      ops: "Intake",
+      select: "Select",
+      monitor: "Monitor",
+      ingest: "Pull"
+    },
+    actions: {
+      login: "Sign in",
+      filter: "Filter",
+      sort: "Sort",
+      assign: "Assign",
+      publish: "Publish",
+      export: "Export"
+    },
+    categories: {
+      collaborated: "Worked with",
+      neverCollaborated: "Not yet"
+    },
+    states: {
+      empty: "Nothing has washed up here yet.",
+      emptyFilter: "No one comes ashore under these cuts.",
+      error: "The signal dropped. Try again.",
+      denied: "Closed",
+      deniedBody: "This door stays shut, for now."
+    },
+    panel: {
+      signIn: "Sign in",
+      signInLead: "The world never answers first. It always stirs — a sound, then a swell.",
+      email: "Email",
+      password: "Password",
+      enter: "Enter",
+      loginError: "That email or password doesn't land. Try again.",
+      homeLead: "You don't wait for the swell to hit the beach. Intake, select, and monitor share one waterline.",
+      opsDesc: "File people, sort them, publish them to the pool.",
+      selectDesc: "Open a project, cut the pool, assign.",
+      devDesc: "See whether the jobs are still alive.",
+      openOps: "Go to intake",
+      openSelect: "Go to select",
+      openDev: "Go to monitor",
+      denied: "Closed",
+      deniedBody: "This door stays shut, for now.",
+      opsHome: "Intake",
+      createCreator: "Add a creator",
+      newCreator: "Creator file",
+      displayName: "Display name",
+      followers: "Followers",
+      quote: "Quote",
+      avatar: "Avatar",
+      save: "Save",
+      publish: "Publish",
+      confirmPublish: "Confirm publish",
+      collaborated: "Worked with",
+      neverCollaborated: "Not yet",
+      scoreLocked: "Scores stay locked. This page cannot rewrite them.",
+      draft: "Draft",
+      review: "To review",
+      ready: "Cleaned",
+      released: "Published",
+      status: "Status",
+      recentBatches: "Recent batches",
+      emptyBatches: "No batch has come in.",
+      projects: "Projects",
+      createProject: "New project",
+      projectName: "Project name",
+      note: "Note",
+      board: "People on the project",
+      openLibrary: "Pick from the pool",
+      pool: "Creator pool",
+      emptyPool: "Nothing has washed up here yet.",
+      emptyFilter: "No one comes ashore under these cuts.",
+      filter: "Filter",
+      sort: "Sort",
+      export: "Export",
+      error: "The signal dropped. Try again.",
+      retry: "Try again",
+      assign: "Assign",
+      confirmAssign: "Confirm assign",
+      health: "Monitor",
+      sqlOk: "The store is reachable",
+      jobs: "Jobs"
     },
     toolbar: {
       language: "Language",
       theme: "Appearance",
       themeLight: "Light",
       themeDark: "Dark",
-      themeSystem: "System",
-      ruleFirst: "Rules rank. AI reviews risk. People confirm."
+      themeSystem: "Follow the system",
+      ruleFirst: "Rules rank the swell. AI reads risk. People confirm."
     },
     overview: {
-      eyebrow: "Screening desk",
-      title: "This batch, ranked by rules",
-      lead: "Scores, grades, and ranks come from the rule engine. AI and humans do not write them.",
+      eyebrow: "Filter",
+      title: "This batch, ranked by the rules",
+      lead: "Scores, grades, and ranks come from the rules. AI and people do not write them back.",
       statCreators: "Creators",
-      statTop50: "In AI review",
+      statTop50: "In risk review",
       statRecommend: "AI recommend",
       statCautious: "AI cautious",
-      statReject: "AI reject",
+      statReject: "AI no",
       gradeMix: "Grade mix",
-      nextAction: "Open the ledger",
-      emptyTitle: "No ranked batch yet",
-      emptyBody: "Load a PGY workbook to produce scores. This slice uses seed creators so the desk can be walked."
+      nextAction: "Open the list",
+      emptyTitle: "No ranking yet",
+      emptyBody: "Once a sheet comes in, the rules put people on the shore."
     },
     creators: {
-      eyebrow: "Ledger",
-      title: "Creator list",
-      lead: "Rank is the rule order. Nicknames and Xiaohongshu IDs stay in source language.",
+      eyebrow: "List",
+      title: "Creators",
+      lead: "Rank is the rule order. Nicknames and Xiaohongshu IDs stay as written.",
       search: "Filter nickname or ID",
-      emptyTitle: "No creators match",
-      emptyBody: "Clear the filter to see the ranked list.",
+      emptyTitle: "No one matches",
+      emptyBody: "Clear the filter and the ranked list is there.",
       cols: {
         rank: "Rank",
         creator: "Creator",
         score: "Score",
         grade: "Grade",
-        fans: "Fans",
-        ai: "AI review",
+        fans: "Followers",
+        ai: "Risk review",
         manual: "Human"
       }
     },
     reviews: {
-      eyebrow: "Risk layer",
-      title: "AI review",
-      lead: "Top-of-list explanations only. Changing language re-renders copy; it does not re-score or re-call the model.",
-      emptyTitle: "No AI reviews on this run",
-      emptyBody: "Reviews appear for the current Top 50 after a scoring run.",
+      eyebrow: "Risk",
+      title: "Risk review",
+      lead: "Top-of-list explanations only. Change language and the copy redraws. The score does not rerun. The model is not called again.",
+      emptyTitle: "No review on this batch yet",
+      emptyBody: "After scores land, notes appear for the front of the list.",
       source: {
         success: "Model",
         fallback: "Template fallback",
@@ -1960,25 +2044,25 @@ export const en: Locale = {
       decision: {
         recommend: "Recommend",
         cautious: "Cautious",
-        reject: "Reject"
+        reject: "No"
       },
       alignment: {
         hard_conflict: "Hard conflict",
-        soft_divergence: "Soft divergence",
-        consistent: "Consistent",
+        soft_divergence: "Soft drift",
+        consistent: "Aligned",
         unknown: "Unknown"
       },
       fields: {
         reason: "Why",
         risk: "Risk note",
-        alignment: "Vs rules"
+        alignment: "Against the rules"
       }
     },
     manual: {
       recommend: "Recommend",
-      reject: "Do not recommend",
+      reject: "Don't recommend",
       pending: "Hold",
-      reviewed: "Reviewed",
+      reviewed: "Seen",
       none: "Unmarked"
     },
     exempt: {
