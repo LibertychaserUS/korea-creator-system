@@ -2,15 +2,15 @@
 
 > 项目：`korea-creator-system`。
 > 三件套都是**技术名**，不是产品品牌，也 **不是** Harness.io。
-> 细则（目录、初始化命令、三者如何组装）只写在 [`../product/TINYSHIP-REBUILD.md`](../product/TINYSHIP-REBUILD.md)。那份文件由研究代理落地；未落地前不要另起一套栈故事。
+> 细则 SSOT：[`../product/TINYSHIP-REBUILD.md`](../product/TINYSHIP-REBUILD.md)（已落地）。不要在本文件另写一套命令。
 
 ## 必选（Now / Next，不是 Later）
 
 | 名称 | 本仓库怎么用 |
 |------|----------------|
-| **tinyship** | 绿地应用宿主 / 交付框架。新 UI 与运行入口只落在 tinyship 树上。 |
-| **forge** | 必须接入第一刀。脚手架、生成或仓库约定以 `TINYSHIP-REBUILD.md` 为准；禁止「以后再加」。 |
-| **overlay** | 必须接入第一刀。覆盖层/扩展层以 `TINYSHIP-REBUILD.md` 为准；禁止「以后再加」。 |
+| **tinyship** | 应用宿主。TinyShipCN 模板落在**仓库根**（`pnpm dev:nuxt`）。官方仓 404 时用本机 `v2.2.0` / `54ddc7a`。 |
+| **forge** | LibertychaserUS/AIOps 的 GitHub 落地门：`python -m forge check` / `submit`。薄 `forge.yaml`。不 vendor、不 live-apply、不合入。 |
+| **overlay** | 同一 AIOps 仓的用例门：`python -m overlay validate|cover|run`。薄 `overlay.yaml` + `inbox/` + `suites/` + `invariants.yaml`。CI 只跑 `active`。 |
 
 缺任一，`KCS-TS-01` 及其依赖票视为失败。不要用手写 FastAPI 顶替这三件套。
 

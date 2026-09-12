@@ -40,7 +40,7 @@
 | 产品意图 / 范围 | `docs/product/*` `docs/pm/*` | 把编号 `docs/00_*`–`10_*` 改成新栈说明书；把 `docs/` 搬进 archive |
 | 实现 | tinyship + forge + overlay（见 `STACK.md` / `TINYSHIP-REBUILD.md`） | 新功能打进 `archive/`；只用其中一件；手写 FastAPI 顶替 |
 | 对照口径 | 只读 `archive/`（跟墓碑）+ `docs/03` `docs/04` | 删除 archive、续写旧页 |
-| 脚手架 | 等 `TINYSHIP-REBUILD.md` | 第二套自创框架 |
+| 脚手架 | 按已落地的 `TINYSHIP-REBUILD.md`；先等人批 §9 | 第二套自创框架；vendor `forge/` `overlay/`；live-apply |
 
 ## 文档同步
 
