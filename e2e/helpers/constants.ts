@@ -7,7 +7,12 @@ loadEnv({ path: resolve(__dirname, '../.env') });
 
 export const LOCALE = process.env.E2E_LOCALE || 'zh-CN';
 
-export const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:7001';
+export const APP_URLS = {
+  marketing: process.env.E2E_MARKETING_URL || 'http://localhost:7000',
+  ops: process.env.E2E_OPS_URL || 'http://localhost:7002',
+  dev: process.env.E2E_DEV_URL || 'http://localhost:7003',
+  select: process.env.E2E_SELECT_URL || 'http://localhost:7004',
+} as const;
 
 export const API_URL = process.env.E2E_API_URL || 'http://localhost:7100';
 
@@ -27,16 +32,20 @@ export const USERS = Object.fromEntries(
   ]),
 ) as Record<SeedRole, { role: SeedRole; email: string; name: string; password: string }>;
 
+function appPage(app: keyof typeof APP_URLS, path = '') {
+  return `${APP_URLS[app].replace(/\/$/, '')}/${LOCALE}${path}`;
+}
+
 export const PAGES = {
-  login: `/${LOCALE}/login`,
-  ops: `/${LOCALE}/ops`,
-  opsNew: `/${LOCALE}/ops/creators/new`,
-  select: `/${LOCALE}/select`,
-  selectNew: `/${LOCALE}/select/projects/new`,
-  selectPool: `/${LOCALE}/select/pool`,
-  dev: `/${LOCALE}/dev`,
-  devJobs: `/${LOCALE}/dev/jobs`,
-  home: `/${LOCALE}`,
+  login: appPage('marketing', '/login'),
+  ops: appPage('ops'),
+  opsNew: appPage('ops', '/creators/new'),
+  select: appPage('select'),
+  selectNew: appPage('select', '/projects/new'),
+  selectPool: appPage('select'),
+  dev: appPage('dev'),
+  devJobs: appPage('dev', '/jobs'),
+  home: appPage('marketing'),
 } as const;
 
 export const API = {

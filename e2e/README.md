@@ -1,6 +1,6 @@
 # KCS product e2e (Playwright)
 
-Browser journeys for the **composed** stack: `apps/web` + `apps/api` + **PostgreSQL** + **S3/MinIO**.
+Browser journeys for the four workspace apps (`marketing`, `ops`, `dev`, `select`) + `apps/api` + **PostgreSQL** + **S3/MinIO**.
 
 HTTP-only TDD is `pnpm test:blackbox`. TinyShip SaaS catalog is `pnpm test:e2e:tinyship`.
 
@@ -14,9 +14,8 @@ pnpm exec playwright install chromium
 # infra (same compose fullstack uses)
 docker compose up -d postgres minio minio-init
 
-# web :7001 + api :7100 (when they exist)
-# docker compose --profile full up -d
-# or: pnpm dev:nuxt  /  pnpm --filter @kcs/api dev
+# marketing :7000, ops :7002, dev :7003, select :7004, api :7100
+# Start the four Nuxt apps and API in separate terminals.
 
 pnpm test:e2e:seed
 pnpm test:e2e
@@ -51,9 +50,9 @@ Isolated ports (55432 / 59000) if you must not touch root compose: `docker compo
 | `specs/05-image-upload.spec.ts` | Avatar in MinIO; URL works |
 | `specs/06-theme-i18n.spec.ts` | Light/dark + zh-CN/en/ko on Chromium |
 
-## Last run (2026-09-12)
-
-Chromium against first-slice Nuxt `:7001` (no `/login` / `/ops` / `/select` yet). Compose Postgres empty (`user` missing). **7/7 RED** — correct TDD fail.
+Each app has its own origin. Configure overrides with `E2E_MARKETING_URL`, `E2E_OPS_URL`,
+`E2E_DEV_URL`, and `E2E_SELECT_URL`; API and backing services retain their existing
+`E2E_API_URL`, `E2E_DATABASE_URL`, and `E2E_S3_*` variables.
 
 ## Hooks
 
