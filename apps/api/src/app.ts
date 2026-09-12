@@ -84,12 +84,16 @@ function hasCollabSql() {
 
 export function createApp(env: AppEnv) {
   const app = new Hono()
-  const origin = process.env.WEB_ORIGIN || 'http://localhost:7001'
+  // 四端 + legacy nuxt-app 各占一个端口，浏览器直连 API，WEB_ORIGIN 允许逗号分隔多个来源
+  const origins = (process.env.WEB_ORIGIN || [7000, 7001, 7002, 7003, 7004, 7005].map((p) => `http://localhost:${p}`).join(','))
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
 
   app.use(
     '*',
     cors({
-      origin,
+      origin: origins,
       credentials: true,
       allowHeaders: ['Authorization', 'Content-Type'],
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
