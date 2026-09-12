@@ -155,8 +155,13 @@ const STATEMENTS = [
     role text NOT NULL,
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  // seed.ts 会写这些列，空库首次启动必须先补齐
+  `ALTER TABLE orgs ADD COLUMN IF NOT EXISTS budget_note text`,
   `ALTER TABLE creators ADD COLUMN IF NOT EXISTS avatar_key text`,
   `ALTER TABLE creators ADD COLUMN IF NOT EXISTS xhs_id text`,
+  `ALTER TABLE creators ADD COLUMN IF NOT EXISTS er numeric(5,2)`,
+  `ALTER TABLE creators ADD COLUMN IF NOT EXISTS locked_final numeric(5,1)`,
+  `ALTER TABLE assignments ADD COLUMN IF NOT EXISTS note text`,
   `ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS file_name text`,
   `ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS batch_name text`,
   `ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS source_rows integer`,
