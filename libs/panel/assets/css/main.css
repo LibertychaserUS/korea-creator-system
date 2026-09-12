@@ -2,6 +2,15 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 @source "../../node_modules/streamdown-vue/dist/*.js";
+/* 四端的 Vite root 是 apps/<app>，本层在 root 之外不会被自动扫描，必须显式登记，
+   否则生产构建缺失 Button/Sidebar 等组件用到的工具类 */
+@source "../../components";
+@source "../../layouts";
+@source "../../pages";
+@source "../../composables";
+@source "../../plugins";
+@source "../../app.vue";
+@source "../../../ui/**/*.{ts,vue}";
 
 /* Import shared UI styles - same as Next.js */
 @import "../../../../libs/ui/styles/index.css";
