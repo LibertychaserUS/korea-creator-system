@@ -128,6 +128,18 @@ export default defineNuxtConfig({
     '@kcs/contract': resolve(rootDir, 'packages/kcs-contract/src/index.ts'),
   },
 
+  hooks: {
+    // Nuxt 4 传统（非 environments）模式下，SSR vite server 即使 hmr:false
+    // 也会绑定 24678（vite 的关闭开关是 server.ws 而非 hmr）。四个端同机
+    // 齐开必然撞端口；SSR 侧模块热更走 vite-node 的 unix socket，这个 WS
+    // 用不到，只对 SSR 配置关掉，客户端 HMR 不受影响。
+    'vite:extendConfig'(config, { isServer }) {
+      if (!isServer) return
+      const cfg = config as { server?: Record<string, unknown> }
+      cfg.server = { ...cfg.server, ws: false }
+    },
+  },
+
   build: {
     transpile: ['pg', 'drizzle-orm'],
   },

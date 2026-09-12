@@ -5,11 +5,6 @@ export default defineNuxtConfig({
     // 7001 stays with the legacy TinyShip panel (apps/nuxt-app, e2e contract host).
     port: 7004,
   },
-  vite: {
-    server: {
-      hmr: { port: 7404 },
-    },
-  },
   appConfig: {
     kcs: {
       key: 'select',

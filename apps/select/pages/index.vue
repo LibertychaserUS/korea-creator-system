@@ -53,7 +53,13 @@
               :data-creator-key="row.creatorKey"
             >
               <TableCell>
-                <input v-model="picked" data-testid="row-pool-check" type="checkbox" :value="row.id" />
+                <input
+                  v-model="picked"
+                  data-testid="row-pool-check"
+                  type="checkbox"
+                  :value="row.id"
+                  class="h-4 w-4 rounded border-input accent-primary"
+                />
               </TableCell>
               <TableCell>{{ row.rank || '—' }}</TableCell>
               <TableCell>{{ row.displayName }}</TableCell>
