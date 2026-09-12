@@ -53,7 +53,13 @@
               :data-creator-key="row.creatorKey"
             >
               <TableCell>
-                <input v-model="picked" data-testid="row-pool-check" type="checkbox" :value="row.id" />
+                <input
+                  v-model="picked"
+                  data-testid="row-pool-check"
+                  type="checkbox"
+                  :value="row.id"
+                  class="h-4 w-4 rounded border-input accent-primary"
+                />
               </TableCell>
               <TableCell>{{ row.rank || '—' }}</TableCell>
               <TableCell>{{ row.displayName }}</TableCell>
@@ -129,7 +135,7 @@ async function assign() {
     body: JSON.stringify({ creatorIds: picked.value }),
   })
   confirming.value = false
-  await navigateTo(localePath(`/select/projects/${project}`))
+  await navigateTo(localePath(`/projects/${project}`))
 }
 
 onMounted(load)

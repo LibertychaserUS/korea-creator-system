@@ -2,7 +2,7 @@
   <PanelPage testid="screen-a-home" :title="t('kcs.panel.opsHome')" :eyebrow="t('kcs.nav.ops')">
     <template #actions>
       <Button as-child>
-        <NuxtLink data-testid="btn-create-creator" :to="localePath('/ops/creators/new')">
+        <NuxtLink data-testid="btn-create-creator" :to="localePath('/creators/new')">
           {{ t('kcs.panel.createCreator') }}
         </NuxtLink>
       </Button>

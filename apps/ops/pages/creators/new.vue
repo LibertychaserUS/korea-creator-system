@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { coopPressed, selectCoop, type CoopSlug } from '@/utils/coop-category'
+import { coopPressed, selectCoop, type CoopSlug } from '@libs/panel/utils/coop-category'
 
 const { t } = useI18n()
 const { request } = useApi()

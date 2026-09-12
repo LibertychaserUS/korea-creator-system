@@ -1,7 +1,7 @@
 // Theme management module for consistent theme handling across the application
 // Built on shadcn/ui theme system with 5 color schemes, light/dark modes, and tweakcn.com integration
 export type Theme = 'light' | 'dark'
-export type ColorScheme = 'default' | 'claude' | 'cosmic-night' | 'modern-minimal' | 'ocean-breeze' | 'perplexity'
+export type ColorScheme = 'default' | 'claude' | 'cosmic-night' | 'modern-minimal' | 'ocean-breeze' | 'perplexity' | 'tide'
 
 export interface ThemeState {
   theme: Theme
@@ -17,7 +17,8 @@ export const COLOR_SCHEMES: readonly ColorScheme[] = [
   'cosmic-night',
   'modern-minimal',
   'ocean-breeze',
-  'perplexity'
+  'perplexity',
+  'tide'
 ] as const
 
 // Theme class mappings
@@ -33,6 +34,7 @@ export const COLOR_SCHEME_CLASSES = {
   'modern-minimal': 'theme-modern-minimal',
   'ocean-breeze': 'theme-ocean-breeze',
   perplexity: 'theme-perplexity',
+  tide: 'theme-tide',
 } as const
 
 // All possible theme-related classes for cleanup
@@ -44,7 +46,8 @@ export const ALL_THEME_CLASSES = [
   'theme-cosmic-night', 
   'theme-modern-minimal',
   'theme-ocean-breeze',
-  'theme-perplexity'
+  'theme-perplexity',
+  'theme-tide'
 ] as const
 
 // shadcn/ui theme configuration with UI display information
@@ -73,6 +76,10 @@ export const THEME_CONFIG = {
   'ocean-breeze': {
     name: 'Ocean Breeze',
     color: '#10b981' // oklch(0.7227 0.1920 149.5793) - Ocean teal-green
+  },
+  tide: {
+    name: 'Tide',
+    color: '#2f5f8f' // oklch(0.45 0.085 235) - Deep sea blue (听潮 product scheme)
   }
 } as const
 

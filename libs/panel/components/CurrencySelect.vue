@@ -25,7 +25,7 @@
 
 <script setup lang="ts">
 import { CheckIcon, CoinsIcon } from 'lucide-vue-next'
-import { DISPLAY_CURRENCIES, type DisplayCurrency } from '@/composables/useCurrency'
+import { DISPLAY_CURRENCIES, type DisplayCurrency } from '../composables/useCurrency'
 
 const { t } = useI18n()
 const { currency, setCurrency } = useCurrency()
