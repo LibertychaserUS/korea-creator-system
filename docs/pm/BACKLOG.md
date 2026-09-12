@@ -6,7 +6,7 @@
 
 全局约束（每张票默认带上）：
 
-- 技术名 `korea-creator-system`；UI 显示「全球达人情报系统」。
+- 技术名 `korea-creator-system`；UI 显示「听潮」。
 - 新栈必用 **tinyship + forge + overlay**。命令与目录只抄 `TINYSHIP-REBUILD.md`，不要发明 API。
 - **产品语言**：`zh-CN` / `en` / `ko` 从第一刀起。第一刀必须有语言切换，禁止中文-only 宿主。实现只走模板 `libs/i18n` + `@nuxtjs/i18n`（见 `TINYSHIP-REBUILD.md` §5.1）。
 - **规则排序 / 风险复核 / 人工确认**；AI 与人工不改 `score` / `grade` / `rank`。切语言也不改分。

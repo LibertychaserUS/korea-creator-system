@@ -1,4 +1,4 @@
-# 全球达人情报系统
+# 听潮
 
 仓库名：`korea-creator-system`。Nuxt 全栈（tinyship 宿主）。规则排序，AI 看风险，人做确认。
 
@@ -23,6 +23,21 @@ pnpm dev:nuxt
 - `?lang=ko` 会落到前缀路由
 - http://localhost:7001/api/health
 - http://localhost:7001/api/kcs/creators
+
+## 端口
+
+四个独立听潮应用（共享 `libs/panel` 层）加遗留 TinyShip 面板：
+
+| 端口 | 应用 | 说明 |
+|------|------|------|
+| 7000 | `apps/marketing` | 宣传页 + 登录宿主（`pnpm --filter @kcs/app-marketing dev`） |
+| 7001 | `apps/nuxt-app` | 遗留 TinyShip 面板，e2e 合同宿主（`pnpm dev:nuxt`） |
+| 7002 | `apps/ops` | 后台录入（`pnpm --filter @kcs/app-ops dev`） |
+| 7003 | `apps/dev` | 监控面板（`pnpm --filter @kcs/app-dev dev`） |
+| 7004 | `apps/select` | 前台选人（`pnpm --filter @kcs/app-select dev`） |
+| 7100 | `apps/api` | Hono API（`pnpm dev:api`） |
+
+`apps/web`（纸面台账）已退役，不要再起。登录走 marketing（7000）的 `/{locale}/login`，按角色落到 select/ops/dev。
 
 语言 cookie：`NEXT_LOCALE`。外观：浅色 / 深色 / 跟随系统（`kcs-ui-theme-pref`）。
 

@@ -1,6 +1,6 @@
 # 路线图
 
-> 项目：`korea-creator-system`。产品显示名：全球达人情报系统。
+> 项目：`korea-creator-system`。产品显示名：听潮。
 > 实现面：**tinyship + forge + overlay** 绿地（三件套 Now 必用，见 [`STACK.md`](./STACK.md)）。
 > 旧 FastAPI Demo **冻结在 `archive/`**（含墓碑），不在 Now/Next 施工列。
 > `docs/` **留下**：历史口径与产品意图的权威处（编号文档 + `product/` + `pm/`）。

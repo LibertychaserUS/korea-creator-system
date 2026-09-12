@@ -1,7 +1,7 @@
 # 产品愿景
 
 > 项目标识：`korea-creator-system`（仓库、分支、工单前缀一律用这个）。
-> 产品显示名：全球达人情报系统。
+> 产品显示名：听潮。
 > 历史计划名：韩国品牌小红书达人 AI 筛选 Demo（V1 计划书，勿当仓库名）。
 > 实现目标：**tinyship + forge + overlay** 绿地重建（三件套必用）。旧 Demo 在 `archive/`。
 > 栈硬约束：[`../pm/STACK.md`](../pm/STACK.md)。细则：[`TINYSHIP-REBUILD.md`](./TINYSHIP-REBUILD.md)。

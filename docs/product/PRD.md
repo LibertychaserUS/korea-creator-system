@@ -1,4 +1,4 @@
-# PRD — 全球达人情报系统（挑好人 · 分到项目）
+# PRD — 听潮（挑好人 · 分到项目）
 
 > **给后续 agent：** 出图、写页、拆票前先读本文。流程走 [`UX-FLOWS.md`](./UX-FLOWS.md)。领屏用 [`SCREEN-INVENTORY.md`](./SCREEN-INVENTORY.md)。实体与不变量以 [`DOMAIN.md`](./DOMAIN.md) 为准。
 > 与 `VISION.md`、`TINYSHIP-REBUILD.md`、`docs/00_*`–`10_*`、`archive/` 冲突时，**以本四件套为准**。那些是旧 Demo 或宿主说明，不是本产品作业定义。
