@@ -1,6 +1,6 @@
 # Tinyship + Forge + Overlay 重建说明
 
-> 项目标识：`korea-creator-system`。产品显示名：全球达人情报系统。
+> 项目标识：`korea-creator-system`。产品显示名：听潮。
 > 本文件是**实现栈 SSOT**。产品意图在 `VISION.md` / `PRD.md` / `DOMAIN.md`。
 > 三件套都是技术名，不是产品品牌，也 **不是** Harness.io。
 > **设计已写、实现未开始。** 用户批准「必须批准」一节之前，不要导入代码、不要跑 setup 向导、不要覆盖 `docs/` / `archive/`。
@@ -12,7 +12,7 @@
 
 ## 1. 三件套分别是什么、在哪
 
-本机与账号上同名项目很多。下面是**本用户实际在用的那一套**，以及为什么丢掉其它同名物。
+同名项目很多。下面是本仓采用的那一套，以及为什么丢掉其它同名物。
 
 ### 1.1 tinyship — 应用宿主 / 交付框架
 
@@ -21,7 +21,7 @@
 | 是什么 | TinyShip：面向国内+国际 SaaS 的 **pnpm monorepo 起始套件**。三框架（Next / Nuxt / TanStack Start）+ Better-Auth + Drizzle + CASL + i18n + `libs/ai`（含 DeepSeek）+ 存储。文档：[docs.tinyship.cn](https://docs.tinyship.cn/) |
 | 官方仓 | `https://github.com/TinyshipCN/tinyship`（未登录 / 无权限时 API **404**，不能当公开依赖） |
 | 技能仓 | 公开：`https://github.com/TinyshipCN/tinyship-skills`。安装：`npx skills add TinyshipCN/tinyship-skills`（须在**已 clone 的 TinyShip 目录**里跑） |
-| 本机 | **没有**独立 `tinyship/` clone。本用户真正跑过的是 `/Users/nihao/Documents/Ascendia-code`：`origin` = `LibertychaserUS/Ascendia`，`upstream` = `TinyshipCN/tinyship`，冻结过 `v2.2.0` / `54ddc7a87801005b4b88486c11ed82b539954779` |
+| 本机对照 | 可用旁路 TinyShip 树（例如 Ascendia 仓，`origin` = `LibertychaserUS/Ascendia`，`upstream` = `TinyshipCN/tinyship`），冻结过 `v2.2.0` / `54ddc7a87801005b4b88486c11ed82b539954779`。没有独立 `tinyship/` clone 也可以。 |
 | 公开快照 | `Chen-Taos/tinyship-main`（非官方，只作对照） |
 
 **为什么选这个，不选别的**
@@ -42,7 +42,7 @@ cd tinyship
 2. 本机无 GitHub 权限时，从已验证对象库取出 **v2.2.0**（Ascendia 已有该 commit，树根 `package.json` 的 `name` 是 `tinyship`）：
 
 ```text
-git -C /Users/nihao/Documents/Ascendia-code archive --format=tar 54ddc7a | tar -x -C /tmp/tinyship-v220
+git -C /path/to/tinyship-or-ascendia archive --format=tar 54ddc7a | tar -x -C /tmp/tinyship-v220
 ```
 
 3. 交互向导（`tinyship-setup`）：**逐步问人，禁止代选**。前提 Node `>= 22.20.0`、pnpm `>= 9`。
@@ -69,7 +69,7 @@ openssl rand -hex 32   # 写入 BETTER_AUTH_SECRET
 |----|-----|
 | 是什么 | **Forge**：开发侧本地门 + 代推 draft PR。管谁能推、PR 落到哪条保护分支、哪些路径不能改、哪些 **CI job 名**必须绿。**不合入。不写 CODEOWNERS / AGENTS.md / workflows。** |
 | 工具仓 | 一个仓两件产品：[`LibertychaserUS/AIOps`](https://github.com/LibertychaserUS/AIOps)。中文权威：`README.zh-CN.md`。CLI 权威：`docs/cli.md`（由 `--help` 生成，禁止在别的文档手抄「完整子命令百科」） |
-| 本机 | 产品用法在 `/Users/nihao/learningguideportal/`（已有薄 `forge.yaml` + `.agents/skills/use-forge`）。旧草稿 `/Users/nihao/Documents/三千五线上实习-LG/AIOps` 仍是「initialized, no runner」——**不要当现行工具** |
+| 本机对照 | 产品用法看已接薄 `forge.yaml` + `.agents/skills/use-forge` 的工作本。未跑 runner 的旧 AIOps 草稿不要当现行工具。 |
 | 技能 | 工作本 `skills/use-forge/SKILL.md`。Learning Guide 本地副本 pin 的是 `overlay-v1.0.1`；工作本 `main` 目标是 `overlay-v2.0.0` / `forge-v1.1.x` |
 
 **真实 CLI**（`python -m forge --help`）：
@@ -117,7 +117,7 @@ openssl rand -hex 32   # 写入 BETTER_AUTH_SECRET
 
 ### 1.4 丢掉的同名物（避免接错）
 
-- 技能目录 `~/.agents/skills`、`~/.claude/skills`、`~/.cursor/skills`、`~/.cursor/plugins`：**没有**名为 forge/overlay/tinyship 的独立 skill 包。本用户的 forge/overlay skill 在 **AIOps 工作本**和 **LearningGuidePortal** 里。
+- 技能目录 `~/.agents/skills`、`~/.claude/skills`、`~/.cursor/skills`、`~/.cursor/plugins`：**没有**名为 forge/overlay/tinyship 的独立 skill 包。forge/overlay skill 在 **AIOps 工作本**（及任何已 pin 的 Learning Guide 副本）里，不在全局 skill 目录。
 - `LibertychaserUS` / `First-Light-TechHK` 名下没有叫 `tinyship` 的仓。
 - First-Light 空 `AIOps` 仓：官方 README 写明不要用。
 - Harness.io：禁止。本仓库 harness = `AGENTS.md` + superpowers + writing-for-agents + writing-plans。
@@ -184,7 +184,7 @@ CPython **3.12+**。不要 pin 浮动 `main`。
 |------|------|------|----------|
 | AIOps pin | `overlay-v2.0.0` + `forge-v1.1.1`（工作本 `docs/STATE.md` 已发布 tag） | Learning Guide 正在用的 `overlay-v1.0.1` / `forge-v1.0.1`（仍有 `draft`/`armed`） | 是。v2 套件 `status` 只有 active/blocked |
 | TinyShip 基线 | 能 clone 官方仓则用当时 **已发布 tag**；否则本机 `v2.2.0` / `54ddc7a` | `Chen-Taos/tinyship-main` 仅应急对照 | 是 |
-| 产品框架 | **Nuxt**（`pnpm dev:nuxt`）。本用户 Ascendia Phase 1 已验证这条线；不做三端 parity | Next / TanStack | 是。`tinyship-setup` 禁止代选 |
+| 产品框架 | **Nuxt**（`pnpm dev:nuxt`）。Ascendia Phase 1 已验证这条线；不做三端 parity | Next / TanStack | 是。`tinyship-setup` 禁止代选 |
 | 数据库 | MVP **SQLite**（`DB_DIALECT=sqlite`，`mkdir -p data`） | 生产再 pg | 是 |
 | 支付 / 积分 | MVP **不用** | — | 默认 |
 | live `forge apply` | **不做**（与 Learning Guide 相同） | 以后 Ops | 默认 |
@@ -209,7 +209,7 @@ forge.yaml overlay.yaml inbox/ suites/ invariants.yaml
 # 2) 拷进本仓根，排除会打碎文档/归档的路径：
 rsync -a --exclude docs --exclude archive --exclude .git \
   --exclude 'docs/**' \
-  /tmp/tinyship-src/ /Users/nihao/korea-creator-system/
+  /tmp/tinyship-src/ /path/to/korea-creator-system/
 # 3) 若 tinyship 自带 docs/user-guide，放到 docs/tinyship-upstream/，不要覆盖 docs/00_* 或 docs/product/
 # 4) 根 AGENTS.md：保留产品规则，再粘贴工具仓 forge/agent-policy.md 条文（文本）
 # 5) npx skills add TinyshipCN/tinyship-skills
@@ -242,7 +242,7 @@ Tinyship 侧复用：`libs/ai`（`DEEPSEEK_API_KEY`、`createAIHandler({ provide
 
 ## 5.1 产品 i18n（硬约束；抄真实模板，禁止自造 API）
 
-对照本：本机 TinyShip / Ascendia 冻结点 `v2.2.0` / `54ddc7a`，树在 `/Users/nihao/Documents/Ascendia-code`。权威说明：该树 `libs/i18n/README.md`、`libs/i18n/AGENTS.md`，以及 [docs.tinyship.cn 基础配置](https://docs.tinyship.cn/zh-CN/user-guide/basic-config)。**官方模板只自带 `en` + `zh-CN`。** 本产品必须在同一套登记表上**扩 `ko`**，不要另写一套字典或 FastAPI `?lang=` 引擎。
+对照本：TinyShip / Ascendia 冻结点 `v2.2.0` / `54ddc7a`。权威说明：该树 `libs/i18n/README.md`、`libs/i18n/AGENTS.md`，以及 [docs.tinyship.cn 基础配置](https://docs.tinyship.cn/zh-CN/user-guide/basic-config)。**官方模板只自带 `en` + `zh-CN`。** 本产品必须在同一套登记表上**扩 `ko`**，不要另写一套字典或 FastAPI `?lang=` 引擎。
 
 ### 模板里真实怎么做（Nuxt 线）
 
@@ -299,7 +299,7 @@ AI 自然语言（Top50 说明）是**展示层**翻译：分析一次，切语�
 1. `config.app.i18n.locales` 含 `en` / `zh-CN` / `ko`；默认 `zh-CN`。
 2. 顶栏能切三种语言；刷新后仍在所选语言。
 3. `/zh-CN`、`/en`、`/ko` 都能打开；`?lang=ko`（及 zh-CN / en）能落到对应前缀。
-4. 产品显示名「全球达人情报系统」及宿主可见 chrome（导航/按钮/空态）走 `t()`，三语文件都有 key；没有中文-only 宿主。
+4. 产品显示名「听潮」及宿主可见 chrome（导航/按钮/空态）走 `t()`，三语文件都有 key；没有中文-only 宿主。
 5. 未从 `archive/` 拷 `static/app.js` 字典。未自造第二套 i18n。
 
 ---
