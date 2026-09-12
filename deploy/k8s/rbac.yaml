@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kcs-api
+  namespace: kcs
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kcs-web
+  namespace: kcs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kcs-api-read
+  namespace: kcs
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    resourceNames: ["kcs-api"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kcs-api-read
+  namespace: kcs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kcs-api-read
+subjects:
+  - kind: ServiceAccount
+    name: kcs-api
+    namespace: kcs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kcs-web-none
+  namespace: kcs
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kcs-web-none
+  namespace: kcs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kcs-web-none
+subjects:
+  - kind: ServiceAccount
+    name: kcs-web
+    namespace: kcs

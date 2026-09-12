@@ -1,0 +1,29 @@
+{
+  "name": "@kcs/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "test": "vitest run",
+    "seed": "tsx src/seed-cli.ts",
+    "migrate": "tsx src/migrate-cli.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
+    "@hono/node-server": "^1.14.1",
+    "@kcs/contract": "workspace:*",
+    "drizzle-orm": "^0.40.1",
+    "hono": "^4.7.5",
+    "pg": "^8.14.1",
+    "zod": "4.2.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "3.0.9"
+  }
+}

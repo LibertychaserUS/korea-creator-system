@@ -1,63 +1,94 @@
-version: '3.8'
-
 services:
-  # Next.js 应用
-  tinyship-next:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kcs-postgres
+    environment:
+      POSTGRES_USER: kcs
+      POSTGRES_PASSWORD: kcs
+      POSTGRES_DB: kcs
+    ports:
+      - "5432:5432"
+    volumes:
+      - kcs_pg:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kcs -d kcs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: kcs-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: kcsminio
+      MINIO_ROOT_PASSWORD: kcsminio123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - kcs_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: kcs-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 kcsminio kcsminio123;
+      mc mb -p local/kcs-assets || true;
+      mc anonymous set download local/kcs-assets || true;
+      "
+
+  api:
     build:
       context: .
-      dockerfile: apps/next-app/Dockerfile
-      args:
-        # Optional: Pass build args if needed (for CI/CD)
-        - NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
-        - NEXT_PUBLIC_WECHAT_APP_ID=${NEXT_PUBLIC_WECHAT_APP_ID:-}
-    image: tinyship-next
-    container_name: tinyship-next
+      dockerfile: apps/api/Dockerfile
+    container_name: kcs-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://kcs:kcs@postgres:5432/kcs
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: kcs-assets
+      S3_ACCESS_KEY: kcsminio
+      S3_SECRET_KEY: kcsminio123
+      S3_FORCE_PATH_STYLE: "true"
+      WEB_ORIGIN: http://localhost:7001
+      SESSION_SECRET: local-dev-session-secret-change-me
     ports:
-      - "7001:7001"
-    env_file:
-      - .env
-    restart: unless-stopped
+      - "7100:7100"
     profiles:
-      - next
+      - full
 
-  # Nuxt.js 应用
-  tinyship-nuxt:
+  web:
     build:
       context: .
-      dockerfile: apps/nuxt-app/Dockerfile
-      args:
-        # Optional: Pass build args if needed (for CI/CD)
-        - NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
-        - NEXT_PUBLIC_WECHAT_APP_ID=${NEXT_PUBLIC_WECHAT_APP_ID:-}
-    image: tinyship-nuxt
-    container_name: tinyship-nuxt
+      dockerfile: apps/web/Dockerfile
+    container_name: kcs-web
+    depends_on:
+      - api
+    environment:
+      NUXT_PUBLIC_API_BASE: http://localhost:7100
     ports:
       - "7001:7001"
-    env_file:
-      - .env
-    restart: unless-stopped
     profiles:
-      - nuxt
+      - full
 
-  # TanStack Start app
-  tinyship-tanstack:
-    build:
-      context: .
-      dockerfile: apps/tanstack-app/Dockerfile
-    image: tinyship-tanstack
-    container_name: tinyship-tanstack
-    ports:
-      - "7001:7001"
-    env_file:
-      - .env
-    restart: unless-stopped
-    profiles:
-      - tanstack
-
-# Usage:
-# Start Next.js:    docker-compose --profile next up -d
-# Start Nuxt.js:    docker-compose --profile nuxt up -d
-# Start TanStack:   docker-compose --profile tanstack up -d
-# Stop:             docker-compose down
-# Logs:             docker-compose logs -f
-# Rebuild:          docker-compose --profile next up -d --build 
+volumes:
+  kcs_pg:
+  kcs_minio:
