@@ -1,20 +1,55 @@
-# korea-creator-system
+# 全球达人情报系统
 
-全球达人情报系统。本仓库当前以文档为活资产；实现面将按 tinyship 绿地重建（设计由其他任务负责，此处不搭脚手架）。
+仓库名：`korea-creator-system`。Nuxt 全栈（tinyship 宿主）。规则排序，AI 看风险，人做确认。
 
-## 活文档
+## 怎么跑
 
-权威材料在 [`docs/`](./docs/)：
+需要 Node `>= 22`、pnpm `>= 9`。
 
-- 编号文档 `00`–`10`：旧 Demo 的项目总览、规则、接口、演示与已知问题（历史口径）
-- [`docs/product/`](./docs/product/)：产品愿景、PRD、领域与架构
-- [`docs/pm/`](./docs/pm/)：路线图、待办、协作约定
-- `docs/demo/`、`docs/research/`、`docs/screenshots/`：演示、调研与截图
+```text
+cp env.example .env
+# 将 DB_DIALECT 设为 sqlite，并写好 BETTER_AUTH_SECRET
+mkdir -p data
+pnpm install
+pnpm db:push:sqlite
+pnpm dev:nuxt
+```
 
-协作规则见 [`AGENTS.md`](./AGENTS.md)。
+打开：
 
-## 旧代码
+- http://localhost:7001/zh-CN/
+- http://localhost:7001/en/
+- http://localhost:7001/ko/
+- `?lang=ko` 会落到前缀路由
+- http://localhost:7001/api/health
+- http://localhost:7001/api/kcs/creators
 
-旧版 `v8a-dashboard` FastAPI / pandas Demo **已冻结**，整包在 [`archive/v8a-dashboard/`](./archive/v8a-dashboard/)。说明与（不保证能跑的）启动方式见 [`archive/README.md`](./archive/README.md)（墓碑）。
+语言 cookie：`NEXT_LOCALE`。外观：浅色 / 深色 / 跟随系统（`kcs-ui-theme-pref`）。
 
-不要在归档代码上继续施工。
+## 屏幕
+
+- 总览 `/`
+- 达人名单 `/creators`
+- AI 复核 `/reviews`
+
+## Forge / Overlay
+
+针：`overlay-v2.0.0` + `forge-v1.1.1`（[LibertychaserUS/AIOps](https://github.com/LibertychaserUS/AIOps)）。
+
+```text
+git clone https://github.com/LibertychaserUS/AIOps.git /tmp/AIOps
+git -C /tmp/AIOps checkout overlay-v2.0.0
+python3 -m pip install -r /tmp/AIOps/requirements.txt
+export PYTHONPATH=/tmp/AIOps
+python3 -m overlay validate --root .
+python3 -m overlay cover --root .
+python3 -m forge check --root .
+```
+
+产品测试：`pnpm exec vitest run tests/kcs/score-immutability.test.ts`
+
+## TinyShip 来源
+
+见 [`docs/product/TINYSHIP-PIN.md`](docs/product/TINYSHIP-PIN.md)。官方仓 `TinyshipCN/tinyship` @ `v2.2.0` / `54ddc7a`。应用树里没有 Ascendia 产品代码。
+
+`docs/` 与 `archive/` 未覆盖。

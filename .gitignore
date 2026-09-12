@@ -1,45 +1,91 @@
-# Python
-__pycache__/
-*.pyc
-*.egg-info/
-.venv/
-venv/
-*.pyo
-*.pyd
-.Python
+# 依赖目录
+node_modules
+.pnpm-store/
 
-# Environment and secrets
+# 构建输出
+dist
+.next
+.nuxt
+.output
+build
+out
+
+# 环境变量文件
 .env
-.env.*
-config/settings.json
-archive/v8a-dashboard/config/settings.json
-*.pem
-*.key
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+apps/tanstack-app/.dev.vars
 
-# Data outputs (generated from source Excel)
+# 日志
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 编辑器和IDE配置
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 操作系统相关
+.DS_Store
+Thumbs.db
+
+# 测试覆盖率
+coverage
+
+# Playwright E2E test outputs
+test-results/
+playwright-report/
+playwright-*-state.json
+
+# Turbo
+.turbo
+
+# Vercel
+.vercel
+
+# Netlify
+.netlify
+
+# Docker相关
+docker-volumes/
+
+# 临时文件
+.tmp
+.temp 
+
+# TanStack temporary runtime cache
+apps/tanstack-app/.tanstack/
+
+# Wrangler local state (D1 local data, logs, etc.)
+apps/tanstack-app/.wrangler/
+
+# Local SQLite data
+data/
+
+# Temporary seed export files
+seed-data.sql
+# korea-creator-system extras
+archive/**/__pycache__/
 data/output/
 data/cache/
-archive/v8a-dashboard/data/output/
-archive/v8a-dashboard/data/cache/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Logs and temp files
-*.log
-*.tmp
-*.temp
-
-# Browser cache and screenshots (optional, keep docs/screenshots for reference)
-# docs/screenshots/
-
-# Temp leftovers / extracts
-.tmp-v1-plan/
-tmp/
+data/*.sqlite
+data/*.sqlite-*
+.venv/
+venv/
+__pycache__/
+*.pyc

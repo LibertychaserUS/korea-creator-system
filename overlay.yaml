@@ -1,0 +1,17 @@
+# Thin Overlay config. Pin: LibertychaserUS/AIOps overlay-v2.0.0.
+# Do not vendor overlay/.
+schema: overlay-config/v1
+product:
+  repo: LibertychaserUS/korea-creator-system
+  default_ref: 4b406a0
+branches:
+  main:
+    run: [functional]
+  feature/tinyship-nuxt:
+    run: [functional]
+kinds:
+  concurrency: later
+  agent: later
+never_red_statuses:
+  - blocked
+forbid_hosts: []

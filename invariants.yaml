@@ -1,0 +1,7 @@
+schema: overlay-invariants/v1
+items:
+  - id: INV-score-immutable
+    text: Score.final, Score.grade, and Score.rank are written only by the rule engine. AIReview and ManualReview must not change them.
+    function_ids:
+      - INV-01
+    span: local

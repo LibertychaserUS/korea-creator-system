@@ -1,0 +1,20 @@
+# Thin Forge config. Pin: LibertychaserUS/AIOps forge-v1.1.1 (same tree as overlay-v2.0.0).
+# Do not vendor forge/. Do not live-apply.
+schema: forge-config/v1
+protect:
+  - main
+agent_branch_prefixes:
+  - feature/
+  - fix/
+  - ui/
+  - docs/
+  - cursor/
+deny_paths:
+  - archive/**
+branches:
+  main:
+    required_checks: []
+    approvals: 1
+    code_owners: false
+docs_sync: []
+forbidden_live_repos: []

@@ -1,5 +1,9 @@
 # AI 开发与 Git 规则
 
+产品：`korea-creator-system` / 全球达人情报系统。宿主是 TinyShip Nuxt，不是 Ascendia，也不是 Harness.io。
+语言：`zh-CN` / `en` / `ko`。门：旁边 checkout 的 AIOps（`overlay-v2.0.0` + `forge-v1.1.1`）上跑 `python3 -m forge check`。不要 live-apply，不要 vendor `forge/` / `overlay/`。
+
+
 开始任何开发任务前，必须：
 
 1. 读取本文件。
