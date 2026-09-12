@@ -3,7 +3,7 @@
     <p class="muted">{{ t('score.readonly') }} · {{ t('score.locked') }}</p>
     <div v-for="row in items" :key="row.id" class="panel ledger-2">
       <div>
-        <h2>{{ row.displayName }} · {{ preview(row).grade }} · {{ preview(row).final }}</h2>
+        <h2>{{ row.displayName }} · {{ preview(row).grade }} · {{ preview(row).final }} · {{ t('score.percentile') }} {{ pct(row) }}</h2>
         <p class="muted">{{ t('score.engine') }} {{ preview(row).ruleVersion }}</p>
         <div v-for="dim in preview(row).dimensions" :key="dim.id" class="score-bar">
           <span>{{ t(labelOf(dim.id)) }}</span>
@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { RULE_DIMENSIONS, creatorToScoreInput, scoreCreator } from '@kcs/contract'
+import { RULE_DIMENSIONS, creatorToScoreInput, percentileRank, scoreCreator } from '@kcs/contract'
 
 const { t } = useI18n()
 const { request } = useApi()
@@ -42,6 +42,11 @@ onMounted(async () => {
 function preview(row: any) {
   if (!cache.has(row.id)) cache.set(row.id, scoreCreator(creatorToScoreInput(row)))
   return cache.get(row.id)!
+}
+
+const cohort = computed(() => items.value.map((row) => preview(row).final))
+function pct(row: any) {
+  return percentileRank(preview(row).final, cohort.value)
 }
 
 function labelOf(id: string) {

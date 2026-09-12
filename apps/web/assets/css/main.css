@@ -230,8 +230,42 @@ html.dark .btn { color: #121410; background: #8fba9a; }
 .ledger-form { max-width: 920px; }
 .ledger-2 { display: grid; grid-template-columns: 1fr 280px; gap: 1.2rem; }
 .home-grid { display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 1rem; }
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+}
+.chip-btn {
+  border: 1px solid var(--rule);
+  background: var(--chip);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+}
+.chip-btn[aria-pressed="true"] {
+  background: var(--pine);
+  color: #f4efe4;
+  border-color: var(--pine);
+}
+.assign-overlay { position: relative; min-height: 28rem; }
+.assign-backdrop {
+  filter: blur(5px);
+  pointer-events: none;
+  opacity: 0.4;
+}
+.assign-modal-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--paper) 35%, transparent);
+}
 .assign-dialog {
   max-width: 460px;
+  width: min(460px, 92vw);
   margin: 2rem auto;
   background: var(--surface);
   border: 1px solid var(--rule);

@@ -6,8 +6,13 @@
     <table class="ledger-table">
       <thead>
         <tr>
-          <th>{{ t('selectDesk.board') }}</th>
-          <th>status</th>
+          <th>{{ t('col.rank') }}</th>
+          <th>{{ t('col.name') }}</th>
+          <th>{{ t('chip.grade') }}</th>
+          <th>{{ t('col.score') }}</th>
+          <th>{{ t('col.followers') }}</th>
+          <th>{{ t('col.quote') }}</th>
+          <th>{{ t('col.status') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -17,7 +22,12 @@
           data-testid="row-project-assignment"
           :data-creator-key="row.creatorKey"
         >
+          <td>{{ row.rank ? `#${row.rank}` : '—' }}</td>
           <td>{{ row.displayName }}</td>
+          <td>{{ row.grade ?? '—' }}</td>
+          <td>{{ row.final ?? row.rating ?? '—' }}</td>
+          <td>{{ row.followers ?? '—' }}</td>
+          <td>{{ row.price?.amountMin ?? '—' }}</td>
           <td>{{ row.status }}</td>
         </tr>
       </tbody>

@@ -12,18 +12,28 @@
         >{{ row.displayName }}</button>
       </aside>
       <div>
-        <table v-if="current" class="qc-compare ledger-table">
+        <table class="qc-compare ledger-table">
           <thead>
-            <tr><th>field</th><th>value</th><th>QC</th></tr>
+            <tr>
+              <th>{{ t('qc.field') }}</th>
+              <th>{{ t('qc.excel') }}</th>
+              <th>{{ t('qc.proofed') }}</th>
+              <th>{{ t('qc.status') }}</th>
+            </tr>
           </thead>
           <tbody>
-            <tr><td>{{ current.displayName }}</td><td>{{ current.status }}</td><td>{{ current.followers ?? '—' }}</td></tr>
+            <tr v-for="pair in current ? pairs(current) : []" :key="pair.field">
+              <td>{{ pair.field }}</td>
+              <td>{{ pair.excel }}</td>
+              <td>{{ pair.proofed }}</td>
+              <td>{{ pair.ok ? t('qc.ok') : t('qc.missing') }}</td>
+            </tr>
           </tbody>
         </table>
         <label v-if="current" class="field">
-          note
+          {{ t('qc.noteField') }}
           <input v-model="notes[current.id]" />
-          <button class="btn ghost" type="button" @click="save(current.id)">save</button>
+          <button class="btn ghost" type="button" @click="save(current.id)">{{ t('qc.confirm') }}</button>
         </label>
         <p class="muted">{{ t('qc.note') }}</p>
         <p v-if="!items.length" class="muted">—</p>
@@ -43,6 +53,23 @@ onMounted(async () => {
   for (const row of items.value) notes[row.id] = row.qcNotes || ''
   current.value = items.value[0] || null
 })
+function cell(value: unknown) {
+  if (value == null || value === '' || (Array.isArray(value) && !value.length)) return '—'
+  return Array.isArray(value) ? value.join(' / ') : String(value)
+}
+function pairs(row: any) {
+  const fields = [
+    { field: t('col.followers'), excel: row.followers, proofed: row.followers },
+    { field: t('col.quote'), excel: row.price?.amountMin, proofed: row.price?.amountMin },
+    { field: t('qc.xhs'), excel: row.xhsId, proofed: row.xhsId },
+    { field: t('col.region'), excel: row.regions, proofed: row.regions },
+  ]
+  return fields.map((f) => {
+    const excel = cell(f.excel)
+    const proofed = cell(f.proofed)
+    return { field: f.field, excel, proofed, ok: excel !== '—' && proofed !== '—' }
+  })
+}
 async function save(id: string) {
   await request(`/api/ops/creators/${id}`, {
     method: 'PATCH',
