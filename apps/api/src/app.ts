@@ -205,7 +205,7 @@ export function createApp(env: AppEnv) {
       FROM creators
     `)
     const jobs = await env.db.query(
-      `SELECT id, status, written_count, created_at FROM ingest_jobs ORDER BY created_at DESC LIMIT 5`,
+      `SELECT id, status, written_count, batch_name, file_name, created_at FROM ingest_jobs ORDER BY created_at DESC LIMIT 5`,
     )
     return c.json({ counts: counts.rows[0], recentJobs: jobs.rows })
   })
@@ -230,8 +230,8 @@ export function createApp(env: AppEnv) {
     const key = body.creatorKey || `ck_${id.slice(0, 8)}`
     await env.db.query(
       `INSERT INTO creators
-        (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, note, avatar_key)
-       VALUES ($1,$2,$3,'draft',false,$4,$5,$6,$7,$8,$9,$10)`,
+        (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, note, avatar_key, xhs_id)
+       VALUES ($1,$2,$3,'draft',false,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         id,
         key,
@@ -243,6 +243,7 @@ export function createApp(env: AppEnv) {
         body.rating ?? null,
         body.note ?? null,
         body.avatarKey ?? null,
+        body.xhsId ?? null,
       ],
     )
     await saveRelations(env.db, id, body)
