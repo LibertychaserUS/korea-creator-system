@@ -1,17 +1,9 @@
-# 全球达人情报系统
+# korea-creator-system
 
-韩国品牌小红书达人清洗、规则评分、AI 风险复核 Demo。
+产品显示名：全球达人情报系统。
 
-项目说明见 [`docs/00_项目总览.md`](docs/00_项目总览.md)。
+产品与 PM 文档见 [`docs/`](docs/)（[`docs/product`](docs/product)、[`docs/pm`](docs/pm)）。
 
-## 运行
+旧 Python / FastAPI Demo 已冻结在 [`archive/v8a-dashboard/`](archive/v8a-dashboard/)，墓碑见 [`archive/README.md`](archive/README.md)。只读对照，不是运行入口。
 
-```bash
-pip install -r requirements.txt
-uvicorn app.web:app --reload --port 5000
-```
-
-- 页面：http://127.0.0.1:5000
-- API 文档：http://127.0.0.1:5000/docs
-
-Demo 数据集在 `data/input/`。DeepSeek API Key 通过环境变量 `DEEPSEEK_API_KEY` 配置，未配置时走 fallback。
+新实现面：tinyship + forge + overlay。硬约束见 [`docs/pm/STACK.md`](docs/pm/STACK.md)。组装细则见 `docs/product/TINYSHIP-REBUILD.md`（尚未落地，落地前不要另起脚手架）。

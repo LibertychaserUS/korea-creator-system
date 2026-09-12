@@ -1,5 +1,11 @@
 # AI 开发与 Git 规则
 
+## 仓库布局（先读）
+
+- `docs/`：留下。编号文档是历史快照；`docs/product/` 与 `docs/pm/` 是产品意图。
+- `archive/`：旧 Python / FastAPI Demo **冻结** + 墓碑。仓库根没有可施工的 `app/`。
+- 新代码只进 tinyship + forge + overlay。细则等 `docs/product/TINYSHIP-REBUILD.md`；未落地前不要另起脚手架，也不要把 archive 里的进程当运行入口。
+
 开始任何开发任务前，必须：
 
 1. 读取本文件。
