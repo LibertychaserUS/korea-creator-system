@@ -156,6 +156,10 @@ const STATEMENTS = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE creators ADD COLUMN IF NOT EXISTS avatar_key text`,
+  `ALTER TABLE creators ADD COLUMN IF NOT EXISTS xhs_id text`,
+  `ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS file_name text`,
+  `ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS batch_name text`,
+  `ALTER TABLE ingest_jobs ADD COLUMN IF NOT EXISTS source_rows integer`,
   `CREATE OR REPLACE VIEW creator AS SELECT * FROM creators`,
   `CREATE OR REPLACE VIEW assignment AS
      SELECT id, project_id, creator_id, status, assigned_by, assigned_at FROM assignments`,

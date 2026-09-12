@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { can, type Permission, type Role } from '@kcs/contract'
+import { can, creatorToScoreInput, scoreCreator, type Permission, type Role } from '@kcs/contract'
+import { creatorKeyFromRow, parseXlsx, type SheetRow } from './xlsx-sheet'
 import type { Db } from './db'
 import { hashPassword, verifyPassword } from './password'
 import type { ObjectStore } from './store'
@@ -391,6 +392,20 @@ export function createApp(env: AppEnv) {
   app.post('/api/ops/batches', async (c) => {
     const { user, denied } = await requireAuth(c, 'ops.write')
     if (denied) return denied
+    const ct = c.req.header('content-type') || ''
+    if (ct.includes('multipart/form-data')) {
+      const body = await c.req.parseBody()
+      const upload = await readUpload(body.file)
+      const batchName = String(body.batchName || body.batch_name || '')
+      if (upload) {
+        const job = await runWorkbookIngest(env, user!.id, {
+          fileName: upload.name,
+          batchName,
+          buf: upload.buf,
+        })
+        return c.json(job, 201)
+      }
+    }
     const job = await runIngest(env, 'file-drop', 'once', 0.1, user!.id)
     return c.json(job, 201)
   })
@@ -827,7 +842,119 @@ function camelJobs(rows: Array<Record<string, unknown>>) {
     errorCode: r.error_code,
     errorSummary: r.error_summary,
     sampleRate: Number(r.sample_rate),
+    fileName: r.file_name ?? null,
+    batchName: r.batch_name ?? null,
+    sourceRows: r.source_rows == null ? null : Number(r.source_rows),
   }))
+}
+
+async function readUpload(file: unknown): Promise<{ name: string; buf: Buffer } | null> {
+  if (!file || typeof file !== 'object') return null
+  const blob = file as { name?: string; arrayBuffer?: () => Promise<ArrayBuffer> }
+  if (typeof blob.arrayBuffer !== 'function') return null
+  const buf = Buffer.from(await blob.arrayBuffer())
+  if (!buf.length) return null
+  return { name: blob.name || 'upload.xlsx', buf }
+}
+
+async function runWorkbookIngest(
+  env: AppEnv,
+  openedBy: string,
+  input: { fileName: string; batchName: string; buf: Buffer },
+) {
+  const id = randomUUID()
+  const rows = parseXlsx(input.buf)
+  await env.store.put(`batches/${id}/${input.fileName}`, input.buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  await env.db.query(
+    `INSERT INTO ingest_jobs
+      (id, source_id, schedule, status, attempt, sample_rate, opened_by, started_at, file_name, batch_name, source_rows)
+     VALUES ($1,'file-drop','once','running',0,0.1,$2,now(),$3,$4,$5)`,
+    [id, openedBy, input.fileName, input.batchName || input.fileName, rows.length],
+  )
+  let written = 0
+  let skipped = 0
+  let failed = 0
+  for (const row of rows) {
+    try {
+      const persisted = await persistSheetRow(env, id, row)
+      if (persisted === 'written') written += 1
+      else if (persisted === 'skipped') skipped += 1
+      else failed += 1
+    } catch {
+      failed += 1
+    }
+  }
+  await env.db.query(
+    `UPDATE ingest_jobs SET status = 'ok', written_count = $2, skipped_dupes = $3, failed_count = $4,
+       ended_at = now(), updated_at = now()
+     WHERE id = $1`,
+    [id, written, skipped, failed],
+  )
+  const { rows: jobs } = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [id])
+  return camelJobs(jobs)[0]
+}
+
+async function persistSheetRow(env: AppEnv, jobId: string, row: SheetRow): Promise<'written' | 'skipped' | 'failed'> {
+  const displayName = row.displayName || row.xhsId || row.userId
+  if (!displayName) return 'failed'
+  const key = creatorKeyFromRow(row) || `ck_${randomUUID().slice(0, 8)}`
+  const followers = row.followers ? Number(String(row.followers).replace(/[^\d.]/g, '')) : null
+  const price = row.price ? Number(String(row.price).replace(/[^\d.]/g, '')) : null
+  const regions = row.region ? [row.region] : []
+  const verticals = [row.vertical, row.keywords, row.persona].filter(Boolean) as string[]
+  const score = scoreCreator(
+    creatorToScoreInput({
+      followers,
+      regions,
+      verticals,
+      displayName,
+      note: row.persona,
+      price: price != null ? { amountMin: price } : null,
+    }),
+  )
+  const found = await env.db.query('SELECT id FROM creators WHERE creator_key = $1', [key])
+  if (found.rows[0]) {
+    await env.db.query(
+      `UPDATE creators SET
+        display_name = $2, followers = COALESCE($3, followers), regions = $4, verticals = $5,
+        rating = $6, xhs_id = COALESCE($7, xhs_id), last_ingest_job_id = $8, needs_review = true, updated_at = now()
+       WHERE creator_key = $1`,
+      [key, displayName, Number.isFinite(followers) ? followers : null, regions, verticals, score.final, row.xhsId || null, jobId],
+    )
+    return 'skipped'
+  }
+  const creatorId = randomUUID()
+  await env.db.query(
+    `INSERT INTO creators
+      (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, xhs_id, last_ingest_job_id, note)
+     VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      creatorId,
+      key,
+      displayName,
+      Number.isFinite(followers) ? followers : null,
+      followers == null,
+      regions,
+      verticals,
+      score.final,
+      row.xhsId || null,
+      jobId,
+      row.persona || null,
+    ],
+  )
+  await env.db.query(
+    `INSERT INTO creator_categories (creator_id, category_slug) VALUES ($1,'never_collaborated')`,
+    [creatorId],
+  )
+  if (price != null && Number.isFinite(price)) {
+    await saveRelations(env.db, creatorId, { price: { amountMin: price, currency: 'CNY' } })
+  }
+  await env.db.query(
+    `INSERT INTO reviews (id, creator_id, risk_level, conclusion, status)
+     VALUES ($1,$2,'low','文件投递待校对','pending')`,
+    [randomUUID(), creatorId],
+  )
+  return 'written'
 }
 
 async function saveRelations(db: Db, creatorId: string, body: Record<string, unknown>) {
