@@ -2,7 +2,7 @@
   "name": "korea-creator-system",
   "version": "0.0.1",
   "private": true,
-  "description": "全球达人情报系统 — Korean-brand Xiaohongshu creator screening on Nuxt",
+  "description": "听潮 — Korean-brand Xiaohongshu creator screening on Nuxt",
   "engines": {
     "node": ">=22.0.0"
   },
