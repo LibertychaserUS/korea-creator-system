@@ -1988,7 +1988,20 @@ export const en: Locale = {
       confirmAssign: "Confirm assign",
       health: "Monitor",
       sqlOk: "The store is reachable",
-      jobs: "Jobs"
+      jobs: "Jobs",
+      detail: "Detail",
+      addToProject: "Add to project",
+      chooseProject: "Choose a project",
+      failures: "Failures",
+      pipeline: "Pipeline"
+    },
+    prefs: {
+      currency: "Currency",
+      consentTitle: "Cookie preferences",
+      consentBody: "Necessary cookies keep sign-in and security. Preference cookies remember language, currency, and appearance. You can sign in with necessary cookies only.",
+      consentNecessary: "Necessary only",
+      consentPreferences: "Allow preferences",
+      demo: "Demo data"
     },
     toolbar: {
       language: "Language",
