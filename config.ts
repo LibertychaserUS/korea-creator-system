@@ -61,7 +61,8 @@ export const config = {
        * Use this to add background color, border, rounded corners, padding, etc.
        * @example 'bg-primary rounded-full p-1' or 'bg-white shadow-sm rounded-lg'
        */
-      iconClassName: '' as string,
+      // logo.svg 是白色船形，浅色底上会消失；固定深海色底块，亮/暗两套主题都可读
+      iconClassName: 'rounded-lg bg-[#1f5263] p-1.5 shadow-sm' as string,
     },
 
     /**

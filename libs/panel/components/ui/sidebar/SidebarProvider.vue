@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useEventListener, useMediaQuery, useVModel } from '@vueuse/core'
 import { TooltipProvider } from 'reka-ui'
-import { computed, type HTMLAttributes, type Ref, ref } from 'vue'
+import { computed, type HTMLAttributes, onMounted, type Ref, ref } from 'vue'
 import { cn } from '@/lib/utils'
 import { provideSidebarContext, SIDEBAR_COOKIE_MAX_AGE, SIDEBAR_COOKIE_NAME, SIDEBAR_KEYBOARD_SHORTCUT, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON } from './utils'
 
@@ -18,7 +18,14 @@ const emits = defineEmits<{
   'update:open': [open: boolean]
 }>()
 
-const isMobile = useMediaQuery('(max-width: 768px)')
+// 服务端拿不到视口宽度，首帧统一按桌面渲染（桌面侧栏本身 hidden md:block），
+// 挂载后再切到移动端 Sheet，避免手机上的 hydration mismatch。
+const mobileQuery = useMediaQuery('(max-width: 768px)')
+const mounted = ref(false)
+onMounted(() => {
+  mounted.value = true
+})
+const isMobile = computed(() => mounted.value && mobileQuery.value)
 const openMobile = ref(false)
 
 const open = useVModel(props, 'open', emits, {

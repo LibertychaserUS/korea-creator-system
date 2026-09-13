@@ -1,33 +1,38 @@
 <template>
   <SidebarProvider>
     <AppSidebar />
-    <SidebarInset>
-      <header class="flex h-16 shrink-0 items-center gap-2 border-b border-border px-4">
-        <SidebarTrigger />
-        <Separator orientation="vertical" class="mr-2 h-4" />
-        <p class="hidden text-sm font-medium text-foreground sm:block">
-          {{ t('kcs.brand.title') }}
-        </p>
-        <WorkspaceSwitch class="ml-2" />
-        <div class="ml-auto flex items-center gap-2">
-          <CurrencySelect />
+    <SidebarInset class="min-w-0 bg-muted/30 dark:bg-background">
+      <header
+        class="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border/70 bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-4"
+      >
+        <SidebarTrigger class="-ml-1 text-muted-foreground hover:text-foreground" />
+        <Separator orientation="vertical" class="mr-1 hidden h-4 sm:block" />
+        <WorkspaceSwitch />
+        <div class="ml-auto flex items-center gap-1 sm:gap-1.5">
+          <!-- 币种 / 配色属于低频偏好，手机上收进更宽的断点，避免顶栏横向溢出 -->
+          <div class="hidden items-center md:flex">
+            <CurrencySelect />
+          </div>
           <LocaleSelect />
           <ThemeToggle />
-          <ColorSchemeSelector />
+          <div class="hidden items-center md:flex">
+            <ColorSchemeSelector />
+          </div>
+          <Separator orientation="vertical" class="mx-1 hidden h-4 sm:block" />
           <div
             v-if="user"
             data-testid="auth-session"
             :data-role="user.role"
-            class="flex items-center gap-2 pl-1"
+            class="flex items-center gap-2 pl-0.5"
           >
-            <Avatar class="h-8 w-8 border border-border">
-              <AvatarFallback class="bg-muted text-muted-foreground text-xs">
+            <Avatar class="h-7 w-7 border border-border">
+              <AvatarFallback class="bg-primary/10 text-[11px] font-medium text-primary">
                 {{ (user.displayName?.charAt(0) || user.email.charAt(0)).toUpperCase() }}
               </AvatarFallback>
             </Avatar>
-            <div class="hidden leading-tight sm:block">
+            <div class="hidden leading-tight lg:block">
               <p class="text-sm font-medium text-foreground">{{ user.displayName }}</p>
-              <p class="text-xs text-muted-foreground">{{ user.role }}</p>
+              <p class="text-[11px] text-muted-foreground">{{ roleLabel }}</p>
             </div>
           </div>
           <Button v-else as-child size="sm">
@@ -41,9 +46,14 @@
 </template>
 
 <script setup lang="ts">
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
 const localePath = useLocalePath()
 const { user } = useSession()
+
+const roleLabel = computed(() => {
+  const key = `kcs.roles.${user.value?.role}`
+  return te(key) ? t(key) : user.value?.role ?? ''
+})
 
 useHead({
   title: () => t('kcs.brand.title'),

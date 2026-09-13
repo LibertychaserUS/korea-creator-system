@@ -11,6 +11,7 @@
 @source "../../plugins";
 @source "../../app.vue";
 @source "../../../ui/**/*.{ts,vue}";
+@source "../../../../config.ts";
 
 /* Import shared UI styles - same as Next.js */
 @import "../../../../libs/ui/styles/index.css";
