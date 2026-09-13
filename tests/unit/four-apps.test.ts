@@ -53,7 +53,7 @@ describe('marketing app (public site)', () => {
 
 describe('per-app routing (no single-host prefixes left)', () => {
   it('select app links stay inside the select origin', () => {
-    for (const f of ['apps/select/pages/index.vue', 'apps/select/pages/projects.vue', 'apps/select/pages/projects/new.vue', 'apps/select/pages/projects/[id].vue']) {
+    for (const f of ['apps/select/pages/index.vue', 'apps/select/pages/projects/index.vue', 'apps/select/pages/projects/new.vue', 'apps/select/pages/projects/[id].vue']) {
       const src = read(f)
       expect(src, `${f} still uses the retired /select prefix`).not.toMatch(/localePath\([`'"]\/select\//)
     }
@@ -71,7 +71,7 @@ describe('per-app routing (no single-host prefixes left)', () => {
       'apps/ops/pages/creators/new.vue',
       'apps/ops/pages/index.vue',
       'apps/select/pages/index.vue',
-      'apps/select/pages/projects.vue',
+      'apps/select/pages/projects/index.vue',
       'apps/select/pages/projects/new.vue',
       'apps/select/pages/projects/[id].vue',
       'apps/dev/pages/index.vue',
