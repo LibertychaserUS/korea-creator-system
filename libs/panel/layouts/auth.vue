@@ -13,8 +13,8 @@
       <LocaleSelect />
       <ThemeToggle />
     </div>
-    <div class="relative z-10 flex w-full max-w-sm flex-col gap-6">
-      <div class="flex flex-col items-center gap-3">
+    <div class="group/auth relative z-10 flex w-full max-w-sm flex-col gap-6 has-[.auth-wide]:lg:max-w-4xl">
+      <div class="flex flex-col items-center gap-3 group-has-[.auth-wide]/auth:lg:hidden">
         <NuxtLink :to="localePath('/')" class="self-center">
           <AppLogo size="md" />
         </NuxtLink>
