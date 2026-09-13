@@ -47,5 +47,12 @@ export function useCurrency() {
     }).format(value)
   }
 
-  return { currency, setCurrency, formatPrice }
+  /** 把任意来源币种的金额折成 CNY（用于汇总）；空值当 0。 */
+  function toCny(amount?: number | null, source?: string | null): number {
+    if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return 0
+    const src = (source && source in TO_CNY ? source : 'CNY') as DisplayCurrency
+    return Number(amount) * TO_CNY[src]
+  }
+
+  return { currency, setCurrency, formatPrice, toCny }
 }
