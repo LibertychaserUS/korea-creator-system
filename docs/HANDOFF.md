@@ -21,35 +21,36 @@
 
 两个 merge 保留了 K3 的原始 commit，K3 后续把 theme-tide / i18n-panel-copy 单独合 main 不会冲突（谁先合都行，另一边自动变空）。
 
-## 2. 页面完成度
+## 2. 页面完成度（2026-09-13 Fable 设计重做后）
+
+本轮对四端做了一次完整的设计升级，并用 Playwright 生产构建截图逐页验收（亮/暗 × 桌面 1440 / 手机 390，共 36 张，控制台错误 / HTTP≥400 / 横向溢出 / 水合不一致全部为 0）。
 
 | 端 | 页面 | 状态 |
 | --- | --- | --- |
-| marketing | `/` 落地页 | **DONE**（潮涌背景 + 品牌文案 + 三端入口卡片 + consent 弹层，生产构建截图确认） |
-| marketing | `/login` | DONE（auth 布局潮涌背景，上一轮 dev 验证过；本轮生产构建未单独截图） |
-| select | `/` 达人池 | DONE 级别渲染（筛选/排序/表格/指派），复选框样式已补；**生产截图未做** |
-| select | `/projects`、`/projects/new`、`/projects/[id]` | 组件化完成，视觉未截图验收 |
-| ops | `/` 首页（统计瓦片 + 批次表） | 组件化完成，视觉未截图验收 |
-| ops | `/creators/new`（录入 + 发布） | 组件化完成，视觉未截图验收 |
-| dev | `/` 健康面板 | 组件化完成，视觉未截图验收 |
-| nuxt-app（遗留面板，7001） | 全部 | **NOT STARTED**——保持 TinyShip 原样，共享同一套 libs/ui 主题管线（tide 已进 index.css，理论上自动生效），未验证 |
+| marketing | `/` 落地页 | **DONE**：完整落地页——顶栏锚点导航、主张 + 静态达人库预览卡、三工作台卡（含要点）、四步流程、六维评分权重条 + S/A/B/C 分级 + 规则版本卡、三条主张、深海 CTA、页脚 |
+| marketing | `/login` | **DONE**：桌面双栏（左品牌叙事 + 三工作台，右表单带图标输入与错误框），手机单栏沿用 auth 布局引子 |
+| select | `/` 达人库 | **DONE**：项目上下文条、粉丝/报价区间 + 合作记录 + 分段排序、表格（等级徽标/分数/粉丝/报价/合作次数、骨架屏、空态、行点选）、手机切卡片列表、底部分配栏 |
+| select | `/projects`、`/projects/new`、`/projects/[id]` | **DONE**：列表卡 + 成员数、双栏新建（表单 + 预览）、详情 KPI（人数/均分/总粉丝/总报价）+ 名单表 + 「从库里选」 |
+| ops | `/` 首页 | **DONE**：草稿/待复核/已清洗/已发布 KPI、最近批次表（手机隐藏计数列）、总览堆叠条 + 清洗率、快捷入口 |
+| ops | `/creators/new` | **DONE**：分区表单（显示名/小红书号/粉丝/报价/合作记录/头像自定义上传按钮）、实时预览卡、保存 → 发布两步进度 |
+| dev | `/` 健康面板 | **DONE**：SQL 脉冲 / 任务数 / 失败 / 数据源 KPI、任务状态分布、最近任务表（失败原因、按权限显示重试） |
+| nuxt-app（遗留面板，7001） | 全部 | NOT STARTED——保持 TinyShip 原样，未验证 |
 
-四个端 `pnpm build` 全部通过（本轮已验证）。生产构建起在：marketing **7005**、ops 7002、dev 7003、select 7004，API 7100（见 §5 端口说明）。
+工作台外壳（`libs/panel`）也一并重做：侧栏（品牌头 + 高亮条导航 + 用户卡/角色/退出）、粘性顶栏、页头眉题；新增通用组件 `KpiTile` / `TableCard` / `StatusBadge` / `GradeBadge` / `EmptyState` 与 `useFormat`。所有 e2e testid 契约保持不变。
 
 ## 3. Tide 主题状态
 
-- **已生效**：`libs/ui/styles/themes/tide.css`（亮/暗两态，深海蓝主色 oklch 0.45/0.085/235）已注册进 `libs/ui/themes.ts` 与 `styles/index.css`；`config.ts` 默认配色 = tide、默认语言 = en、浏览器语言自动探测开。页面 `<html>` 确认带 `theme-tide` class，暗色加 `.dark` 生效（FOUC 脚本在 app.vue）。
-- **缺失/未验**：
-  - 暗色模式只改了代码路径，**没有截图验收过**（亮/暗对比未做）。
-  - ColorSchemeSelector 里 tide 与其他六套 TinyShip 配色并列，未决定是否精简。
-  - nuxt-app 未验证。
+- **已生效并截图验收**：亮/暗两态在四端全部页面确认无误（截图脚本见 §5）。之前暗色失效的根因是 scoped 样式里 `:global(.dark) .x` 被编译成裸 `.dark`，已改为 `:global(.dark .x)`。
+- Tailwind v4 只扫描 Vite root，`libs/panel/assets/css/main.css` 已用 `@source` 显式登记 panel 层 / libs/ui / config.ts，生产构建不再丢工具类。
+- 未决：ColorSchemeSelector 里 tide 与其他六套 TinyShip 配色并列，未决定是否精简；nuxt-app 未验证。
 
-## 4. 已知未决 bug（不要在本分支修，PR 里已注明）
+## 4. 已知未决 bug
 
-**/en 路由文案显示中文**：客户端 vue-i18n 的语言跟了浏览器检测（zh-CN）而不是 URL 前缀。
-- 复现：fresh 浏览器（无 NEXT_LOCALE cookie、Accept-Language zh-CN）打开 `/en`，hero lead 与 consent 是中文；带 `NEXT_LOCALE=en` cookie 则正常英文。
-- SSR HTML 不含 consent 文案（组件 hydration 后才渲染），所以问题在客户端水合时的 locale 取值。
-- 中断时正在读 `libs/panel/i18n/i18n.config.ts`；层配置里 `detectBrowserLanguage: { useCookie, redirectOn: 'root', alwaysRedirect: true }`（`libs/panel/nuxt.config.ts` 的 i18n 块）。怀疑方向：detectBrowserLanguage 在非 root 的 prefix 路由上也覆盖了 route locale。
+**/en 路由文案显示中文** —— 本轮 **未能复现**：dev 与生产构建下，fresh context（无 cookie、Accept-Language zh-CN）分别打开 `/en`、`/en/login`、`/zh-CN`、`/ko` 等 10 条路径，SSR HTML 与水合后的 hero / consent 文案均与 URL 前缀一致。保留原始记录如下以备再现：
+- 原复现描述：fresh 浏览器打开 `/en`，hero lead 与 consent 是中文；带 `NEXT_LOCALE=en` cookie 则正常英文。
+- 当时怀疑方向：`libs/panel/nuxt.config.ts` 的 `detectBrowserLanguage: { useCookie, redirectOn: 'root', alwaysRedirect: true }` 在非 root 的 prefix 路由上覆盖了 route locale。
+
+另有一处已修：`apps/api` 达人库默认排序原按原始 `rating` 列，与界面「综合分」不一致，已改按规则分排序。
 
 ## 5. 环境坑（重要）
 
@@ -57,7 +58,9 @@
 - **端口 7000**：macOS ControlCenter（AirPlay 接收器）常年占用 7000（v4+v6 双栈），marketing 在本机只能用别的端口验证（我用的 7005）。配置里仍是 7000——要么用户关掉 AirPlay 接收器，要么把 marketing 端口永久改掉（影响 KCS_*_URL 默认值与将来的 nginx conf）。
 - 生产服务器启动方式：`set -a && . ../../.env && set +a && PORT=<port> node .output/server/index.mjs`（.env 在仓库根，DB 指向 `postgresql://localhost:5432/tinyship`；API 用 `kcs` 库，两边靠共享密钥/session 打通，上一轮验证过能登录）。
 - 种子账号（密码 `Kcs!demo2026`）：admin@ / ops@ / devops@ / selector@ / viewer@kcs.local。
-- Playwright 截图：页面有持续动画时 capture 会挂起——先 `page.emulateMedia({ reducedMotion: 'reduce' })`，不行就 `browser_close` 重开再用 `domcontentloaded` + 短等待。
+- Playwright 截图：页面有持续动画时 capture 会挂起——先 `page.emulateMedia({ reducedMotion: 'reduce' })`，不行就 `browser_close` 重开再用 `domcontentloaded` + 短等待。本轮用的截图脚本要点：先种 `kcs_consent=all` cookie 免掉 consent 弹层；`localStorage` 写 `kcs-ui-theme-pref` / `kcs-ui-theme` 切亮暗；登录后用 `waitForURL(u => !u.pathname.endsWith('/login'))`；URL 带尾斜杠避免 `/zh-CN → /zh-CN/` 跳转噪音。
+- 新增 auto-import composable 后，`pnpm build` 的 typecheck 读的是 `.nuxt/types/imports.d.ts`，会报 `TS2304: Cannot find name`——先在该 app 目录 `npx nuxi prepare` 再 build。
+- 云端（Linux）环境：Postgres 16 本地 `postgres://kcs:kcs@localhost:5432/kcs`，API 首启缺列已在 `apps/api/src/migrate.ts` 补齐（budget_note / er / locked_final / assignments.note）。
 
 ## 6. 不会断的东西 / 可能的雷
 
@@ -68,8 +71,7 @@
 
 ## 7. 下一步建议（按序）
 
-1. 修 §4 的 /en i18n bug（客户端 locale 应优先 URL prefix）。
-2. 机器重启后重开 dev server，走完全部页面的亮/暗截图验收（清单见 §2）。
-3. nuxt-app 面板过一遍 tide 主题。
-4. 然后才轮到编排层：nginx 反代（五端 + api 单端口）、Kafka/Redpanda 接入 apps/api 的 IngestJob 管道（排队→消费→状态回写）、K8s manifest。
-5. 合 main 由用户决定，别自动合。
+1. 合 main 由用户决定，别自动合；PR #9 已包含本轮全部前端重做与后端/部署收尾。
+2. nuxt-app（7001）面板过一遍 tide 主题，或决定是否下线。
+3. 视觉可继续打磨的点：ColorSchemeSelector 精简为 tide 单一配色；达人库表格加列显隐；录入页头像裁切。
+4. 编排层未验证项见文末「后端/部署收尾（sol）」。
