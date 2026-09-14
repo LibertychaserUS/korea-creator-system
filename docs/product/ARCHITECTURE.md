@@ -39,7 +39,7 @@
 核对历史实现时只读 `docs/`；代码考古走 git `f31c882` 的 `archive/v8a-dashboard/`：
 
 - 代码：原 `web` 入口、scoring、AI 模块（含未进编号文档的 `/api/v2/*`）
-- 规则口径：`docs/03_评分规则说明.md`
+- 指标与数据源口径：`docs/03_指标口径与数据源.md`
 - AI 口径：`docs/04_AI提示词与DeepSeek说明.md`
 - 页面快照：`docs/06_页面说明.md`（`v8a-dashboard`）
 - V2 意图备忘：`docs/devlogs/v2-*.md`
