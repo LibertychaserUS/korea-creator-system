@@ -29,6 +29,9 @@ export function registerPublicRoutes(app: KcsApp, _env: AppEnv, _helpers: RouteH
         '/api/ingest/fetch': { post: {} },
         '/api/ingest/raw/{creatorId}': { get: {} },
         '/api/ingest/jobs': { get: {}, post: {} },
+        '/api/ingest/jobs/{id}': { get: {} },
+        '/api/ingest/jobs/{id}/retry': { post: {} },
+        '/api/ingest/jobs/{id}/cancel': { post: {} },
       },
     }),
   )

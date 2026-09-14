@@ -137,4 +137,23 @@ describe('ingest worker', () => {
     expect(bucket.waitMs(0)).toBe(30_000)
     expect(bucket.tryTake(30_000)).toBe(true)
   })
+
+  it('cancels a queued job before a worker can claim it', async () => {
+    const { context, token } = await setup()
+    const response = await enqueue(context, token)
+    const { job } = await response.json()
+    const cancelled = await context.app.request(`/api/ingest/jobs/${job.id}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(cancelled.status).toBe(200)
+    expect(await cancelled.json()).toMatchObject({
+      status: 'failed',
+      error: 'cancelled',
+    })
+    expect(await processJob(context.env, job.id)).toMatchObject({
+      status: 'failed',
+      pagesDone: 0,
+    })
+  })
 })
