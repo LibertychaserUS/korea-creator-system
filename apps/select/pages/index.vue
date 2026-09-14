@@ -287,6 +287,16 @@
       <template #meta>
         <span class="tabular-nums" data-testid="pool-count">{{ t('kcs.query.matched', { n: formatNumber(visible.length) }) }}</span>
       </template>
+      <template v-if="spec.highlights.length" #actions>
+        <!-- 高亮图例：方案里的阈值 → 颜色，新同事不用猜 -->
+        <ul class="hidden flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground md:flex" data-testid="pool-legend">
+          <li v-for="(h, i) in spec.highlights" :key="i" class="inline-flex items-center gap-1.5">
+            <span class="size-2 rounded-full" :class="h.tone === 'good' ? 'bg-emerald-500' : h.tone === 'warn' ? 'bg-amber-500' : 'bg-destructive'" aria-hidden="true" />
+            {{ label(h.key) }} {{ h.op === 'gte' ? '≥' : '≤' }} {{ format(h.key, h.value) }}
+          </li>
+          <li class="text-muted-foreground/70">· {{ t('kcs.band.legend') }}</li>
+        </ul>
+      </template>
 
       <!-- 手机：卡片 -->
       <ul class="divide-y divide-border/60 md:hidden">
@@ -491,7 +501,7 @@ const { t, te } = useI18n()
 const { request } = useApi()
 const { user } = useSession()
 const { formatNumber } = useFormat()
-const { label, help } = useMetrics()
+const { label, help, format } = useMetrics()
 const localePath = useLocalePath()
 const route = useRoute()
 

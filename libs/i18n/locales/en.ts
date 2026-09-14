@@ -1990,6 +1990,7 @@ export const en: Locale = {
       hint: "Updated by Pugongying on the 1st of each month. Abnormal (low activity) is a hard block, normal requires prudent review."
     },
     band: {
+      legend: "Number colour = percentile within the same source and tier; dot = query highlight threshold",
       cohort: "Among {n} creators · {source} · {tier}",
       top10: "Top 10% in cohort",
       top25: "Top 25% in cohort",
