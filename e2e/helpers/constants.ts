@@ -40,7 +40,7 @@ export const PAGES = {
   login: appPage('marketing', '/login'),
   ops: appPage('ops'),
   opsNew: appPage('ops', '/creators/new'),
-  select: appPage('select'),
+  select: appPage('select', '/projects'),
   selectNew: appPage('select', '/projects/new'),
   selectPool: appPage('select'),
   dev: appPage('dev'),
