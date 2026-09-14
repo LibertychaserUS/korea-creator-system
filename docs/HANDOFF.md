@@ -27,7 +27,7 @@
 
 | 端 | 页面 | 状态 |
 | --- | --- | --- |
-| marketing | `/` 落地页 | **DONE**：完整落地页——顶栏锚点导航、主张 + 静态达人库预览卡、三工作台卡（含要点）、四步流程、六维评分权重条 + S/A/B/C 分级 + 规则版本卡、三条主张、深海 CTA、页脚 |
+| marketing | `/` 落地页 | **DONE**：完整落地页——顶栏锚点导航、主张 + 静态达人库预览卡（量级 / CPE）、三工作台卡、四步流程（抓取而非评分）、数据区（三数据源 / 六组字段 / 同量级比 / 健康等级门 / 转换层）、三条主张、深海 CTA、页脚 |
 | marketing | `/login` | **DONE**：桌面双栏（左品牌叙事 + 三工作台，右表单带图标输入与错误框），手机单栏沿用 auth 布局引子 |
 | select | `/` 达人库 | **DONE**：项目上下文条、粉丝/报价区间 + 合作记录 + 分段排序、表格（等级徽标/分数/粉丝/报价/合作次数、骨架屏、空态、行点选）、手机切卡片列表、底部分配栏 |
 | select | `/projects`、`/projects/new`、`/projects/[id]` | **DONE**：列表卡 + 成员数、双栏新建（表单 + 预览）、详情 KPI（人数/均分/总粉丝/总报价）+ 名单表 + 「从库里选」 |
@@ -89,3 +89,11 @@
 - E2E：`e2e/helpers/constants.ts` 迁到四端地址（`E2E_{MARKETING,OPS,DEV,SELECT}_URL`），选人端首页指向 `/projects`；`06-theme-i18n` 改为匹配现有控件（单按钮主题切换 + 语言下拉）。本地生产构建栈上 **6/7 通过**，`05-image-upload` 需要 MinIO（本机没起）。
 - 顺手修掉的产品问题：Cookie 提示原是全宽底栏，会盖住表单底部的保存 / 分配按钮（e2e 因此卡死），改为桌面右下角小卡。
 - CI：`Build` 与 `Docker Build Verification` 之前挂在 `@tinyship/next-app` 类型检查——支付套餐 `i18n` 缺 `ko`；已补三语；文档站搜索 `localeMap` 补 `ko`；nuxt-app 布局的 `~/composables` 类型导入改相对路径。
+
+## 9. 评分已删，改为指标 + 筛选方案（2026-09-14）
+
+- 不再有综合分 / 等级 / 排名。契约见 `packages/kcs-contract/src/{metrics,source-adapter,saved-query}.ts`；口径见 `docs/03_指标口径与数据源.md`。
+- 数据源只做 A（蒲公英 OpenAPI）与 B（千瓜 / 新红），**不做自建爬虫**。无凭证时 API 走 `apps/api/src/adapters/fixtures/*.json`，任务标 `sourceMode: 'fixture'`，界面显示「样例数据」。
+- 接真实接口：填 `PGY_APP_ID / PGY_APP_SECRET / PGY_ACCESS_TOKEN`、`QIANGUA_TOKEN`、`XINHONG_TOKEN`（`deploy/k8s/secret.example.yaml`、`docker-compose.yml` 已留位），再按真实返回改各适配器顶部的 `FIELD_MAP`。
+- 前端入口：选人端 `/`（方案栏 + 编辑器）、`/creators/[id]`（指标面板）；运营端 `/sources`（抓取参数）。
+- `apps/web` 已删除；`apps/nuxt-app` + `libs/kcs-domain` 仍是旧六维口径的 mockup，未接触，建议下线。
