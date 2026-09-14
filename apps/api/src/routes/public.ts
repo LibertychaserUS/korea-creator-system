@@ -18,6 +18,7 @@ export function registerPublicRoutes(app: KcsApp, _env: AppEnv, _helpers: RouteH
         '/api/ops/creators': { get: {}, post: {} },
         '/api/select/pool': { get: {} },
         '/api/select/creators/{id}': { get: {} },
+        '/api/select/creators/{id}/history': { get: {} },
         '/api/select/queries': { get: {}, post: {} },
         '/api/select/queries/{id}': { get: {}, patch: {}, delete: {} },
         '/api/select/queries/run': { post: {} },

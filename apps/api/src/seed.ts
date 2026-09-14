@@ -139,6 +139,40 @@ async function seedCreators(db: Db) {
         ],
       )
       await db.query('DELETE FROM creator_categories WHERE creator_id = $1', [id])
+      const latestAt = new Date(raw.fetchedAt)
+      for (let weeksAgo = 3; weeksAgo >= 0; weeksAgo -= 1) {
+        const fetchedAt = new Date(latestAt)
+        fetchedAt.setUTCDate(fetchedAt.getUTCDate() - weeksAgo * 7)
+        const factor = 1 - weeksAgo * 0.035
+        const metrics = weeksAgo === 0
+          ? creator.metrics
+          : {
+              ...creator.metrics,
+              followers: creator.metrics.followers == null
+                ? null
+                : Math.round(creator.metrics.followers * factor),
+              readMedian: creator.metrics.readMedian == null
+                ? null
+                : Math.round(creator.metrics.readMedian * factor * 0.98),
+              cpe: creator.metrics.cpe == null
+                ? null
+                : Number((creator.metrics.cpe * (1 + weeksAgo * 0.04)).toFixed(2)),
+            }
+        await db.query(
+          `INSERT INTO creator_metrics_history
+            (id, creator_id, source, "window", fetched_at, job_id, metrics)
+           VALUES ($1,$2,$3,$4,$5,NULL,$6)
+           ON CONFLICT (id) DO UPDATE SET fetched_at = EXCLUDED.fetched_at, metrics = EXCLUDED.metrics`,
+          [
+            `${id}_history_${weeksAgo}`,
+            id,
+            adapter.id,
+            creator.metrics.window,
+            fetchedAt,
+            JSON.stringify(metrics),
+          ],
+        )
+      }
       await db.query(
         `INSERT INTO creator_categories (creator_id, category_slug) VALUES ($1,$2)`,
         [id, isBad ? 'blacklist' : creator.metrics.coopBrands.length ? 'collaborated' : 'never_collaborated'],
@@ -188,7 +222,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     await db.query(`
       TRUNCATE TABLE
         audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
-        creator_raw, prices, collaborations, creator_categories, creators, assets,
+        creator_raw, creator_metrics_history, prices, collaborations, creator_categories, creators, assets,
         ingest_jobs, ingest_source_usage, ingest_sources, users, orgs, categories
       RESTART IDENTITY CASCADE
     `)
