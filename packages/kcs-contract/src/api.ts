@@ -5,8 +5,11 @@
 export const API = {
   health: { method: 'GET', path: '/api/health', auth: false },
   openapi: { method: 'GET', path: '/api/openapi.json', auth: false },
-  login: { method: 'POST', path: '/api/auth/login', auth: false },
-  logout: { method: 'POST', path: '/api/auth/logout', auth: true },
+  /**
+   * Identity is TinyShip (better-auth) — sign-in / sign-out happen on the
+   * workspace app's own `/api/auth/*`. The API only introspects the session
+   * token it receives and returns the KCS role.
+   */
   me: { method: 'GET', path: '/api/auth/me', auth: true },
   opsOverview: { method: 'GET', path: '/api/ops/overview', perm: 'ops.read' },
   opsCreators: { method: 'GET', path: '/api/ops/creators', perm: 'ops.read' },
@@ -30,6 +33,7 @@ export const API = {
   queryRun: { method: 'POST', path: '/api/select/queries/run', perm: 'select.read' },
   metricsPublic: { method: 'GET', path: '/api/metrics/fields', auth: false },
   poolCreator: { method: 'GET', path: '/api/select/creators/:id', perm: 'select.read' },
+  poolCreatorHistory: { method: 'GET', path: '/api/select/creators/:id/history', perm: 'select.read' },
   projects: { method: 'GET', path: '/api/select/projects', perm: 'select.read' },
   projectCreate: { method: 'POST', path: '/api/select/projects', perm: 'select.write' },
   projectGet: { method: 'GET', path: '/api/select/projects/:id', perm: 'select.read' },
@@ -54,5 +58,7 @@ export const API = {
   ingestJobCreate: { method: 'POST', path: '/api/ingest/jobs', perm: 'ingest.write' },
   ingestJob: { method: 'GET', path: '/api/ingest/jobs/:id', perm: 'ingest.read' },
   ingestSample: { method: 'GET', path: '/api/ingest/jobs/:id/sample', perm: 'ingest.read' },
+  ingestJobRetry: { method: 'POST', path: '/api/ingest/jobs/:id/retry', perm: 'ingest.retry' },
+  ingestJobCancel: { method: 'POST', path: '/api/ingest/jobs/:id/cancel', perm: 'ingest.write' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
 } as const

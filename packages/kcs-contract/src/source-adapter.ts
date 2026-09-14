@@ -70,6 +70,52 @@ export type NormalizedCreator = {
 export type NormalizeResult = { ok: true; creator: NormalizedCreator } | { ok: false; errors: string[] }
 
 /**
+ * One creator can be reached through several sources (蒲公英 userId, 千瓜 达人ID …).
+ * Rows are merged on `xhsId` (小红书号) when the platform exposes it; every
+ * (source, externalId) pair we have seen is kept so refreshes stay addressable.
+ */
+export type CreatorSourceLink = {
+  source: SourceId
+  externalId: string
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+/**
+ * Every ingest writes an immutable snapshot; `creators.metrics` is just the
+ * latest one. Trends (涨粉、CPE 变化) are read from snapshots, never recomputed.
+ */
+export type MetricSnapshot = {
+  id: string
+  creatorId: string
+  source: SourceId
+  window: CreatorMetrics['window']
+  fetchedAt: string
+  jobId: string | null
+  metrics: CreatorMetrics
+}
+
+/**
+ * Ingest job lifecycle. Jobs are queued by the API and drained by a worker
+ * that honours per-source rate limit / daily quota:
+ *   queued → running → ok | partial (quota hit, cursor kept) | failed
+ */
+export const INGEST_JOB_STATUSES = ['queued', 'running', 'ok', 'partial', 'failed'] as const
+export type IngestJobStatus = (typeof INGEST_JOB_STATUSES)[number]
+
+export type IngestJobProgress = {
+  status: IngestJobStatus
+  /** Pages fetched so far; `cursor` is where the next run continues. */
+  pagesDone: number
+  cursor: string | null
+  /** Vendor calls consumed by this job (each page / detail call is one). */
+  quotaUsed: number
+  attempts: number
+  nextRunAt: string | null
+  error: string | null
+}
+
+/**
  * How we reach 蒲公英. All three return the same `solar` JSON, so one
  * normalizer serves every gateway:
  *   official   — ad-market.xiaohongshu.com 开放平台 (docs behind partner login)
