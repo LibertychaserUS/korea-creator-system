@@ -4,8 +4,10 @@
  *   SourceQuery (crawler params) → adapter.fetch → RawRecord[] (platform JSON, stored verbatim)
  *   RawRecord → adapter.normalize → NormalizedCreator (identity + CreatorMetrics)
  *
- * Route A = 蒲公英 OpenAPI (official).  Route B = third-party data vendors
- * (千瓜 / 新红).  Self-built scraping (route C) is deliberately not a source.
+ * Route A = 蒲公英 (official platform data; reachable through the official
+ * OpenAPI or through paid API gateways that proxy the same `solar` JSON).
+ * Route B = third-party data vendors (千瓜 / 新红).
+ * Self-built scraping (route C) is deliberately not a source.
  */
 import type { CreatorMetrics, MetricWindow, HealthGrade, Platform } from './metrics'
 
@@ -68,19 +70,36 @@ export type NormalizedCreator = {
 export type NormalizeResult = { ok: true; creator: NormalizedCreator } | { ok: false; errors: string[] }
 
 /**
+ * How we reach 蒲公英. All three return the same `solar` JSON, so one
+ * normalizer serves every gateway:
+ *   official   — ad-market.xiaohongshu.com 开放平台 (docs behind partner login)
+ *   tikhub     — api.tikhub.io  /api/v1/xiaohongshu/pgy/*   (Bearer, POST JSON)
+ *   justoneapi — api.justoneapi.com /api/xiaohongshu-pgy/api/solar/*  (token query, GET)
+ */
+export const PGY_GATEWAYS = ['official', 'tikhub', 'justoneapi'] as const
+export type PgyGateway = (typeof PGY_GATEWAYS)[number]
+
+/**
  * Credentials are referenced by env var name, never stored in the DB.
- * Route A needs an app + long-lived token from ad-market.xiaohongshu.com;
- * route B vendors issue a bearer token per account.
+ * 蒲公英 needs one access token plus `PGY_GATEWAY` (defaults to tikhub);
+ * 千瓜 / 新红 have no public API docs — tokens come from the vendor contract
+ * and the endpoint/field map is configured via `*_BASE_URL` / `*_FIELD_MAP`.
  */
 export type SourceCredentialRef = {
   source: SourceId
   envVars: string[]
+  /** Optional knobs shown next to the required ones on the ops page. */
+  optionalEnvVars: string[]
 }
 
 export const SOURCE_CREDENTIALS: readonly SourceCredentialRef[] = [
-  { source: 'pugongying', envVars: ['PGY_APP_ID', 'PGY_APP_SECRET', 'PGY_ACCESS_TOKEN'] },
-  { source: 'qiangua', envVars: ['QIANGUA_TOKEN'] },
-  { source: 'xinhong', envVars: ['XINHONG_TOKEN'] },
+  {
+    source: 'pugongying',
+    envVars: ['PGY_ACCESS_TOKEN'],
+    optionalEnvVars: ['PGY_GATEWAY', 'PGY_BASE_URL', 'PGY_BRAND_USER_ID', 'PGY_ENRICH'],
+  },
+  { source: 'qiangua', envVars: ['QIANGUA_TOKEN'], optionalEnvVars: ['QIANGUA_BASE_URL', 'QIANGUA_SEARCH_PATH', 'QIANGUA_FIELD_MAP'] },
+  { source: 'xinhong', envVars: ['XINHONG_TOKEN'], optionalEnvVars: ['XINHONG_BASE_URL', 'XINHONG_SEARCH_PATH', 'XINHONG_FIELD_MAP'] },
 ]
 
 export interface SourceAdapter {

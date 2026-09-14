@@ -1519,7 +1519,7 @@ async function runAdapterIngest(
   await env.db.query(
     `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, owner)
      VALUES ($1,$2,$1,true,60,1000,'ops') ON CONFLICT (id) DO NOTHING`,
-    [query.source, query.source === 'pugongying' ? '蒲公英 OpenAPI' : query.source === 'qiangua' ? '千瓜' : '新红'],
+    [query.source, query.source === 'pugongying' ? '蒲公英' : query.source === 'qiangua' ? '千瓜' : '新红'],
   )
   const id = existing ? String(existing.id) : randomUUID()
   const attempt = existing ? Number(existing.attempt) + 1 : 0
