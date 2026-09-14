@@ -37,6 +37,11 @@ services:
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/kcs
       AUTH_BASE_URL: http://select:7004
       NODE_ENV: test
+      # 千瓜 adapter → the stand-in vendor that the black-box global setup runs on the host (:7190).
+      QIANGUA_BASE_URL: http://host.docker.internal:7190
+      QIANGUA_TOKEN: blackbox-vendor-token
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '7100:7100'
 

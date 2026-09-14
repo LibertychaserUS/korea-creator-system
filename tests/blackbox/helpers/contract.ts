@@ -65,6 +65,7 @@ export const PATHS = {
   devJob: (id: string) => `/api/dev/jobs/${id}`,
   devRetry: (id: string) => `/api/dev/jobs/${id}/retry`,
   devFailures: '/api/dev/failures',
+  devAudit: '/api/dev/audit',
   assetsPresign: '/api/assets/presign',
   assets: '/api/assets',
   asset: (key: string) => `/api/assets/${encodeURIComponent(key)}`,

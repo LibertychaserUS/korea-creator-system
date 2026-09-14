@@ -2,6 +2,7 @@ import type { TestProject } from 'vitest/node'
 import { AUTH_URL, signInWithBackoff, type Session } from './helpers/tinyship'
 import { PATHS, ROLES, SEED_PASSWORD, SEED_USERS, type Role } from './helpers/contract'
 import { BASE_URL, request } from './helpers/http'
+import { startMockVendor, VENDOR_PORT, VENDOR_URL } from './helpers/mock-vendor'
 import { assertPostgresReachable } from './helpers/postgres'
 
 declare module 'vitest' {
@@ -18,6 +19,16 @@ declare module 'vitest' {
  */
 export default async function setup(project: TestProject) {
   await assertPostgresReachable()
+
+  // Stand-in vendor for the queue suite; the API must be started with
+  // QIANGUA_BASE_URL=http://127.0.0.1:<port> QIANGUA_TOKEN=<token> to use it.
+  let vendor: Awaited<ReturnType<typeof startMockVendor>> | null = null
+  try {
+    vendor = await startMockVendor(VENDOR_PORT)
+  } catch (error) {
+    console.warn(`[blackbox] mock vendor not started on ${VENDOR_URL}: ${String(error)} — live queue cases will skip`)
+  }
+
   try {
     await request('GET', PATHS.health)
   } catch {
@@ -42,4 +53,8 @@ export default async function setup(project: TestProject) {
     }
   }
   project.provide('sessions', sessions)
+
+  return async () => {
+    await new Promise<void>((resolve) => (vendor ? vendor.close(() => resolve()) : resolve()))
+  }
 }
