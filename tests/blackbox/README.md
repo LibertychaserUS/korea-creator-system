@@ -17,9 +17,11 @@ docker compose up -d postgres
 #    docker compose --profile full up -d
 #    or: pnpm --filter @kcs/api dev
 
-# 3. Seed the five RBAC users if the API did not already
+# 3. A workspace app serving TinyShip auth (default http://localhost:7004 = select)
+#    with the five demo accounts seeded: pnpm db:seed:auth
 #    emails: admin@ / ops@ / devops@ / selector@ / viewer@kcs.local
 #    password: Kcs!demo2026
+#    Sessions are minted by real email + password sign-in in global-setup.ts.
 
 pnpm test:blackbox
 ```
@@ -44,6 +46,9 @@ See [`.env.example`](./.env.example). Defaults:
 | `BLACKBOX_BASE_URL` | `http://localhost:7100` |
 | `BLACKBOX_DATABASE_URL` / `DATABASE_URL` | `postgres://kcs:kcs@127.0.0.1:5432/kcs` |
 | `BLACKBOX_PASSWORD` | `Kcs!demo2026` |
+| `BLACKBOX_AUTH_URL` | `http://localhost:7004` (TinyShip auth origin used for sign-in) |
+| `BLACKBOX_SELECT_URL` / `BLACKBOX_OPS_URL` / `BLACKBOX_DEV_URL` / `BLACKBOX_MARKETING_URL` | `:7004` / `:7002` / `:7003` / `:7005` (form-login and hand-off cases; unreachable origins are skipped) |
+| `BLACKBOX_STRANGER_EMAIL` | `stranger@kcs.local` (public sign-up probe; reused across runs) |
 
 `BLACKBOX_DATABASE_URL` must be `postgres://`. A `sqlite` URL fails setup.
 

@@ -2,11 +2,12 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**92 cases** across 8 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**112 cases** across 9 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
-Auth: black-box compose enables `KCS_DEV_TOKENS=1`; send
-`Authorization: Bearer dev:<seed-email>`. Production sessions come from
-TinyShip better-auth and are introspected by the API.
+Auth is real: `global-setup.ts` signs the five seed accounts in with email +
+password against TinyShip (`POST {BLACKBOX_AUTH_URL}/api/auth/sign-in/email`,
+default `http://localhost:7004`) and provides the session tokens to every
+suite. No dev tokens; the API introspects each Bearer token against TinyShip.
 
 Seed users (`packages/kcs-contract/src/users.ts`):
 
@@ -21,6 +22,27 @@ Seed users (`packages/kcs-contract/src/users.ts`):
 Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND`.
 
 ---
+
+## 0. 登录 — email + password — `00-login.test.ts`
+
+| case | spec | HTTP |
+|------|------|------|
+| each seed role signs in with email + password, `/api/auth/me` returns that KCS role | 05 §认证; 07 身份与权限「五个种子账号能在任一工作端登录」 | `POST /api/auth/sign-in/email` `GET /api/auth/me` |
+| one session is honoured by select / ops / dev origins | 05 §认证「四端共用同一 TinyShip 库」 | `GET {origin}/api/auth/get-session` |
+| wrong password → 401, no token, no user | 05 状态码约定 | `POST /api/auth/sign-in/email` |
+| unknown email answers exactly like wrong password (no account enumeration) | 05 §认证 | same |
+| malformed email → 400 | 05 状态码约定 | same |
+| random token and `dev:` token → 401 `AUTH-LOGIN`, pool not leaked | 05 §认证「API 只认 TinyShip 会话」 | `GET /api/auth/me` `GET /api/select/pool` |
+| sign-out revokes at TinyShip immediately and at the API within its cache window (≤ 15 s) | 07「退出后…再访问工作端跳登录」 | `POST /api/auth/sign-out` `GET /api/auth/get-session` `GET /api/auth/me` |
+| `/__login` on select: 302 `/zh-CN/`, httpOnly better-auth cookie + non-httpOnly `kcs_session` | 05 §认证 流程图 | `POST /__login` |
+| `/__login` wrong password: 302 `/zh-CN/login?error=1`, no session cookies | 06 登录页 | `POST /__login` |
+| `/__login` locale follows the form (`/en/login?error=1`) | 06 登录页 | `POST /__login` |
+| marketing `/__login` hands each role to its workspace origin | 06 宣传页登录交接 | `POST {marketing}/__login` |
+| `kcs_last_ws` cookie wins for multi-workspace roles | 06 宣传页登录交接 | `POST {marketing}/__login` |
+| public sign-up gets a TinyShip session but **no** KCS role | 05 §认证 `roleFromIdentity` | `POST /api/auth/sign-up/email` |
+| role-less account → 403 `AUTH-DENIED` on `/me`, pool, ops, ingest, projects; nothing leaked | 07 身份与权限 | `GET` those |
+| role-less account via `/__login` lands on `/zh-CN/denied` | 06 denied 页 | `POST /__login` |
+| 6 rapid wrong passwords hit 429 with a retry hint; none succeed | 05 §认证 限速 | `POST /api/auth/sign-in/email` |
 
 ## 1. AuthN / AuthZ — `01-authz.test.ts`
 
@@ -97,7 +119,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | job on enabled `file_drop` source | PRD §8.3 §12; UX 4 | `GET /api/ingest/sources` `POST /api/ingest/jobs` |
 | unknown `sourceId` → 400 `SOURCE-INVALID` | PRD §8.3 | `POST /api/ingest/jobs` |
 | ad-hoc `sourceUrl` → 400, no silent job | UX 4 硬限制 | `POST /api/ingest/jobs` `{ sourceUrl }` |
-| devops retry increments `attempt` | UX 3; SCREEN DEV-JOB-DETAIL | `POST /api/dev/jobs/:id/retry` |
+| devops retry follows the lifecycle: live / finished job → 409 `JOB-STATE`; cancelled (failed) job → 200 and back to `queued` | 04 抓取流水线 §生命周期; SCREEN DEV-JOB-DETAIL | `POST /api/ingest/jobs/:id/cancel` `POST /api/dev/jobs/:id/retry` |
 | selector cannot retry | PRD §8.3; UX 4 | retry → 403 |
 | ops cannot retry (M1) | UX 3 | retry → 403 |
 | devops GET sees the same job | PRD §8.2 同套数据 | `GET /api/dev/jobs` |

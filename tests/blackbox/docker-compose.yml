@@ -36,7 +36,6 @@ services:
     environment:
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/kcs
       AUTH_BASE_URL: http://select:7004
-      KCS_DEV_TOKENS: "1"
       NODE_ENV: test
     ports:
       - '7100:7100'

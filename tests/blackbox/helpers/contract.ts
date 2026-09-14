@@ -58,6 +58,7 @@ export const PATHS = {
   ingestRaw: (creatorId: string) => `/api/ingest/raw/${creatorId}`,
   ingestJobs: '/api/ingest/jobs',
   ingestJob: (id: string) => `/api/ingest/jobs/${id}`,
+  ingestJobCancel: (id: string) => `/api/ingest/jobs/${id}/cancel`,
   ingestRetry: (id: string) => `/api/ingest/jobs/${id}/retry`,
   devHealth: '/api/dev/health',
   devJobs: '/api/dev/jobs',
