@@ -81,6 +81,8 @@ export function camelJobs(rows: Array<Record<string, any>>) {
     nextRunAt: row.next_run_at ?? null,
     error: row.error ?? row.error_summary ?? null,
     maxPages: Number(row.max_pages ?? 5),
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
   }))
 }
 

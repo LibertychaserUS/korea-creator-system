@@ -142,7 +142,7 @@
               <TableHead class="hidden md:table-cell">{{ t('kcs.ingest.jobQuery') }}</TableHead>
               <TableHead class="text-right">{{ t('kcs.ingest.jobWritten') }}</TableHead>
               <TableHead class="hidden text-right sm:table-cell">{{ t('kcs.ingest.jobFailed') }}</TableHead>
-              <TableHead class="w-32">{{ t('kcs.panel.status') }}</TableHead>
+              <TableHead class="min-w-44">{{ t('kcs.panel.status') }}</TableHead>
               <TableHead class="w-20 text-right"><span class="sr-only">{{ t('kcs.ingest.jobActions') }}</span></TableHead>
             </TableRow>
           </TableHeader>
@@ -172,7 +172,7 @@
               <TableCell>
                 <div class="flex flex-col items-start gap-1">
                   <StatusBadge :status="job.status" />
-                  <span v-if="progress(job)" class="text-[11px] tabular-nums text-muted-foreground" :title="job.error || undefined">{{ progress(job) }}</span>
+                  <span v-if="progress(job)" class="whitespace-normal text-[11px] leading-snug tabular-nums text-muted-foreground" :title="job.error || undefined">{{ progress(job) }}</span>
                 </div>
               </TableCell>
               <TableCell class="text-right">
@@ -301,8 +301,14 @@ function progress(job: any): string {
   const parts: string[] = []
   if (job.pagesDone || job.quotaUsed) parts.push(t('kcs.ingest.progress', { pages: job.pagesDone ?? 0, calls: job.quotaUsed ?? 0 }))
   if (job.status === 'partial' && job.nextRunAt) parts.push(t('kcs.ingest.nextRun', { time: formatDate(job.nextRunAt) }))
-  if (job.status === 'failed' && job.error) parts.push(String(job.error).slice(0, 60))
+  if (job.status === 'failed') parts.push(reason(job.errorCode))
   return parts.join(' · ')
+}
+
+/** 失败原因只给人话；原始报错留在悬浮提示里。 */
+function reason(code: string | null | undefined): string {
+  const key = `kcs.ingest.reason.${code || 'UNKNOWN'}`
+  return te(key) ? t(key) : t('kcs.ingest.reason.UNKNOWN')
 }
 
 const hasActive = computed(() => jobs.value.some((j) => j.status === 'queued' || j.status === 'running'))
