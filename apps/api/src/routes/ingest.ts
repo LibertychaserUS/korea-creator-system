@@ -1,6 +1,7 @@
 import { SOURCE_IDS, type SourceQuery } from '@kcs/contract'
 import { adapterDescriptions } from '../adapters'
 import { runIngest } from '../ingest/service'
+import { closeJobDeadLetters } from '../ingest/dead-letters'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
@@ -119,7 +120,8 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (denied) return denied
     const { rows } = await env.db.query(
       `UPDATE ingest_jobs SET status = 'queued', attempts = 0, next_run_at = now(),
-       error = NULL, error_code = NULL, error_summary = NULL, ended_at = NULL, updated_at = now()
+       error = NULL, error_code = NULL, error_summary = NULL, ended_at = NULL,
+       dead_lettered_at = NULL, locked_by = NULL, lease_expires_at = NULL, updated_at = now()
        WHERE id = $1 AND status IN ('failed','partial') RETURNING *`,
       [
       context.req.param('id'),
@@ -133,6 +135,8 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
         ? jsonError(context, 409, 'JOB-STATE', 'job_not_retryable')
         : jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
+    // Requeued by hand: its dead-letter entry is settled, not waiting.
+    await closeJobDeadLetters(env, rows[0].id, user!.id, rows[0].id)
     await audit(env.db, user!.id, 'ingest.retry', 'ingest_job', rows[0].id, 'retry')
     return context.json(camelJobs(rows)[0])
   })

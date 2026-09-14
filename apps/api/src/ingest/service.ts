@@ -8,6 +8,7 @@ import {
 } from '../http/creators'
 import type { AppEnv } from '../http/types'
 import { creatorKeyFromRow, parseXlsx, type SheetRow } from '../xlsx-sheet'
+import { deadLetterJob, failureOf } from './dead-letters'
 
 export async function runWorkbookIngest(
   env: AppEnv,
@@ -235,17 +236,23 @@ export async function runAdapterIngest(
     )
   } catch (error) {
     failed += 1
+    const failure = failureOf(error)
     await env.db.query(
       `UPDATE ingest_jobs SET status = 'failed', failed_count = $2, source_mode = $3,
-       error_code = 'SOURCE_UNAVAILABLE', error_summary = $4, ended_at = now(), updated_at = now()
-       WHERE id = $1`,
-      [
-        id,
-        failed,
-        sourceMode,
-        error instanceof Error ? error.message.slice(0, 240) : 'source unavailable',
-      ],
+       error_code = $5, error_summary = $4, ended_at = now(), dead_lettered_at = now(),
+       updated_at = now() WHERE id = $1`,
+      [id, failed, sourceMode, failure.message, failure.code],
     )
+    // A one-shot run has no attempts left to spend, so it parks straight away.
+    await deadLetterJob(env, {
+      jobId: id,
+      source: query.source,
+      code: failure.code,
+      message: failure.message,
+      attempts: attempt + 1,
+      query,
+      cursor: null,
+    })
   }
   const { rows } = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [id])
   return camelJobs(rows)[0]

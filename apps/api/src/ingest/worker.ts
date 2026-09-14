@@ -1,15 +1,24 @@
 import { randomUUID } from 'node:crypto'
-import type {
-  SourceAdapter,
-  SourceId,
-  SourcePage,
-  SourceQuery,
+import { hostname } from 'node:os'
+import type { PoolClient } from 'pg'
+import {
+  INGEST_LEASE_MS,
+  INGEST_MAX_ATTEMPTS,
+  INGEST_QUEUE_LOCK,
+  type SourceAdapter,
+  type SourceId,
+  type SourcePage,
+  type SourceQuery,
 } from '@kcs/contract'
 import { getAdapter } from '../adapters'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
+import { deadLetterJob, deadLetterRecord, failureOf } from './dead-letters'
 
-const runningSources = new Set<string>()
+/** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
+const WORKER_ID = `${hostname()}:${process.pid}`
+const LEASE_SECONDS = Number(process.env.INGEST_LEASE_MS || INGEST_LEASE_MS) / 1_000
+
 const buckets = new Map<string, TokenBucket>()
 
 export class TokenBucket {
@@ -78,14 +87,30 @@ export async function processJob(env: AppEnv, jobId: string) {
     return job ? camelJobs([job])[0] : null
   }
   const source = String(job.source_id)
-  if (runningSources.has(source)) return camelJobs([job])[0]
-  runningSources.add(source)
+  const lease = WORKER_ID
   try {
+    /**
+     * Claim, single-flight, in one statement:
+     *  - `queued` / `partial` are free to take; a `running` job only once its
+     *    lease has lapsed (the previous drainer died mid-page);
+     *  - and never while another job of the same source holds a live lease —
+     *    two runs on one source would eat each other's per-minute allowance.
+     */
     const claimed = await env.db.query(
       `UPDATE ingest_jobs SET status = 'running', started_at = COALESCE(started_at, now()),
-       next_run_at = NULL, error = NULL, error_code = NULL, error_summary = NULL, updated_at = now()
-       WHERE id = $1 AND status IN ('queued','running','partial') RETURNING *`,
-      [jobId],
+         locked_by = $2, lease_expires_at = now() + make_interval(secs => $3::float8),
+         next_run_at = NULL, error = NULL, error_code = NULL, error_summary = NULL, updated_at = now()
+       WHERE id = $1
+         AND (status IN ('queued','partial')
+              OR (status = 'running' AND (lease_expires_at IS NULL OR lease_expires_at <= now())))
+         AND NOT EXISTS (
+           SELECT 1 FROM ingest_jobs busy
+            WHERE busy.source_id = ingest_jobs.source_id
+              AND busy.id <> ingest_jobs.id
+              AND busy.status = 'running'
+              AND busy.lease_expires_at > now())
+       RETURNING *`,
+      [jobId, lease, LEASE_SECONDS],
     )
     if (!claimed.rows[0]) return readJob(env, jobId)
     const adapter = resolveAdapter(env, source)
@@ -111,15 +136,23 @@ export async function processJob(env: AppEnv, jobId: string) {
     let sourceMode = claimed.rows[0].source_mode ?? 'live'
 
     while (pagesDone < maxPages) {
-      const current = await env.db.query('SELECT status, error FROM ingest_jobs WHERE id = $1', [jobId])
-      if (current.rows[0]?.status !== 'running') return readJob(env, jobId)
+      // Cancelled between pages, or the lease was taken over while we were slow:
+      // either way this run stops here and leaves the row to whoever owns it.
+      const current = await env.db.query(
+        'SELECT status, locked_by FROM ingest_jobs WHERE id = $1',
+        [jobId],
+      )
+      if (current.rows[0]?.status !== 'running' || current.rows[0]?.locked_by !== lease) {
+        return readJob(env, jobId)
+      }
       await takeRateToken(bucket, env)
       const reserved = await reserveQuota(env, source, quota)
       if (!reserved) {
         await env.db.query(
           `UPDATE ingest_jobs SET status = 'partial', cursor = $2, next_run_at = $3,
            error = 'quota_exhausted', error_code = 'QUOTA_EXHAUSTED',
-           error_summary = 'daily source quota exhausted', ended_at = now(), updated_at = now()
+           error_summary = 'daily source quota exhausted', ended_at = now(),
+           locked_by = NULL, lease_expires_at = NULL, updated_at = now()
            WHERE id = $1`,
           [jobId, cursor, nextUtcMidnight(env.now())],
         )
@@ -139,54 +172,131 @@ export async function processJob(env: AppEnv, jobId: string) {
       failed += counts.failed
       pagesDone += 1
       cursor = page.nextCursor
+      // The page write doubles as the lease heartbeat: a job that keeps making
+      // progress keeps its claim, one that stalls loses it after LEASE_SECONDS.
       await env.db.query(
         `UPDATE ingest_jobs SET cursor = $2, pages_done = $3, quota_used = $4,
          written_count = $5, skipped_dupes = $6, failed_count = $7, source_mode = $8,
+         lease_expires_at = now() + make_interval(secs => $9::float8),
          updated_at = now() WHERE id = $1`,
-        [jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode],
+        [jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS],
       )
       if (!cursor) break
     }
 
     await env.db.query(
       `UPDATE ingest_jobs SET status = 'ok', cursor = $2, error = NULL,
+       locked_by = NULL, lease_expires_at = NULL,
        ended_at = now(), updated_at = now() WHERE id = $1`,
       [jobId, cursor],
     )
     return readJob(env, jobId)
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 240) : 'source unavailable'
-    const result = await env.db.query(
-      `UPDATE ingest_jobs SET attempts = attempts + 1, attempt = attempt + 1,
-       status = CASE WHEN attempts + 1 >= 3 THEN 'failed' ELSE 'queued' END,
-       next_run_at = CASE WHEN attempts + 1 >= 3 THEN NULL
-         ELSE now() + make_interval(secs => power(2, attempts + 1)::int) END,
-       error = $2, error_code = 'SOURCE_UNAVAILABLE', error_summary = $2,
-       ended_at = CASE WHEN attempts + 1 >= 3 THEN now() ELSE NULL END,
-       updated_at = now() WHERE id = $1 RETURNING *`,
-      [jobId, message],
-    )
-    return result.rows[0] ? camelJobs(result.rows)[0] : null
-  } finally {
-    runningSources.delete(source)
+    return failJob(env, jobId, source, error)
   }
 }
 
+/**
+ * One attempt died. Either it is worth another go later (vendor hiccup, 429,
+ * 5xx) or it never will be (bad credential, unknown adapter, vendor rejected
+ * the request) — the second kind skips the backoff ladder entirely instead of
+ * paying for three identical failures. Whichever way the attempts end, the run
+ * lands in the dead-letter list with its parameters and cursor, so no work is
+ * silently lost and a replay continues rather than restarts.
+ */
+async function failJob(env: AppEnv, jobId: string, source: string, error: unknown) {
+  const { code, permanent, message } = failureOf(error)
+  const row = await env.db.query(
+    'SELECT attempts, max_attempts, cursor, query FROM ingest_jobs WHERE id = $1',
+    [jobId],
+  )
+  const attempts = Number(row.rows[0]?.attempts ?? 0) + 1
+  const maxAttempts = Math.max(1, Number(row.rows[0]?.max_attempts ?? INGEST_MAX_ATTEMPTS))
+  const exhausted = permanent || attempts >= maxAttempts
+
+  const result = await env.db.query(
+    `UPDATE ingest_jobs SET attempts = $2::int, attempt = $2::int,
+       status = CASE WHEN $3::boolean THEN 'failed' ELSE 'queued' END,
+       next_run_at = CASE WHEN $3::boolean THEN NULL
+         ELSE now() + make_interval(secs => power(2, $2::int)::int) END,
+       error = $4, error_code = $5, error_summary = $4,
+       ended_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
+       dead_lettered_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
+       locked_by = NULL, lease_expires_at = NULL,
+       updated_at = now() WHERE id = $1 RETURNING *`,
+    [jobId, attempts, exhausted, message, code],
+  )
+  if (exhausted) {
+    await deadLetterJob(env, {
+      jobId,
+      source,
+      code,
+      message,
+      attempts,
+      query: row.rows[0]?.query ?? null,
+      cursor: row.rows[0]?.cursor ?? null,
+    })
+  }
+  return result.rows[0] ? camelJobs(result.rows)[0] : null
+}
+
+/**
+ * The drainer. Deliberately one pipeline, not a pool:
+ *
+ * - every API process can host this loop, but only the one that wins the
+ *   Postgres advisory lock actually drains; the rest keep asking, so a restart
+ *   or a second replica means failover, never a second consumer;
+ * - it takes one due job per tick and finishes it before looking again. Vendor
+ *   calls are billed per request and capped per minute, so concurrency would
+ *   only raise the bill and the 429 rate;
+ * - `INGEST_WORKER=0` opts a process out entirely (e.g. a replica that should
+ *   only serve HTTP).
+ */
 export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } = {}) {
   const intervalMs = options.intervalMs ?? 2_000
+  if (process.env.INGEST_WORKER === '0') {
+    return () => undefined
+  }
   let stopped = false
   let timer: NodeJS.Timeout | undefined
+  let holder: PoolClient | null = null
+
+  const acquire = async () => {
+    if (holder) return true
+    const client = await env.db.connect() as PoolClient
+    try {
+      const { rows } = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [
+        INGEST_QUEUE_LOCK,
+      ])
+      if (rows[0]?.ok) {
+        holder = client
+        return true
+      }
+    } catch {
+      // fall through; try again next tick
+    }
+    client.release()
+    return false
+  }
 
   const tick = async () => {
     if (stopped) return
     try {
+      if (!(await acquire())) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
          WHERE (status = 'queued' OR (status = 'partial' AND next_run_at IS NOT NULL))
            AND (next_run_at IS NULL OR next_run_at <= now())
-         ORDER BY created_at LIMIT 20`,
+         ORDER BY created_at
+         LIMIT 1`,
       )
-      for (const row of rows) await processJob(env, row.id)
+      if (rows[0]) await processJob(env, rows[0].id)
+    } catch {
+      // A dropped connection releases the lock; the next tick re-acquires it.
+      if (holder) {
+        holder.release()
+        holder = null
+      }
     } finally {
       if (!stopped) timer = setTimeout(tick, intervalMs)
     }
@@ -196,14 +306,47 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
   return () => {
     stopped = true
     if (timer) clearTimeout(timer)
+    if (holder) {
+      const client = holder
+      holder = null
+      client
+        .query('SELECT pg_advisory_unlock($1)', [INGEST_QUEUE_LOCK])
+        .catch(() => undefined)
+        .finally(() => client.release())
+    }
   }
+}
+
+/**
+ * Re-read one parked payload. No vendor call and no quota: the JSON is the one
+ * the vendor already gave us, so a replay after a field-map fix is free.
+ */
+export async function replayRecord(
+  env: AppEnv,
+  input: { source: SourceId; jobId: string | null; externalId: string; payload: Record<string, unknown> },
+) {
+  const adapter = resolveAdapter(env, input.source)
+  if (!adapter) throw new Error(`unsupported adapter: ${input.source}`)
+  const page: SourcePage = {
+    nextCursor: null,
+    records: [
+      {
+        source: input.source,
+        platform: 'xhs',
+        externalId: input.externalId,
+        fetchedAt: env.now().toISOString(),
+        payload: input.payload,
+      },
+    ],
+  }
+  return persistPage(env, adapter, page, input.jobId, input.source)
 }
 
 async function persistPage(
   env: AppEnv,
   adapter: SourceAdapter,
   page: SourcePage,
-  jobId: string,
+  jobId: string | null,
   source: SourceId,
 ) {
   let written = 0
@@ -212,7 +355,16 @@ async function persistPage(
   for (const raw of page.records) {
     const normalized = adapter.normalize(raw)
     if (!normalized.ok) {
+      // Unreadable payload: park it with the original JSON rather than counting
+      // it and moving on — this is usually a field map that needs one fix.
       failed += 1
+      await deadLetterRecord(env, {
+        jobId,
+        source,
+        raw,
+        code: 'RECORD_INVALID',
+        message: normalized.errors.join('; ') || 'record could not be read',
+      })
       continue
     }
     try {
@@ -315,8 +467,15 @@ async function persistPage(
       )
       if (existingId) skipped += 1
       else written += 1
-    } catch {
+    } catch (error) {
       failed += 1
+      await deadLetterRecord(env, {
+        jobId,
+        source,
+        raw,
+        code: 'RECORD_WRITE_FAILED',
+        message: failureOf(error).message,
+      }).catch(() => undefined)
     }
   }
   return { written, skipped, failed }
