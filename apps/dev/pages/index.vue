@@ -84,7 +84,10 @@
             <TableRow v-for="job in jobs" :key="job.id" :data-job-id="job.id">
               <TableCell>
                 <div class="min-w-0">
-                  <div class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || job.id }}</div>
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || job.id }}</span>
+                    <SourceBadge v-if="isSource(job.source_id)" :source="job.source_id" :mode="job.source_mode" class="h-5" />
+                  </div>
                   <div class="truncate font-mono text-[11px] text-muted-foreground">
                     {{ job.id }}<template v-if="job.updated_at"> · {{ formatDate(job.updated_at) }}</template>
                   </div>
@@ -123,7 +126,7 @@
 
 <script setup lang="ts">
 import { AlertTriangle, Database, ListChecks, Loader2, Plug, RefreshCw, RotateCcw } from 'lucide-vue-next'
-import { can } from '@kcs/contract'
+import { SOURCE_IDS, can } from '@kcs/contract'
 
 const { t, locale } = useI18n()
 const { request } = useApi()
@@ -139,6 +142,8 @@ const jobCount = computed(() => Number(health.value.jobCount ?? 0))
 const canRetry = computed(() => Boolean(user.value && can(user.value.role, 'dev.retry')))
 
 /** 写成功但有失败行：API 状态仍是 ok，界面上标成「部分完成」。 */
+const isSource = (id: unknown) => typeof id === 'string' && (SOURCE_IDS as readonly string[]).includes(id)
+
 function jobStatus(job: { status: string; failed_count?: number | string | null }) {
   return job.status === 'ok' && Number(job.failed_count ?? 0) > 0 ? 'partial' : job.status
 }
