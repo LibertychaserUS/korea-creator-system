@@ -12,7 +12,8 @@ import { API, AUTH_URL, USERS } from '../helpers/constants';
 async function login(email: string, password: string) {
   const res = await fetch(`${AUTH_URL}${API.login}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    // better-auth rejects requests without an Origin (browser-style CSRF guard).
+    headers: { 'content-type': 'application/json', origin: AUTH_URL },
     body: JSON.stringify({ email, password }),
   });
   return res.status;
@@ -23,6 +24,11 @@ async function main() {
   for (const user of Object.values(USERS)) {
     try {
       const status = await login(user.email, user.password);
+      if (status === 429) {
+        // better-auth throttles sign-in per IP (3 / 10s); throttling is not a missing account
+        console.log(`[seed] ${user.email} rate-limited, skipped`);
+        continue;
+      }
       if (status !== 200) {
         throw new Error(`POST ${API.login} → HTTP ${status}`);
       }
