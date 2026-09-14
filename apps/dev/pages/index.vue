@@ -126,7 +126,7 @@
     <TableCard
       :title="t('kcs.ingest.parked.title')"
       :description="t('kcs.ingest.parked.lead')"
-      data-testid="table-parked"
+      testid="table-parked"
     >
       <template #meta>
         <span class="tabular-nums">{{ t('kcs.ingest.parked.count', { n: formatNumber(parked.length) }) }}</span>

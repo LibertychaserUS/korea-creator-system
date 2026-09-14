@@ -2,9 +2,9 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**144 cases** across 10 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**160 cases** across 11 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
-The queue file (`09`) needs the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of its 32 cases skip and 1 demo-data case runs instead.
+The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
 Auth is real: `global-setup.ts` signs the five seed accounts in with email +
 password against TinyShip (`POST {BLACKBOX_AUTH_URL}/api/auth/sign-in/email`,
@@ -191,6 +191,46 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | cancel is `ingest.write` (devops 403); retry is `ingest.retry` (ops 403, both routes); selector/viewer 403 everywhere | RBAC | cancel / retry / GET |
 | job list identical for ops and devops | PRD §8.2 | `GET /api/ingest/jobs` |
 | cancel + retry leave audit rows (`ingest.cancel`, `ingest.retry`) | 06 审计 | `GET /api/dev/audit` |
+
+## 10. 搁置记录（死信队列）与一条流水线 — `10-dead-letters.test.ts`
+
+Spec: `docs/04_抓取流水线与队列.md`（§抽水 / §失败 / §搁置记录）. Needs the same stand-in vendor as `09`; three of its behaviours exist only for this file (`bb-reject` → 403, `bb-shape` → 200 without a record list, `bb-badrecord` → a creator with no name).
+
+### 整次抓取
+
+| case | spec | HTTP |
+|------|------|------|
+| vendor 403 parks on attempt 1 (`VENDOR_REJECTED`), no backoff, no further vendor call, no credential in the message | 04 §失败 permanent | poll + `GET /api/dev/dead-letters` + vendor log |
+| a 200 without a record list parks on attempt 1 (`CONFIG_MISSING`) | 04 §失败 permanent | same |
+| vendor 500 spends all 3 attempts first, then parks (`SOURCE_UNAVAILABLE`) | 04 §失败 transient | same |
+| replay re-queues a *new* job from the saved query + cursor and settles the entry (`replayed`, `replayJobId`) | 04 §搁置记录 | `POST /api/dev/dead-letters/:id/replay` |
+| retrying the job itself also settles its entry — no orphan | 04 §搁置记录 | `POST /api/ingest/jobs/:id/retry` |
+
+### 单个博主
+
+| case | spec | HTTP |
+|------|------|------|
+| unreadable record parks with its payload; the rest of the page still lands | 04 §搁置记录 record | `POST /api/ingest/fetch?sync=1` + list |
+| the same record failing twice updates one entry (attempts++), no duplicates | 04 §搁置记录 | list |
+| replay after the payload is fixed writes the creator, spends no quota and no vendor call | 04 §搁置记录「不打平台」 | replay + usage/vendor log |
+| a replay that keeps failing stays open and counts; after 3 it is refused (409) | 04 §搁置记录 poison | replay ×4 |
+
+### 处理、权限、可见性
+
+| case | spec | HTTP |
+|------|------|------|
+| devops reads list + detail; ops reads but cannot act (403); selector / viewer 403; anonymous 401 | RBAC `dev.read` / `dev.retry` | all dead-letter routes |
+| dismiss removes it from the open list; dismissing or replaying again is 409 | 04 §搁置记录 | dismiss / replay |
+| unknown `state` / `kind` → 400 `VALIDATION`; unknown id → 404 | contract | list / detail / replay / dismiss |
+| health reports parked counts and who is draining | 04 §抽水 | `GET /api/dev/health` |
+
+### 一条流水线
+
+| case | spec | HTTP |
+|------|------|------|
+| five jobs at once: `running` never exceeds 1, all finish | 04 §抽水「一次一个」 | `GET /api/ingest/jobs` (poll) |
+| a running job carries holder + lease and releases both when it ends | 04 §抽水「租约」 | poll + health (+ SQL read of `locked_by`) |
+| a run abandoned mid-page is left alone while its lease is good and taken over from the cursor once it lapses | 04 §抽水「进程中途没了」 | poll + vendor log (SQL arranges the orphan) |
 
 ## 7. S3 via API — `07-storage.test.ts`
 
