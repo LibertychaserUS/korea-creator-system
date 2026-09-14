@@ -2130,11 +2130,11 @@ export const en: Locale = {
       },
       groupsTitle: "Six field groups",
       groups: {
-        scale: "Followers, follower gain, reads from fans",
+        scale: "Followers, follower gain, posts",
         reach: "Median reads / interactions / impressions, engagement rate, 3s read rate",
         cost: "Image / video quotes, cost per read, CPE, CPM",
         conversion: "Saves / likes, purchase-intent comments, search traffic",
-        potential: "Reads per follower, viral rate, feed traffic, growth rate",
+        potential: "Reads per follower, viral posts and rate, feed traffic, growth rate",
         trust: "Health grade, follower authenticity, active / engaged fans"
       },
       tierTitle: "Compared within tier",

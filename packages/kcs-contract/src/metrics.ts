@@ -111,7 +111,7 @@ export type MetricField = {
  */
 export const METRIC_FIELDS: readonly MetricField[] = [
   { key: 'followers', group: 'scale', unit: 'count', better: null, derived: false },
-  { key: 'followerGrowth', group: 'potential', unit: 'count', better: 'high', derived: false },
+  { key: 'followerGrowth', group: 'scale', unit: 'count', better: 'high', derived: false },
   { key: 'followerGrowthRate', group: 'potential', unit: 'ratio', better: 'high', derived: true },
   { key: 'readFanRatio', group: 'reach', unit: 'ratio', better: 'low', derived: false },
   { key: 'activeFanRatio', group: 'trust', unit: 'ratio', better: 'high', derived: false },
@@ -126,7 +126,7 @@ export const METRIC_FIELDS: readonly MetricField[] = [
   { key: 'coopInteractionMedian', group: 'reach', unit: 'count', better: 'high', derived: false },
   { key: 'engagementRate', group: 'reach', unit: 'ratio', better: 'high', derived: true },
   { key: 'retentionRate', group: 'reach', unit: 'ratio', better: 'high', derived: false },
-  { key: 'noteCount', group: 'potential', unit: 'count', better: 'high', derived: false },
+  { key: 'noteCount', group: 'scale', unit: 'count', better: 'high', derived: false },
   { key: 'viralCount', group: 'potential', unit: 'count', better: 'high', derived: false },
   { key: 'viralRate', group: 'potential', unit: 'ratio', better: 'high', derived: true },
   { key: 'priceImage', group: 'cost', unit: 'cny', better: null, derived: false },

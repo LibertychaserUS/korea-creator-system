@@ -261,11 +261,11 @@ export const ko: Locale = {
       },
       groupsTitle: "여섯 필드 그룹",
       groups: {
-        scale: "팔로워, 팔로워 증가, 팬 조회 비율",
+        scale: "팔로워, 팔로워 증가, 게시물 수",
         reach: "조회 / 상호작용 / 노출 중앙값, 참여율, 3초 조회율",
         cost: "이미지 / 영상 단가, 조회당 비용, CPE, CPM",
         conversion: "저장 / 좋아요, 구매 의향 댓글, 검색 유입",
-        potential: "팔로워당 조회, 바이럴 비율, 추천 유입, 증가율",
+        potential: "팔로워당 조회, 바이럴 게시물과 비율, 추천 유입, 증가율",
         trust: "건강 등급, 팔로워 진위도, 활성 / 참여 팬"
       },
       tierTitle: "같은 등급 안에서 비교",

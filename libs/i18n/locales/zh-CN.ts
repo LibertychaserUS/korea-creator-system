@@ -2137,11 +2137,11 @@ export const zhCN: Locale = {
       },
       groupsTitle: "六组字段",
       groups: {
-        scale: "粉丝数、涨粉、阅读粉丝占比",
+        scale: "粉丝数、近期涨粉、发文数",
         reach: "阅读 / 互动 / 曝光中位数、互动率、3S 阅读率",
         cost: "图文 / 视频报价、阅读成本、CPE、CPM",
         conversion: "收藏 / 点赞、求购评论占比、搜索流量占比",
-        potential: "读粉比、爆文率、推荐流量占比、涨粉率",
+        potential: "读粉比、爆文数与爆文率、推荐流量占比、涨粉率",
         trust: "健康等级、粉丝真实度、活跃 / 互动粉丝占比"
       },
       tierTitle: "同量级比",
