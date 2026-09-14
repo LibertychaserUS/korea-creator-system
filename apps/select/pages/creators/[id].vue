@@ -53,6 +53,9 @@
               <p class="text-lg font-semibold">
                 <MetricValue :metric-key="key" :value="metrics[key]" :band="percentiles[key]?.band" :percentile="percentiles[key]?.percentile" :cohort="creator.cohort" compact />
               </p>
+              <p v-if="percentiles[key]" class="text-[11px] tabular-nums text-muted-foreground" data-testid="headline-percentile">
+                P{{ Math.round(percentiles[key]!.percentile) }} · {{ bandLabel(percentiles[key]!.band) }}
+              </p>
             </div>
           </div>
         </div>
@@ -231,7 +234,7 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const localePath = useLocalePath()
 const { request } = useApi()
-const { label, help, groupLabel, groups, fieldsIn } = useMetrics()
+const { label, help, groupLabel, groups, fieldsIn, bandLabel } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)
