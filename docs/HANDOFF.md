@@ -75,3 +75,17 @@
 2. nuxt-app（7001）面板过一遍 tide 主题，或决定是否下线。
 3. 视觉可继续打磨的点：ColorSchemeSelector 精简为 tide 单一配色；达人库表格加列显隐；录入页头像裁切。
 4. 编排层未验证项见文末「后端/部署收尾（sol）」。
+
+## 8. 后端 / 部署 / 测试收尾（2026-09-14）
+
+- API：达人库默认排序改按规则综合分（`queryPool`），概览 `recentJobs` 返回 `failed_count` / `batch_name` / `file_name`，录入保存 `xhs_id`；`WEB_ORIGIN` 支持逗号分隔多来源。`apps/api` 单测 27/27 通过。
+- 部署（**只做了 YAML 语法校验，未在真实 Docker / 集群跑过**）：
+  - `deploy/Dockerfile.workspace-app`：四端共用多阶段镜像（`--build-arg APP=marketing|ops|dev|select`），bookworm-slim 基底。
+  - `deploy/k8s/workspace-apps.yaml`：四端 Deployment + Service + ConfigMap；运行期 URL 用 `NUXT_PUBLIC_*` 覆盖（`KCS_*_URL` 只在 build 时生效）；端口用 `NITRO_PORT`；面板库与 better-auth 密钥来自 Secret `kcs-web`（样例在 `secret.example.yaml`）。
+  - `deploy/k8s/ingress.yaml`：`kcs.example.com`（marketing + `/api`）、`ops.` / `dev.` / `select.` / `legacy.` 子域。
+  - `deploy/nginx/kcs.conf`：宿主机 7000–7004 + 7100 反代版本。
+  - `docker-compose.yml`：`--profile full` 追加四端服务（面板库走容器内 sqlite）。
+  - Kafka / Redpanda：队列协议（topic、幂等键、消费重试、状态回写）尚未定义，未声明服务；ingest 仍在 API 进程内执行。
+- E2E：`e2e/helpers/constants.ts` 迁到四端地址（`E2E_{MARKETING,OPS,DEV,SELECT}_URL`），选人端首页指向 `/projects`；`06-theme-i18n` 改为匹配现有控件（单按钮主题切换 + 语言下拉）。本地生产构建栈上 **6/7 通过**，`05-image-upload` 需要 MinIO（本机没起）。
+- 顺手修掉的产品问题：Cookie 提示原是全宽底栏，会盖住表单底部的保存 / 分配按钮（e2e 因此卡死），改为桌面右下角小卡。
+- CI：`Build` 与 `Docker Build Verification` 之前挂在 `@tinyship/next-app` 类型检查——支付套餐 `i18n` 缺 `ko`；已补三语；文档站搜索 `localeMap` 补 `ko`；nuxt-app 布局的 `~/composables` 类型导入改相对路径。
