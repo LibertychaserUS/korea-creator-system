@@ -45,6 +45,7 @@ export function publicPoolRow(item: Record<string, any>) {
     price: item.price,
     source: item.source,
     externalId: item.externalId,
+    sources: item.sources,
     metricsFetchedAt: item.metricsFetchedAt,
     tier: item.tier,
     cohort: item.cohort,
@@ -141,10 +142,15 @@ export async function attachCreatorMeta(
 ): Promise<Array<Record<string, any>>> {
   const ids = rows.map((row) => row.id)
   if (!ids.length) return []
-  const [cats, collaborations, prices] = await Promise.all([
+  const [cats, collaborations, prices, sources] = await Promise.all([
     db.query('SELECT creator_id, category_slug FROM creator_categories WHERE creator_id = ANY($1)', [ids]),
     db.query('SELECT * FROM collaborations WHERE creator_id = ANY($1)', [ids]),
     db.query('SELECT * FROM prices WHERE creator_id = ANY($1)', [ids]),
+    db.query(
+      `SELECT creator_id, source, external_id, first_seen_at, last_seen_at
+       FROM creator_sources WHERE creator_id = ANY($1) ORDER BY first_seen_at`,
+      [ids],
+    ),
   ])
   return rows.map((row) => {
     const categories = cats.rows
@@ -177,6 +183,18 @@ export async function attachCreatorMeta(
       metrics,
       metricsLocked: parseMetrics(row.metrics_locked),
       metricsFetchedAt: row.metrics_fetched_at ?? null,
+      sources: sources.rows
+        .filter((item) => item.creator_id === row.id)
+        .map((item) => ({
+          source: item.source,
+          externalId: item.external_id,
+          firstSeenAt: item.first_seen_at instanceof Date
+            ? item.first_seen_at.toISOString()
+            : String(item.first_seen_at),
+          lastSeenAt: item.last_seen_at instanceof Date
+            ? item.last_seen_at.toISOString()
+            : String(item.last_seen_at),
+        })),
       collaborations: full ? creatorCollaborations : undefined,
       price: price
         ? {
