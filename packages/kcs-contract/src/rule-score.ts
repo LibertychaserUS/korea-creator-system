@@ -1,33 +1,53 @@
-/**
- * Rule scoring = pure function of (input, spec).
- * The legacy constants below are derived from DEFAULT_RULE_SPEC so existing
- * callers / tests keep working; new code should pass an explicit spec.
- */
-import {
-  DEFAULT_RULE_SPEC,
-  gradeForWith,
-  weightOf,
-  type DimensionId,
-  type RuleGrade,
-  type RuleSpec,
-} from './rule-spec'
+export const RULE_VERSION = 'rv-2026.09'
 
-export type { DimensionId, RuleGrade } from './rule-spec'
+export const RULE_DIMENSIONS = [
+  { id: 'screening', weight: 25, labelKey: 'score.screening' },
+  { id: 'keywords', weight: 15, labelKey: 'score.keywords' },
+  { id: 'koreaBrand', weight: 25, labelKey: 'score.koreaBrand' },
+  { id: 'potential', weight: 20, labelKey: 'score.potential' },
+  { id: 'performance', weight: 10, labelKey: 'score.performance' },
+  { id: 'value', weight: 5, labelKey: 'score.value' },
+] as const
 
-export const RULE_VERSION = DEFAULT_RULE_SPEC.version
+export type DimensionId = (typeof RULE_DIMENSIONS)[number]['id']
 
-export const RULE_DIMENSIONS = DEFAULT_RULE_SPEC.weights.map((w) => ({
-  id: w.id,
-  weight: w.weight,
-  labelKey: `score.${w.id}`,
-}))
+export const GRADE_THRESHOLDS = [
+  { grade: 'S' as const, min: 85 },
+  { grade: 'A' as const, min: 75 },
+  { grade: 'B' as const, min: 65 },
+  { grade: 'C' as const, min: 0 },
+]
 
-export const GRADE_THRESHOLDS = DEFAULT_RULE_SPEC.grades
+export type RuleGrade = (typeof GRADE_THRESHOLDS)[number]['grade']
 
-export const CONTENT_KEYWORDS = DEFAULT_RULE_SPEC.keywords.content
-export const KOREA_KEYWORDS = DEFAULT_RULE_SPEC.keywords.korea
-export const BRAND_KEYWORDS = DEFAULT_RULE_SPEC.keywords.brand
-export const EXCLUDE_KEYWORDS = DEFAULT_RULE_SPEC.keywords.exclude
+export const CONTENT_KEYWORDS = [
+  '时尚',
+  '穿搭',
+  '美妆',
+  'vlog',
+  '生活方式',
+  '开箱',
+  '旅行',
+  '探店',
+  '护肤',
+  '空瓶',
+] as const
+
+export const KOREA_KEYWORDS = [
+  '韩国',
+  '韩',
+  '首尔',
+  '서울',
+  '济州',
+  '釜山',
+  '圣水',
+  '明洞',
+  '올리브영',
+] as const
+
+export const BRAND_KEYWORDS = ['雪花秀', '설화수', '兰芝', '兰芝', '홀리추얼', 'emis', 'rockfish'] as const
+
+export const EXCLUDE_KEYWORDS = ['纯KPOP追星', '纯美食探店', '纯旅游攻略'] as const
 
 export type ScoreInput = {
   followers?: number | null
@@ -87,43 +107,34 @@ function hitsIn(text: string, dict: readonly string[]): string[] {
   return dict.filter((word) => text.includes(word.toLowerCase()))
 }
 
-function tierRaw(followers: number | null | undefined, spec: RuleSpec): number {
+function screeningRaw(followers?: number | null): number {
   const n = followers ?? 0
-  for (const tier of spec.followerTiers) {
-    if (n >= tier.min) return tier.raw
-  }
-  return spec.followerTiers[spec.followerTiers.length - 1]?.raw ?? 0
-}
-
-function cpmRaw(cpm: number, spec: RuleSpec): number {
-  for (const tier of spec.cpmTiers) {
-    if (cpm < tier.max) return tier.raw
-  }
-  return spec.cpmTiers[spec.cpmTiers.length - 1]?.raw ?? 0
+  if (n >= 1_000_000) return 100
+  if (n >= 300_000) return 90
+  if (n >= 150_000) return 80
+  if (n >= 100_000) return 65
+  if (n >= 50_000) return 50
+  if (n > 0) return 40
+  return 20
 }
 
 function contribute(raw: number, weight: number): number {
   return round1((clip(raw) * weight) / 100)
 }
 
-export function gradeFor(final: number, spec: RuleSpec = DEFAULT_RULE_SPEC): RuleGrade {
-  return gradeForWith(final, spec)
+export function gradeFor(final: number): RuleGrade {
+  for (const row of GRADE_THRESHOLDS) {
+    if (final >= row.min) return row.grade
+  }
+  return 'C'
 }
 
-export const RISK_REASON_LABELS = {
-  personaMissing: '身份画像缺失',
-  tagsMissing: '内容标签缺失',
-  lowEr: '合作ER过低',
-  highQuote: '报价偏高',
-  excluded: '排除类型匹配',
-} as const
-
-export function scoreCreatorWith(input: ScoreInput, spec: RuleSpec): RuleScore {
+export function scoreCreator(input: ScoreInput): RuleScore {
   const text = blob(input)
-  const contentHits = hitsIn(text, spec.keywords.content)
-  const koreaHits = hitsIn(text, spec.keywords.korea)
-  const brandHits = hitsIn(text, spec.keywords.brand)
-  const excludeHits = hitsIn(text, spec.keywords.exclude)
+  const contentHits = hitsIn(text, CONTENT_KEYWORDS)
+  const koreaHits = hitsIn(text, KOREA_KEYWORDS)
+  const brandHits = hitsIn(text, BRAND_KEYWORDS)
+  const excludeHits = hitsIn(text, EXCLUDE_KEYWORDS)
 
   const keywordRaw = clip(contentHits.length * 30)
 
@@ -133,7 +144,7 @@ export function scoreCreatorWith(input: ScoreInput, spec: RuleSpec): RuleScore {
   koreaRaw += Math.min(30, brandHits.length * 12)
   if (koreaRaw === 0) koreaRaw = 10
 
-  const fanRaw = tierRaw(input.followers, spec)
+  const fanRaw = screeningRaw(input.followers)
   const collabRaw = input.hasCollaborated ? 80 : 45
   const notesRaw = clip((input.noteCount ?? 0) * 8)
   const potentialRaw = fanRaw * 0.4 + collabRaw * 0.35 + notesRaw * 0.25
@@ -148,50 +159,47 @@ export function scoreCreatorWith(input: ScoreInput, spec: RuleSpec): RuleScore {
 
   const followers = input.followers ?? 0
   const price = input.price ?? null
-  const highQuoteCpm = spec.cpmTiers.length >= 2 ? spec.cpmTiers[spec.cpmTiers.length - 2]!.max : Number.POSITIVE_INFINITY
-  let valueRaw = spec.valueFallbackRaw
+  let valueRaw = 30
   if (price != null && followers > 0) {
-    valueRaw = cpmRaw((price / followers) * 1000, spec)
+    const cpm = (price / followers) * 1000
+    if (cpm < 40) valueRaw = 95
+    else if (cpm < 80) valueRaw = 80
+    else if (cpm < 150) valueRaw = 60
+    else valueRaw = 35
   }
 
-  const raws: Record<DimensionId, number> = {
-    screening: fanRaw,
-    keywords: keywordRaw,
-    koreaBrand: koreaRaw,
-    potential: potentialRaw,
-    performance: performanceRaw,
-    value: valueRaw,
-  }
-  const dimensions: DimensionScore[] = spec.weights.map((w) => ({
-    id: w.id,
-    weight: w.weight,
-    raw: raws[w.id],
-    contribution: contribute(raws[w.id], weightOf(spec, w.id)),
-  }))
+  const dimensions: DimensionScore[] = [
+    { id: 'screening', weight: 25, raw: fanRaw, contribution: contribute(fanRaw, 25) },
+    { id: 'keywords', weight: 15, raw: keywordRaw, contribution: contribute(keywordRaw, 15) },
+    { id: 'koreaBrand', weight: 25, raw: koreaRaw, contribution: contribute(koreaRaw, 25) },
+    { id: 'potential', weight: 20, raw: potentialRaw, contribution: contribute(potentialRaw, 20) },
+    { id: 'performance', weight: 10, raw: performanceRaw, contribution: contribute(performanceRaw, 10) },
+    { id: 'value', weight: 5, raw: valueRaw, contribution: contribute(valueRaw, 5) },
+  ]
 
   const riskReasons: string[] = []
   let risk = 0
   if (!input.persona) {
-    risk += spec.risk.personaMissing
-    riskReasons.push(RISK_REASON_LABELS.personaMissing)
+    risk -= 2
+    riskReasons.push('身份画像缺失')
   }
   if (!input.contentTags?.length) {
-    risk += spec.risk.tagsMissing
-    riskReasons.push(RISK_REASON_LABELS.tagsMissing)
+    risk -= 2
+    riskReasons.push('内容标签缺失')
   }
   if (er != null && er < 0.01) {
-    risk += spec.risk.lowEr
-    riskReasons.push(RISK_REASON_LABELS.lowEr)
+    risk -= 2
+    riskReasons.push('合作ER过低')
   }
-  if (price != null && followers > 0 && (price / followers) * 1000 > highQuoteCpm) {
-    risk += spec.risk.highQuote
-    riskReasons.push(RISK_REASON_LABELS.highQuote)
+  if (price != null && followers > 0 && (price / followers) * 1000 > 150) {
+    risk -= 2
+    riskReasons.push('报价偏高')
   }
   if (excludeHits.length) {
-    risk += spec.risk.excluded
-    riskReasons.push(RISK_REASON_LABELS.excluded)
+    risk -= 3
+    riskReasons.push('排除类型匹配')
   }
-  if (risk < spec.risk.cap) risk = spec.risk.cap
+  if (risk < -10) risk = -10
   const riskDeduction = round1(risk)
 
   const sum = dimensions.reduce((acc, d) => acc + d.contribution, 0)
@@ -200,19 +208,15 @@ export function scoreCreatorWith(input: ScoreInput, spec: RuleSpec): RuleScore {
   const formula = `${parts} ${riskDeduction} = ${final}`
 
   return {
-    ruleVersion: spec.version,
+    ruleVersion: RULE_VERSION,
     dimensions,
     riskDeduction,
     riskReasons,
     hits: [...new Set([...contentHits, ...koreaHits, ...brandHits])],
     final,
-    grade: gradeForWith(final, spec),
+    grade: gradeFor(final),
     formula,
   }
-}
-
-export function scoreCreator(input: ScoreInput, spec: RuleSpec = DEFAULT_RULE_SPEC): RuleScore {
-  return scoreCreatorWith(input, spec)
 }
 
 export function creatorToScoreInput(row: {
