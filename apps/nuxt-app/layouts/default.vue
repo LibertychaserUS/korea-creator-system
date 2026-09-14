@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ThemePreference } from '~/composables/useKcsTheme'
+import type { ThemePreference } from '../composables/useKcsTheme'
 
 const { t, locale, locales } = useI18n()
 const localePath = useLocalePath()

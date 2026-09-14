@@ -207,6 +207,15 @@ export const paymentConfig = {
             '所有高级功能',
             '优先支持'
           ]
+        },
+        'ko': {
+          name: '위챗페이 월간 플랜',
+          description: '위챗페이로 월 1회 결제',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원'
+          ]
         }
       }
     },
@@ -238,6 +247,15 @@ export const paymentConfig = {
           features: [
             '所有高级功能',
             '优先支持'
+          ]
+        },
+        'ko': {
+          name: '알리페이 월간 플랜',
+          description: '알리페이로 월 1회 결제',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원'
           ]
         }
       }
@@ -272,6 +290,15 @@ export const paymentConfig = {
             '所有高级功能',
             '优先支持'
           ]
+        },
+        'ko': {
+          name: 'Stripe 월간 구독',
+          description: 'Stripe 월간 자동 결제 구독',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원'
+          ]
         }
       }
     },
@@ -305,6 +332,16 @@ export const paymentConfig = {
             '所有高级功能',
             '优先支持',
             '终身免费更新'
+          ]
+        },
+        'ko': {
+          name: 'Stripe 평생 이용권',
+          description: '1회 결제로 영구 이용',
+          duration: '평생',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원',
+            '평생 무료 업데이트'
           ]
         }
       }
@@ -343,6 +380,16 @@ export const paymentConfig = {
             '优先支持',
             '随时取消'
           ]
+        },
+        'ko': {
+          name: 'PayPal 월간 구독',
+          description: 'PayPal 월간 자동 결제 구독',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원',
+            '언제든 해지'
+          ]
         }
       }
     },
@@ -372,6 +419,15 @@ export const paymentConfig = {
           features: [
             '所有高级功能',
             '优先支持'
+          ]
+        },
+        'ko': {
+          name: 'PayPal 월간 (1회 결제)',
+          description: 'PayPal로 월 1회 결제',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원'
           ]
         }
       }
@@ -404,6 +460,15 @@ export const paymentConfig = {
             '所有高级功能',
             '优先支持'
           ]
+        },
+        'ko': {
+          name: 'Creem 월간 구독',
+          description: 'Creem 월간 자동 결제 구독',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원'
+          ]
         }
       }
     },
@@ -434,6 +499,15 @@ export const paymentConfig = {
           features: [
             '所有高级功能',
             '优先支持'
+          ]
+        },
+        'ko': {
+          name: 'Creem 월간 구독 (1회 결제)',
+          description: 'Creem으로 월 1회 결제',
+          duration: '월',
+          features: [
+            '모든 프리미엄 기능',
+            '우선 지원'
           ]
         }
       }
@@ -468,6 +542,16 @@ export const paymentConfig = {
             '积分永不过期',
             '按需付费'
           ]
+        },
+        'ko': {
+          name: '100 크레딧 팩 Stripe',
+          description: 'Stripe로 구매하는 AI 크레딧 100개, 필요할 때 사용',
+          duration: '1회',
+          features: [
+            'AI 대화 100회',
+            '크레딧 무기한 유효',
+            '필요한 만큼 결제'
+          ]
         }
       }
     },
@@ -499,6 +583,16 @@ export const paymentConfig = {
             '积分永不过期',
             '最超值套餐'
           ]
+        },
+        'ko': {
+          name: '500 크레딧 팩 + 50 보너스 위챗페이',
+          description: '특가! 500 크레딧 가격으로 550 크레딧',
+          duration: '1회',
+          features: [
+            'AI 대화 550회 (보너스 50회 포함)',
+            '크레딧 무기한 유효',
+            '가장 알찬 패키지'
+          ]
         }
       }
     },
@@ -529,6 +623,16 @@ export const paymentConfig = {
             '100 次 AI 对话',
             '积分永不过期',
             '按需付费'
+          ]
+        },
+        'ko': {
+          name: '100 크레딧 팩 PayPal',
+          description: 'PayPal로 구매하는 AI 크레딧 100개',
+          duration: '1회',
+          features: [
+            'AI 대화 100회',
+            '크레딧 무기한 유효',
+            '필요한 만큼 결제'
           ]
         }
       }
