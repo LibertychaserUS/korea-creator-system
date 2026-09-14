@@ -83,6 +83,8 @@ export function camelJobs(rows: Array<Record<string, any>>) {
     maxPages: Number(row.max_pages ?? 5),
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
+    startedAt: row.started_at ?? null,
+    endedAt: row.ended_at ?? null,
   }))
 }
 

@@ -74,7 +74,7 @@ export async function enqueueIngestJob(
 export async function processJob(env: AppEnv, jobId: string) {
   const initial = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [jobId])
   const job = initial.rows[0]
-  if (!job || !['queued', 'running'].includes(job.status)) {
+  if (!job || !['queued', 'running', 'partial'].includes(job.status)) {
     return job ? camelJobs([job])[0] : null
   }
   const source = String(job.source_id)
@@ -84,7 +84,7 @@ export async function processJob(env: AppEnv, jobId: string) {
     const claimed = await env.db.query(
       `UPDATE ingest_jobs SET status = 'running', started_at = COALESCE(started_at, now()),
        next_run_at = NULL, error = NULL, error_code = NULL, error_summary = NULL, updated_at = now()
-       WHERE id = $1 AND status IN ('queued','running') RETURNING *`,
+       WHERE id = $1 AND status IN ('queued','running','partial') RETURNING *`,
       [jobId],
     )
     if (!claimed.rows[0]) return readJob(env, jobId)
@@ -125,9 +125,14 @@ export async function processJob(env: AppEnv, jobId: string) {
         )
         return readJob(env, jobId)
       }
-      quotaUsed += 1
       const page = await adapter.fetch({ ...baseQuery, cursor })
       sourceMode = (page as SourcePage & { sourceMode?: string }).sourceMode ?? sourceMode
+      if (sourceMode === 'fixture') {
+        // No vendor was called (demo data) — give the reserved call back, 04 §fixture 模式「不计配额」.
+        await releaseQuota(env, source)
+      } else {
+        quotaUsed += 1
+      }
       const counts = await persistPage(env, adapter, page, jobId, source as SourceId)
       written += counts.written
       skipped += counts.skipped
@@ -177,7 +182,8 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
     try {
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
-         WHERE status = 'queued' AND (next_run_at IS NULL OR next_run_at <= now())
+         WHERE (status = 'queued' OR (status = 'partial' AND next_run_at IS NOT NULL))
+           AND (next_run_at IS NULL OR next_run_at <= now())
          ORDER BY created_at LIMIT 20`,
       )
       for (const row of rows) await processJob(env, row.id)
@@ -330,6 +336,14 @@ async function reserveQuota(env: AppEnv, source: string, quota: number) {
     [source, day, quota],
   )
   return Boolean(result.rowCount)
+}
+
+async function releaseQuota(env: AppEnv, source: string) {
+  const day = env.now().toISOString().slice(0, 10)
+  await env.db.query(
+    `UPDATE ingest_source_usage SET calls = GREATEST(0, calls - 1) WHERE source = $1 AND day = $2`,
+    [source, day],
+  )
 }
 
 async function takeRateToken(bucket: TokenBucket, env: AppEnv) {

@@ -129,6 +129,52 @@ describe('ingest worker', () => {
     })
   })
 
+  it('resumes a partial job on its own once next_run_at has passed (no manual retry)', async () => {
+    const { context, token } = await setup()
+    await context.db.query("UPDATE ingest_sources SET quota = 1 WHERE id = 'qiangua'")
+    const { job } = await (await enqueue(context, token)).json()
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'partial', cursor: '2' })
+
+    // The day rolls over: quota is back and the scheduled resume time is due.
+    await context.db.query("UPDATE ingest_sources SET quota = 5 WHERE id = 'qiangua'")
+    await context.db.query("UPDATE ingest_jobs SET next_run_at = now() WHERE id = $1", [job.id])
+    const due = await context.db.query(
+      `SELECT id FROM ingest_jobs
+       WHERE (status = 'queued' OR (status = 'partial' AND next_run_at IS NOT NULL))
+         AND (next_run_at IS NULL OR next_run_at <= now())`,
+    )
+    expect(due.rows.map((row) => row.id)).toContain(job.id)
+    expect(await processJob(context.env, job.id)).toMatchObject({
+      status: 'ok',
+      pagesDone: 2,
+      cursor: null,
+      quotaUsed: 2,
+      attempts: 0,
+    })
+  })
+
+  it('does not charge quota for demo-data pages', async () => {
+    const adapter = pagedAdapter()
+    const fixtureAdapter: SourceAdapter = {
+      ...adapter,
+      async fetch(query) {
+        return { ...(await adapter.fetch(query)), sourceMode: 'fixture' } as Awaited<ReturnType<SourceAdapter['fetch']>>
+      },
+    }
+    const context = await createTestApp({ getAdapter: (source) => source === 'qiangua' ? fixtureAdapter : undefined })
+    contexts.push(context)
+    const token = (await context.loginJson('ops@kcs.local')).token
+    const { job } = await (await enqueue(context, token)).json()
+    expect(await processJob(context.env, job.id)).toMatchObject({
+      status: 'ok',
+      pagesDone: 2,
+      quotaUsed: 0,
+      sourceMode: 'fixture',
+    })
+    const usage = await context.db.query("SELECT calls FROM ingest_source_usage WHERE source = 'qiangua'")
+    expect(Number(usage.rows[0]?.calls ?? 0)).toBe(0)
+  })
+
   it('refills a token bucket at the configured rate', () => {
     const bucket = new TokenBucket(2, 0)
     expect(bucket.tryTake(0)).toBe(true)
