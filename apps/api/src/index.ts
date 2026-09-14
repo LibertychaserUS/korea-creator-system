@@ -9,6 +9,9 @@ import { MemoryObjectStore } from './store'
 const port = Number(process.env.PORT || 7100)
 
 async function main() {
+  if (process.env.KCS_DEV_TOKENS === '1' && process.env.NODE_ENV === 'production') {
+    throw new Error('KCS_DEV_TOKENS cannot be enabled in production')
+  }
   const url = process.env.DATABASE_URL
   if (!url) throw new Error('DATABASE_URL is required (Postgres)')
   const db = await connectDb(url)

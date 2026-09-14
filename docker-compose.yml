@@ -68,8 +68,9 @@ services:
       S3_ACCESS_KEY: kcsminio
       S3_SECRET_KEY: kcsminio123
       S3_FORCE_PATH_STYLE: "true"
-      WEB_ORIGIN: http://localhost:7000,http://localhost:7001,http://localhost:7002,http://localhost:7003,http://localhost:7004
-      SESSION_SECRET: local-dev-session-secret-change-me
+      WEB_ORIGIN: http://localhost:7002,http://localhost:7003,http://localhost:7004,http://localhost:7005
+      AUTH_BASE_URL: http://select:7004
+      KCS_DEV_TOKENS: "1"
       PGY_ACCESS_TOKEN: ""
       PGY_GATEWAY: tikhub
       PGY_BASE_URL: ""
@@ -97,19 +98,17 @@ services:
     depends_on:
       - api
     environment:
-      NITRO_PORT: "7000"
+      NITRO_PORT: "7005"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
-      DB_DIALECT: sqlite
-      SQLITE_DB_PATH: /data/panel.sqlite
+      DB_DIALECT: pg
+      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
-    volumes:
-      - kcs_marketing_panel:/data
     ports:
-      - "7000:7000"
+      - "7005:7005"
     profiles:
       - full
 
@@ -125,15 +124,13 @@ services:
     environment:
       NITRO_PORT: "7002"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
-      DB_DIALECT: sqlite
-      SQLITE_DB_PATH: /data/panel.sqlite
+      DB_DIALECT: pg
+      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
-    volumes:
-      - kcs_ops_panel:/data
     ports:
       - "7002:7002"
     profiles:
@@ -151,15 +148,13 @@ services:
     environment:
       NITRO_PORT: "7003"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
-      DB_DIALECT: sqlite
-      SQLITE_DB_PATH: /data/panel.sqlite
+      DB_DIALECT: pg
+      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
-    volumes:
-      - kcs_dev_panel:/data
     ports:
       - "7003:7003"
     profiles:
@@ -177,15 +172,13 @@ services:
     environment:
       NITRO_PORT: "7004"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
-      DB_DIALECT: sqlite
-      SQLITE_DB_PATH: /data/panel.sqlite
+      DB_DIALECT: pg
+      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
-    volumes:
-      - kcs_select_panel:/data
     ports:
       - "7004:7004"
     profiles:
@@ -194,7 +187,3 @@ services:
 volumes:
   kcs_pg:
   kcs_minio:
-  kcs_marketing_panel:
-  kcs_ops_panel:
-  kcs_dev_panel:
-  kcs_select_panel:

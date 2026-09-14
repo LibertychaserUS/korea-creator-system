@@ -34,8 +34,6 @@ export const ERROR = {
 
 export const PATHS = {
   health: '/api/health',
-  login: '/api/auth/login',
-  logout: '/api/auth/logout',
   me: '/api/auth/me',
   opsOverview: '/api/ops/overview',
   opsCreators: '/api/ops/creators',

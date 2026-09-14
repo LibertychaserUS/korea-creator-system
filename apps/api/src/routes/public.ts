@@ -14,7 +14,7 @@ export function registerPublicRoutes(app: KcsApp, _env: AppEnv, _helpers: RouteH
       openapi: '3.0.3',
       info: { title: '全球达人情报系统 API', version: '0.1.0' },
       paths: {
-        '/api/auth/login': { post: { summary: '登录' } },
+        '/api/auth/me': { get: { summary: '当前身份' } },
         '/api/ops/creators': { get: {}, post: {} },
         '/api/select/pool': { get: {} },
         '/api/select/creators/{id}': { get: {} },

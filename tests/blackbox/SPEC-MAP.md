@@ -4,7 +4,9 @@ HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contrac
 
 **92 cases** across 8 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
-Auth: `POST /api/auth/login` → `{ token, user.role }`. Send `Authorization: Bearer <token>`.
+Auth: black-box compose enables `KCS_DEV_TOKENS=1`; send
+`Authorization: Bearer dev:<seed-email>`. Production sessions come from
+TinyShip better-auth and are introspected by the API.
 
 Seed users (`packages/kcs-contract/src/users.ts`):
 

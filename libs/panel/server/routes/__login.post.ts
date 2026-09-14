@@ -1,4 +1,5 @@
-import { can, type Role } from '@kcs/contract'
+import { auth } from '@libs/auth'
+import { can, roleFromIdentity, type Role } from '@kcs/contract'
 
 /** Workspaces a role may open, in product order: 前台选人 / 后台录入 / 监控. */
 function workspacesFor(role: Role): string[] {
@@ -34,24 +35,36 @@ export default defineEventHandler(async (event) => {
     locale = String(form.get('locale') || 'zh-CN')
     appKey = String(form.get('app') || '')
   }
-  const apiBase = useRuntimeConfig().public.apiBase || 'http://localhost:7100'
-  const res = await fetch(`${apiBase}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  })
-  const data = (await res.json()) as {
-    token?: string
-    user?: { role: Role }
-  }
-  if (!res.ok || !data.token || !data.user) {
+  let response: Response
+  try {
+    response = await auth.api.signInEmail({
+      body: { email, password },
+      headers: new Headers(
+        Object.entries(getRequestHeaders(event))
+          .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      ),
+      asResponse: true,
+    })
+  } catch {
     return sendRedirect(event, `/${locale}/login?error=1`)
   }
-  setCookie(event, 'kcs_session', data.token, {
+  const data = await response.clone().json().catch(() => null) as {
+    token?: string
+    user?: { role?: string }
+  } | null
+  const token = data?.token || response.headers.get('set-auth-token')
+  if (!response.ok || !token || !data?.user) {
+    return sendRedirect(event, `/${locale}/login?error=1`)
+  }
+  for (const cookie of response.headers.getSetCookie()) {
+    appendResponseHeader(event, 'set-cookie', cookie)
+  }
+  setCookie(event, 'kcs_session', token, {
     path: '/',
     sameSite: 'lax',
     httpOnly: false,
   })
+  const role = roleFromIdentity(data.user.role)
 
   // Workspace apps: land on the app's own home; the route middleware
   // re-checks this app's perm and sends misuse to /denied.
@@ -66,7 +79,7 @@ export default defineEventHandler(async (event) => {
     ops: pub.opsUrl as string | undefined,
     dev: pub.devUrl as string | undefined,
   }
-  const allowed = workspacesFor(data.user.role)
+  const allowed = workspacesFor(role)
   const lastWorkspace = getCookie(event, 'kcs_last_ws') || undefined
   const target = (lastWorkspace && allowed.includes(lastWorkspace) ? lastWorkspace : allowed[0]) ?? null
   const base = target ? origins[target] : undefined

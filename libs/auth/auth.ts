@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
-import { phoneNumber, admin, captcha } from "better-auth/plugins"
+import { phoneNumber, admin, bearer, captcha } from "better-auth/plugins"
 import { validator, StandardAdapter } from "validation-better-auth"
 import { createAuthMiddleware, APIError } from "better-auth/api"
 import { nanoid } from "nanoid";
@@ -212,6 +212,7 @@ export const auth = betterAuth({
     }
   },
   plugins: [
+    bearer(),
     // https://www.better-auth.com/docs/plugins/admin
     admin({
       adminRoles: ["admin"],

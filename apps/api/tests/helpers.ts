@@ -1,4 +1,5 @@
 import { createApp, type AppEnv } from '../src/app'
+import { SEED_PASSWORD, SEED_USERS } from '@kcs/contract'
 import { connectDb } from '../src/db'
 import { migrate } from '../src/migrate'
 import { seed } from '../src/seed'
@@ -19,7 +20,24 @@ export async function createTestApp(): Promise<TestCtx> {
   await migrate(db)
   await seed(db, { reset: true })
   const store = new MemoryObjectStore()
-  const env: AppEnv = { db, store, now: () => new Date() }
+  const usersByToken = new Map(
+    SEED_USERS.map((user) => [
+      `test:${user.email}`,
+      {
+        id: `user_${user.role}`,
+        orgId: 'org_platform',
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+      },
+    ]),
+  )
+  const env: AppEnv = {
+    db,
+    store,
+    now: () => new Date(),
+    verifySession: async (token) => usersByToken.get(token) ?? null,
+  }
   const app = createApp(env)
 
   return {
@@ -27,19 +45,29 @@ export async function createTestApp(): Promise<TestCtx> {
     close: async () => {
       await db.end()
     },
-    login: (email, password = 'Kcs!demo2026') =>
-      Promise.resolve(app.request('/api/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })),
-    loginJson: async (email, password = 'Kcs!demo2026') => {
-      const res = await app.request('/api/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+    login: async (email, password = SEED_PASSWORD) => {
+      const user = SEED_USERS.find((candidate) => candidate.email === email)
+      if (!user || password !== SEED_PASSWORD) {
+        return Response.json(
+          { error: { code: 'AUTH-LOGIN', message: 'invalid_credentials' } },
+          { status: 401 },
+        )
+      }
+      return Response.json({
+        token: `test:${email}`,
+        user: { id: `user_${user.role}`, email, role: user.role, displayName: user.displayName },
       })
-      return res.json()
+    },
+    loginJson: async (email, password = SEED_PASSWORD) => {
+      const response = await (async () => {
+        const user = SEED_USERS.find((candidate) => candidate.email === email)
+        if (!user || password !== SEED_PASSWORD) throw new Error(`unknown test identity: ${email}`)
+        return {
+          token: `test:${email}`,
+          user: { role: user.role },
+        }
+      })()
+      return response
     },
   }
 }
