@@ -5,10 +5,14 @@ import { migrate } from './migrate'
 import { createS3Store } from './s3'
 import { seed } from './seed'
 import { MemoryObjectStore } from './store'
+import { startIngestWorker } from './ingest/worker'
 
 const port = Number(process.env.PORT || 7100)
 
 async function main() {
+  if (process.env.KCS_DEV_TOKENS === '1' && process.env.NODE_ENV === 'production') {
+    throw new Error('KCS_DEV_TOKENS cannot be enabled in production')
+  }
   const url = process.env.DATABASE_URL
   if (!url) throw new Error('DATABASE_URL is required (Postgres)')
   const db = await connectDb(url)
@@ -25,7 +29,9 @@ async function main() {
           forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
         })
       : new MemoryObjectStore()
-  const app = createApp({ db, store, now: () => new Date() })
+  const env = { db, store, now: () => new Date() }
+  const app = createApp(env)
+  startIngestWorker(env)
   serve({ fetch: app.fetch, port }, () => {
     console.log(`kcs-api listening on :${port}`)
   })

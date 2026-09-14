@@ -71,17 +71,34 @@ describe('Ingest jobs', () => {
     expect(leaked).toBe(false)
   })
 
-  it('lets devops retry and increments attempt (UX 3 / PRD §8.3)', async () => {
+  it('retry follows the job lifecycle: a live job is not retryable (409), a cancelled one goes back to the queue (04 抓取流水线 §生命周期)', async () => {
     const create = await request('POST', PATHS.ingestJobs, {
       token: ops.token,
       body: { sourceId, schedule: 'once' },
     })
     const id = String(create.json.id ?? jobId)
-    const before = await request('GET', PATHS.devJob(id), { token: devops.token })
-    const attemptBefore = Number(before.json.attempt ?? 0)
+
+    // Retry is only for jobs that stopped short (failed / partial); a live or finished one is 409.
+    const state = String((await request('GET', PATHS.devJob(id), { token: devops.token })).json.status)
+    const early = await request('POST', PATHS.devRetry(id), { token: devops.token })
+    if (state === 'failed' || state === 'partial') {
+      expect(early.status).toBe(200)
+      expect(String(early.json.status)).toBe('queued')
+      return
+    }
+    expect(early.status).toBe(409)
+    expect(errorCode(early.json)).toBe('JOB-STATE')
+
+    // Stop it → failed (cancelled) → retry is allowed and re-queues.
+    const cancel = await request('POST', PATHS.ingestJobCancel(id), { token: ops.token })
+    if (cancel.status === 409) return // already finished before we could cancel; lifecycle still consistent
+    expect(cancel.status).toBe(200)
+    expect(String(cancel.json.status)).toBe('failed')
+
     const retry = await request('POST', PATHS.devRetry(id), { token: devops.token })
     expect(retry.status).toBe(200)
-    expect(Number(retry.json.attempt ?? 0)).toBeGreaterThanOrEqual(Math.max(1, attemptBefore))
+    expect(String(retry.json.status)).toBe('queued')
+    expect(retry.json.error ?? null).toBeNull()
     expect(String(retry.json.errorSummary ?? '')).not.toMatch(/password|secret|cookie/i)
   })
 

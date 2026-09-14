@@ -12,6 +12,7 @@ data:
   NUXT_PUBLIC_DEV_URL: https://dev.kcs.example.com
   NUXT_PUBLIC_SELECT_URL: https://select.kcs.example.com
   NITRO_HOST: 0.0.0.0
+  DB_DIALECT: pg
 ---
 apiVersion: v1
 kind: Service
@@ -23,7 +24,7 @@ spec:
     app: kcs-marketing
   ports:
     - name: http
-      port: 7000
+      port: 7005
       targetPort: http
 ---
 apiVersion: apps/v1
@@ -47,10 +48,10 @@ spec:
           image: kcs-marketing:local
           ports:
             - name: http
-              containerPort: 7000
+              containerPort: 7005
           env:
             - name: NITRO_PORT
-              value: "7000"
+              value: "7005"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -61,6 +62,10 @@ spec:
                 secretKeyRef:
                   name: kcs-web
                   key: better-auth-secret
+            - name: BETTER_AUTH_URL
+              value: https://kcs.example.com
+            - name: APP_BASE_URL
+              value: https://kcs.example.com
           envFrom:
             - configMapRef:
                 name: workspace-app-env
@@ -121,6 +126,10 @@ spec:
                 secretKeyRef:
                   name: kcs-web
                   key: better-auth-secret
+            - name: BETTER_AUTH_URL
+              value: https://ops.kcs.example.com
+            - name: APP_BASE_URL
+              value: https://ops.kcs.example.com
           envFrom:
             - configMapRef:
                 name: workspace-app-env
@@ -181,6 +190,10 @@ spec:
                 secretKeyRef:
                   name: kcs-web
                   key: better-auth-secret
+            - name: BETTER_AUTH_URL
+              value: https://dev.kcs.example.com
+            - name: APP_BASE_URL
+              value: https://dev.kcs.example.com
           envFrom:
             - configMapRef:
                 name: workspace-app-env
@@ -241,6 +254,10 @@ spec:
                 secretKeyRef:
                   name: kcs-web
                   key: better-auth-secret
+            - name: BETTER_AUTH_URL
+              value: https://select.kcs.example.com
+            - name: APP_BASE_URL
+              value: https://select.kcs.example.com
           envFrom:
             - configMapRef:
                 name: workspace-app-env

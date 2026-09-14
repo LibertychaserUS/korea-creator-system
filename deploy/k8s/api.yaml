@@ -36,6 +36,8 @@ spec:
                 secretKeyRef:
                   name: kcs-api
                   key: database-url
+            - name: AUTH_BASE_URL
+              value: http://select:7004
             - name: S3_ENDPOINT
               value: http://minio:9000
             - name: S3_BUCKET

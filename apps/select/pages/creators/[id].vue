@@ -35,11 +35,14 @@
             </div>
             <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span v-if="creator.xhsId" class="font-mono">@{{ creator.xhsId }}</span>
-              <span class="font-mono">{{ creator.creatorKey }}</span>
               <span v-if="creator.metricsFetchedAt">{{ t('kcs.source.fetchedAt') }} · {{ formatDate(creator.metricsFetchedAt) }}</span>
               <span v-if="creator.metricsLocked" class="inline-flex items-center gap-1 text-primary">
                 <Lock class="size-3" />
                 {{ t('kcs.source.locked') }}
+              </span>
+              <span v-if="creator.cohort?.size" class="inline-flex items-center gap-1" data-testid="creator-cohort">
+                <Users class="size-3" />
+                {{ t('kcs.band.cohort', { n: creator.cohort.size, source: t(`kcs.source.${creator.cohort.source}`), tier: t(`kcs.tier.${creator.cohort.tier}`) }) }}
               </span>
             </p>
           </div>
@@ -47,11 +50,71 @@
             <div v-for="key in headline" :key="key">
               <p class="text-[11px] uppercase tracking-wide text-muted-foreground">{{ label(key) }}</p>
               <p class="text-lg font-semibold">
-                <MetricValue :metric-key="key" :value="metrics[key]" :band="percentiles[key]?.band" :percentile="percentiles[key]?.percentile" compact />
+                <MetricValue :metric-key="key" :value="metrics[key]" :band="percentiles[key]?.band" :percentile="percentiles[key]?.percentile" :cohort="creator.cohort" compact />
+              </p>
+              <p v-if="percentiles[key]" class="text-[11px] tabular-nums text-muted-foreground" data-testid="headline-percentile">
+                {{ bandLabel(percentiles[key]!.band) }}
               </p>
             </div>
           </div>
         </div>
+      </Card>
+
+      <!-- 趋势：每次抓取一条快照 -->
+      <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="creator-trend">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-3">
+          <div>
+            <h3 class="text-sm font-semibold">{{ t('kcs.creators.trend') }}</h3>
+            <p class="text-xs text-muted-foreground">{{ t('kcs.creators.trendLead') }}</p>
+          </div>
+          <div class="inline-flex rounded-md border border-border bg-muted/40 p-0.5" role="group">
+            <button
+              v-for="w in [30, 90]"
+              :key="w"
+              type="button"
+              class="h-7 rounded-[6px] px-2.5 text-xs font-medium transition-colors"
+              :class="historyWindow === w ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+              :aria-pressed="historyWindow === w"
+              @click="historyWindow = w as 30 | 90"
+            >
+              {{ t(`kcs.ingest.window${w}`) }}
+            </button>
+          </div>
+        </div>
+        <div v-if="loadingHistory" class="grid gap-4 px-5 py-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Skeleton v-for="i in 4" :key="i" class="h-10 rounded-md" />
+        </div>
+        <template v-else-if="snapshots.length">
+          <div class="grid gap-4 px-5 py-4 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricTrend v-for="key in trendKeys" :key="key" :metric-key="key" :snapshots="snapshots" />
+          </div>
+          <details class="border-t border-border/60">
+            <summary class="cursor-pointer select-none px-5 py-2.5 text-xs text-muted-foreground hover:text-foreground">
+              {{ t('kcs.creators.snapshots', { n: snapshots.length }) }}
+            </summary>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead class="text-left text-muted-foreground">
+                  <tr class="border-t border-border/40">
+                    <th class="px-5 py-2 font-medium">{{ t('kcs.source.fetchedAt') }}</th>
+                    <th class="px-3 py-2 font-medium">{{ t('kcs.ingest.source') }}</th>
+                    <th v-for="key in trendKeys" :key="key" class="px-3 py-2 text-right font-medium">{{ label(key) }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in [...snapshots].reverse()" :key="s.id" class="border-t border-border/40">
+                    <td class="px-5 py-2 tabular-nums">{{ formatDate(s.fetchedAt) }}</td>
+                    <td class="px-3 py-2"><SourceBadge :source="s.source" /></td>
+                    <td v-for="key in trendKeys" :key="key" class="px-3 py-2 text-right">
+                      <MetricValue :metric-key="key" :value="s.metrics[key]" :dot="false" />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </template>
+        <p v-else class="px-5 py-4 text-sm text-muted-foreground">{{ t('kcs.creators.noHistory') }}</p>
       </Card>
 
       <!-- 六组指标 -->
@@ -59,7 +122,7 @@
         <Card v-for="group in groups" :key="group" class="gap-0 border-border/60 py-0 shadow-xs">
           <div class="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <h3 class="text-sm font-semibold">{{ groupLabel(group) }}</h3>
-            <span class="text-[11px] text-muted-foreground">{{ t('kcs.ingest.window') }} · {{ metrics.window ?? 30 }}d</span>
+            <span class="text-[11px] text-muted-foreground">{{ t(`kcs.ingest.window${metrics.window === 90 ? 90 : 30}`) }}</span>
           </div>
           <dl class="divide-y divide-border/40">
             <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="help(field.key)">
@@ -70,8 +133,7 @@
                 </span>
               </dt>
               <dd class="text-right text-sm">
-                <MetricValue :metric-key="field.key" :value="metrics[field.key]" :band="percentiles[field.key]?.band" :percentile="percentiles[field.key]?.percentile" />
-                <span v-if="field.derived" class="ml-1 font-mono text-[10px] text-muted-foreground" title="derived">ƒ</span>
+                <MetricValue :metric-key="field.key" :value="metrics[field.key]" :band="percentiles[field.key]?.band" :percentile="percentiles[field.key]?.percentile" :cohort="creator.cohort" />
               </dd>
             </div>
           </dl>
@@ -116,6 +178,18 @@
         </Card>
 
         <div class="flex flex-col gap-4">
+          <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="creator-sources">
+            <div class="border-b border-border/60 px-5 py-3">
+              <h3 class="text-sm font-semibold">{{ t('kcs.creators.sources') }}</h3>
+              <p class="text-xs text-muted-foreground">{{ t('kcs.creators.sourcesLead') }}</p>
+            </div>
+            <ul class="divide-y divide-border/40">
+              <li v-for="link in sourceLinks" :key="`${link.source}:${link.externalId}`" class="flex items-center justify-between gap-3 px-5 py-2.5">
+                <SourceBadge :source="link.source" />
+                <span v-if="link.lastSeenAt" class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{{ t('kcs.creators.lastSeen', { date: formatDate(link.lastSeenAt) }) }}</span>
+              </li>
+            </ul>
+          </Card>
           <Card class="gap-0 border-border/60 py-0 shadow-xs">
             <div class="border-b border-border/60 px-5 py-3"><h3 class="text-sm font-semibold">{{ t('kcs.panel.collabBrands') }}</h3></div>
             <div class="px-5 py-4">
@@ -141,21 +215,60 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Lock } from 'lucide-vue-next'
-import { emptyMetrics, type CreatorMetrics, type MetricPercentiles, type NumericMetricKey } from '@kcs/contract'
+import { ArrowLeft, Lock, Users } from 'lucide-vue-next'
+import {
+  emptyMetrics,
+  type CreatorMetrics,
+  type CreatorSourceLink,
+  type MetricPercentiles,
+  type MetricSnapshot,
+  type NumericMetricKey,
+} from '@kcs/contract'
 
 const { t, locale } = useI18n()
 const route = useRoute()
 const localePath = useLocalePath()
 const { request } = useApi()
-const { label, help, groupLabel, groups, fieldsIn } = useMetrics()
+const { label, help, groupLabel, groups, fieldsIn, bandLabel } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)
 const headline: NumericMetricKey[] = ['cpe', 'engagementRate', 'readToFollowerRatio']
+const trendKeys: NumericMetricKey[] = ['followers', 'readMedian', 'engagementRate', 'cpe']
+
+const snapshots = ref<MetricSnapshot[]>([])
+const loadingHistory = ref(true)
+const historyWindow = ref<30 | 90>(30)
 
 const metrics = computed<CreatorMetrics>(() => ({ ...emptyMetrics(), ...(creator.value?.metrics ?? {}) }))
 const percentiles = computed<MetricPercentiles>(() => creator.value?.percentiles ?? {})
+/** 归并后的全部来源；老数据没有 sources 时退回主来源。 */
+const sourceLinks = computed<CreatorSourceLink[]>(() => {
+  const links: CreatorSourceLink[] = creator.value?.sources ?? []
+  if (links.length) return links
+  if (!creator.value?.source) return []
+  return [
+    {
+      source: creator.value.source,
+      externalId: creator.value.externalId ?? creator.value.creatorKey,
+      firstSeenAt: creator.value.metricsFetchedAt ?? '',
+      lastSeenAt: creator.value.metricsFetchedAt ?? '',
+    },
+  ]
+})
+
+async function loadHistory() {
+  loadingHistory.value = true
+  try {
+    const res = await request<{ snapshots: MetricSnapshot[] }>(`/api/select/creators/${route.params.id}/history?window=${historyWindow.value}&limit=60`)
+    snapshots.value = res.snapshots ?? []
+  } catch {
+    snapshots.value = []
+  } finally {
+    loadingHistory.value = false
+  }
+}
+watch(historyWindow, loadHistory)
 
 function pct(n: number | null | undefined) {
   return n == null ? '—' : new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 0 }).format(n)
@@ -172,5 +285,7 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  if (creator.value) await loadHistory()
+  else loadingHistory.value = false
 })
 </script>

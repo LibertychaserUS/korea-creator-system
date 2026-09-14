@@ -2,9 +2,14 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**92 cases** across 8 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**160 cases** across 11 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
-Auth: `POST /api/auth/login` → `{ token, user.role }`. Send `Authorization: Bearer <token>`.
+The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
+
+Auth is real: `global-setup.ts` signs the five seed accounts in with email +
+password against TinyShip (`POST {BLACKBOX_AUTH_URL}/api/auth/sign-in/email`,
+default `http://localhost:7004`) and provides the session tokens to every
+suite. No dev tokens; the API introspects each Bearer token against TinyShip.
 
 Seed users (`packages/kcs-contract/src/users.ts`):
 
@@ -19,6 +24,27 @@ Seed users (`packages/kcs-contract/src/users.ts`):
 Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND`.
 
 ---
+
+## 0. 登录 — email + password — `00-login.test.ts`
+
+| case | spec | HTTP |
+|------|------|------|
+| each seed role signs in with email + password, `/api/auth/me` returns that KCS role | 05 §认证; 07 身份与权限「五个种子账号能在任一工作端登录」 | `POST /api/auth/sign-in/email` `GET /api/auth/me` |
+| one session is honoured by select / ops / dev origins | 05 §认证「四端共用同一 TinyShip 库」 | `GET {origin}/api/auth/get-session` |
+| wrong password → 401, no token, no user | 05 状态码约定 | `POST /api/auth/sign-in/email` |
+| unknown email answers exactly like wrong password (no account enumeration) | 05 §认证 | same |
+| malformed email → 400 | 05 状态码约定 | same |
+| random token and `dev:` token → 401 `AUTH-LOGIN`, pool not leaked | 05 §认证「API 只认 TinyShip 会话」 | `GET /api/auth/me` `GET /api/select/pool` |
+| sign-out revokes at TinyShip immediately and at the API within its cache window (≤ 15 s) | 07「退出后…再访问工作端跳登录」 | `POST /api/auth/sign-out` `GET /api/auth/get-session` `GET /api/auth/me` |
+| `/__login` on select: 302 `/zh-CN/`, httpOnly better-auth cookie + non-httpOnly `kcs_session` | 05 §认证 流程图 | `POST /__login` |
+| `/__login` wrong password: 302 `/zh-CN/login?error=1`, no session cookies | 06 登录页 | `POST /__login` |
+| `/__login` locale follows the form (`/en/login?error=1`) | 06 登录页 | `POST /__login` |
+| marketing `/__login` hands each role to its workspace origin | 06 宣传页登录交接 | `POST {marketing}/__login` |
+| `kcs_last_ws` cookie wins for multi-workspace roles | 06 宣传页登录交接 | `POST {marketing}/__login` |
+| public sign-up gets a TinyShip session but **no** KCS role | 05 §认证 `roleFromIdentity` | `POST /api/auth/sign-up/email` |
+| role-less account → 403 `AUTH-DENIED` on `/me`, pool, ops, ingest, projects; nothing leaked | 07 身份与权限 | `GET` those |
+| role-less account via `/__login` lands on `/zh-CN/denied` | 06 denied 页 | `POST /__login` |
+| 6 rapid wrong passwords hit 429 with a retry hint; none succeed | 05 §认证 限速 | `POST /api/auth/sign-in/email` |
 
 ## 1. AuthN / AuthZ — `01-authz.test.ts`
 
@@ -95,10 +121,116 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | job on enabled `file_drop` source | PRD §8.3 §12; UX 4 | `GET /api/ingest/sources` `POST /api/ingest/jobs` |
 | unknown `sourceId` → 400 `SOURCE-INVALID` | PRD §8.3 | `POST /api/ingest/jobs` |
 | ad-hoc `sourceUrl` → 400, no silent job | UX 4 硬限制 | `POST /api/ingest/jobs` `{ sourceUrl }` |
-| devops retry increments `attempt` | UX 3; SCREEN DEV-JOB-DETAIL | `POST /api/dev/jobs/:id/retry` |
+| devops retry follows the lifecycle: live / finished job → 409 `JOB-STATE`; cancelled (failed) job → 200 and back to `queued` | 04 抓取流水线 §生命周期; SCREEN DEV-JOB-DETAIL | `POST /api/ingest/jobs/:id/cancel` `POST /api/dev/jobs/:id/retry` |
 | selector cannot retry | PRD §8.3; UX 4 | retry → 403 |
 | ops cannot retry (M1) | UX 3 | retry → 403 |
 | devops GET sees the same job | PRD §8.2 同套数据 | `GET /api/dev/jobs` |
+
+## 9. 抓取队列 — `09-queue.test.ts`
+
+Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与配额 / 同步模式 / fixture 模式）. Vendor behaviour comes from `helpers/mock-vendor.ts` (keyword-driven: `bb-pages-N`, `bb-slow-MS`, `bb-fail`, `bb-flaky-K`).
+
+### 入队与任务记录
+
+| case | spec | HTTP |
+|------|------|------|
+| enqueue → 202 with full initial state (queued / 0 pages / 0 quota / 0 attempts / no timestamps) | 04 §任务状态 | `POST /api/ingest/fetch` |
+| list newest-first, detail == list row | 04 队列图「列表 3s 轮询」 | `GET /api/ingest/jobs` `GET /api/ingest/jobs/:id` |
+| `maxPages` clamped 1–100, default 5 | 04 §参数 `limit → max_pages` | `POST /api/ingest/fetch` |
+| bad source / window 60 / no window / empty body → 400 `SOURCE-INVALID`, nothing queued | 04 §参数 | `POST /api/ingest/fetch` |
+| `?sync=1` → 201 with the finished job, not left for the worker | 04 §同步模式 | `POST /api/ingest/fetch?sync=1` |
+
+### worker 自动处理
+
+| case | spec | HTTP |
+|------|------|------|
+| queued → ok within a tick; startedAt / endedAt / pagesDone / dupes recorded | 04 队列图 | `GET /api/ingest/jobs/:id` (poll) |
+| sample lists this run's creators (needs_review), raw payload readable, one history snapshot per record | 04 队列图 creator_raw / creator_metrics_history | `GET /api/ingest/jobs/:id/sample` `GET /api/ingest/raw/:creatorId` (+ `SELECT count(*) creator_metrics_history`) |
+| re-ingesting the same creators counts as dupes, history still grows | 04 §身份归并 | `POST /api/ingest/fetch?sync=1` ×2 |
+| demo data does not consume quota (`quotaUsed` 0, daily usage unchanged) — *demo mode only* | 04 §fixture 模式「不计配额」 | `POST /api/ingest/fetch?sync=1` |
+
+### 多页、配额、限速（stand-in vendor）
+
+| case | spec | HTTP |
+|------|------|------|
+| 3 pages → ok, cursors null/2/3, quotaUsed 3, usage +3, 6 creators written | 04 §速率与配额「每页计 1」 | poll + vendor call log |
+| `maxPages=2` on a 5-page source stops at 2 and keeps cursor `3` | 04 §任务状态 ok「到 max_pages」 | poll |
+| vendor Bearer token is forwarded (stand-in answers 401 without it) | 03 适配器 | vendor call log |
+| quota wall → `partial`, cursor kept, `QUOTA_EXHAUSTED`, `nextRunAt` = next UTC 00:00; when due, worker resumes from page 3 to ok on its own | 04 §任务状态 partial「自动续跑」 | poll (+ SQL: quota, `next_run_at = now()`) |
+| partial + manual retry → queued, attempts 0, resumes from cursor `2` | 04 §任务状态 partial「可立刻重试」 | `POST /api/ingest/jobs/:id/retry` |
+| quota 0 = paused source: immediate partial, no vendor call | 04 §速率与配额 | poll + vendor call log |
+| same source runs one job at a time, FIFO (no overlap of startedAt/endedAt) | 04 §速率与配额「并发」 | poll |
+| 6/min rate: 6 calls burst, 7th waits ≈10 s | 04 §速率与配额「令牌桶」 | vendor call log timestamps |
+
+### 失败、退避、取消（stand-in vendor）
+
+| case | spec | HTTP |
+|------|------|------|
+| vendor 500 ×3 → failed, attempts 3, `SOURCE_UNAVAILABLE`, endedAt set, nextRunAt null; visible in `/api/dev/failures` | 04 队列图「3 次后 failed」 | poll `GET /api/dev/failures` `GET /api/dev/jobs/:id` |
+| backoff 2 s then 4 s between attempts | 04 队列图「指数退避」 | vendor call log timestamps |
+| one hiccup then ok: attempts 1, error fields cleared | 04 队列图 | poll |
+| failed → retry → attempts 0, queued; fails again after 3 more | 04 §任务状态 failed「可重试」 | `POST /api/ingest/jobs/:id/retry` |
+| cancel a running job: 200 failed/cancelled, worker stops at the page boundary, no further vendor calls | 04 §任务状态 running「可取消」 | `POST /api/ingest/jobs/:id/cancel` |
+| cancelled job keeps pagesDone + cursor; retry resumes from the break | 04 §任务状态 | retry + poll |
+
+### 生命周期约束（no vendor needed）
+
+| case | spec | HTTP |
+|------|------|------|
+| cancel queued → failed/cancelled, never started | 04 §任务状态 queued「可取消」 | `POST /api/ingest/jobs/:id/cancel` |
+| ok job: cancel → 409 `JOB-STATE`, retry → 409 `JOB-STATE` | 04 §任务状态 | cancel / retry |
+| cancel twice → second 409, record unchanged | 04 §任务状态 | cancel ×2 |
+| unknown id: detail / retry / cancel / dev detail / dev retry → 404 `NOT-FOUND`; sample → empty | contract | all job routes |
+| ops view and dev view show the same record | PRD §8.2 同套数据 | `GET /api/ingest/jobs/:id` `GET /api/dev/jobs/:id` |
+
+### 谁能做什么
+
+| case | spec | HTTP |
+|------|------|------|
+| fetch: ops / admin only; devops, selector, viewer → 403, nothing queued | RBAC `ingest.write` | `POST /api/ingest/fetch` |
+| cancel is `ingest.write` (devops 403); retry is `ingest.retry` (ops 403, both routes); selector/viewer 403 everywhere | RBAC | cancel / retry / GET |
+| job list identical for ops and devops | PRD §8.2 | `GET /api/ingest/jobs` |
+| cancel + retry leave audit rows (`ingest.cancel`, `ingest.retry`) | 06 审计 | `GET /api/dev/audit` |
+
+## 10. 搁置记录（死信队列）与一条流水线 — `10-dead-letters.test.ts`
+
+Spec: `docs/04_抓取流水线与队列.md`（§抽水 / §失败 / §搁置记录）. Needs the same stand-in vendor as `09`; three of its behaviours exist only for this file (`bb-reject` → 403, `bb-shape` → 200 without a record list, `bb-badrecord` → a creator with no name).
+
+### 整次抓取
+
+| case | spec | HTTP |
+|------|------|------|
+| vendor 403 parks on attempt 1 (`VENDOR_REJECTED`), no backoff, no further vendor call, no credential in the message | 04 §失败 permanent | poll + `GET /api/dev/dead-letters` + vendor log |
+| a 200 without a record list parks on attempt 1 (`CONFIG_MISSING`) | 04 §失败 permanent | same |
+| vendor 500 spends all 3 attempts first, then parks (`SOURCE_UNAVAILABLE`) | 04 §失败 transient | same |
+| replay re-queues a *new* job from the saved query + cursor and settles the entry (`replayed`, `replayJobId`) | 04 §搁置记录 | `POST /api/dev/dead-letters/:id/replay` |
+| retrying the job itself also settles its entry — no orphan | 04 §搁置记录 | `POST /api/ingest/jobs/:id/retry` |
+
+### 单个博主
+
+| case | spec | HTTP |
+|------|------|------|
+| unreadable record parks with its payload; the rest of the page still lands | 04 §搁置记录 record | `POST /api/ingest/fetch?sync=1` + list |
+| the same record failing twice updates one entry (attempts++), no duplicates | 04 §搁置记录 | list |
+| replay after the payload is fixed writes the creator, spends no quota and no vendor call | 04 §搁置记录「不打平台」 | replay + usage/vendor log |
+| a replay that keeps failing stays open and counts; after 3 it is refused (409) | 04 §搁置记录 poison | replay ×4 |
+
+### 处理、权限、可见性
+
+| case | spec | HTTP |
+|------|------|------|
+| devops reads list + detail; ops reads but cannot act (403); selector / viewer 403; anonymous 401 | RBAC `dev.read` / `dev.retry` | all dead-letter routes |
+| dismiss removes it from the open list; dismissing or replaying again is 409 | 04 §搁置记录 | dismiss / replay |
+| unknown `state` / `kind` → 400 `VALIDATION`; unknown id → 404 | contract | list / detail / replay / dismiss |
+| health reports parked counts and who is draining | 04 §抽水 | `GET /api/dev/health` |
+
+### 一条流水线
+
+| case | spec | HTTP |
+|------|------|------|
+| five jobs at once: `running` never exceeds 1, all finish | 04 §抽水「一次一个」 | `GET /api/ingest/jobs` (poll) |
+| a running job carries holder + lease and releases both when it ends | 04 §抽水「租约」 | poll + health (+ SQL read of `locked_by`) |
+| a run abandoned mid-page is left alone while its lease is good and taken over from the cursor once it lapses | 04 §抽水「进程中途没了」 | poll + vendor log (SQL arranges the orphan) |
 
 ## 7. S3 via API — `07-storage.test.ts`
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { can, type Permission, type Role } from '../src/rbac'
+import { can, roleFromIdentity, type Permission, type Role } from '../src/rbac'
 
 /**
  * Break this test catches: a role is granted a permission the product forbids,
@@ -71,5 +71,15 @@ describe('RBAC matrix', () => {
   it('denies selector_viewer select.assign so hide-button-only UI is not enough', () => {
     expect(can('selector_viewer', 'select.assign')).toBe(false)
     expect(can('selector_viewer', 'select.write')).toBe(false)
+  })
+
+  it('maps TinyShip identities: KCS roles verbatim, admin → platform_admin, anything else → no access', () => {
+    expect(roleFromIdentity('ops')).toBe('ops')
+    expect(roleFromIdentity('selector_viewer')).toBe('selector_viewer')
+    expect(roleFromIdentity('admin')).toBe('platform_admin')
+    expect(roleFromIdentity('user')).toBeNull()
+    expect(roleFromIdentity('')).toBeNull()
+    expect(roleFromIdentity(null)).toBeNull()
+    expect(roleFromIdentity(undefined)).toBeNull()
   })
 })

@@ -46,18 +46,15 @@ describe('ingest jobs and S3 contract', () => {
       headers: { authorization: `Bearer ${devops.token}` },
     })
     expect(failed.status).toBe(200)
+    const failedItems = (await failed.json()).items as Array<{ id: string; status: string }>
     const ops = await ctx.loginJson('ops@kcs.local')
-    const jobs = await ctx.app.request('/api/dev/jobs', {
-      headers: { authorization: `Bearer ${devops.token}` },
-    })
-    const items = (await jobs.json()).items as Array<{ id: string; status: string }>
-    const any = items[0]
-    const opsRetry = await ctx.app.request(`/api/dev/jobs/${any.id}/retry`, {
+    const failedJob = failedItems[0]
+    const opsRetry = await ctx.app.request(`/api/dev/jobs/${failedJob.id}/retry`, {
       method: 'POST',
       headers: { authorization: `Bearer ${ops.token}` },
     })
     expect(opsRetry.status).toBe(403)
-    const retry = await ctx.app.request(`/api/dev/jobs/${any.id}/retry`, {
+    const retry = await ctx.app.request(`/api/dev/jobs/${failedJob.id}/retry`, {
       method: 'POST',
       headers: { authorization: `Bearer ${devops.token}` },
     })

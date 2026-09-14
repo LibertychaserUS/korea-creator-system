@@ -60,6 +60,15 @@ export async function sqlRead<T extends pg.QueryResultRow>(
   return result.rows
 }
 
+/**
+ * Console knobs with no HTTP surface (source quota / rate, a job's resume time).
+ * Only for arranging a scenario — never for asserting.
+ */
+export async function sqlExec(text: string, values: unknown[] = []): Promise<number> {
+  const result = await getPool().query(text, values)
+  return result.rowCount ?? 0
+}
+
 export async function closePool(): Promise<void> {
   if (pool) {
     await pool.end()

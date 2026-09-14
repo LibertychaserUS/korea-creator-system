@@ -73,7 +73,7 @@
                 </Avatar>
                 <div class="min-w-0">
                   <div class="truncate font-medium text-foreground">{{ row.displayName }}</div>
-                  <div class="truncate font-mono text-[11px] text-muted-foreground">{{ row.creatorKey }}</div>
+                  <div v-if="row.xhsId" class="truncate text-[11px] text-muted-foreground">@{{ row.xhsId }}</div>
                 </div>
               </div>
             </TableCell>

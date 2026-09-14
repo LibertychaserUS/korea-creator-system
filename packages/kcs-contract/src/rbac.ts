@@ -42,6 +42,21 @@ const GRANTS: Record<Role, readonly Permission[]> = {
   selector_viewer: ['select.read'],
 }
 
+/**
+ * Identity comes from TinyShip (better-auth, `user.role` text column). KCS
+ * roles are stored there verbatim; TinyShip's stock `admin` maps to
+ * `platform_admin`. Any other value — including the stock `user` that a
+ * public sign-up receives — has **no** KCS access: the account exists but
+ * has not been given a job yet, so it lands on /denied instead of the pool.
+ * Finer-grained access (per org / per project) is layered on top of this via
+ * `can()`, never by inventing roles outside this list.
+ */
+export function roleFromIdentity(raw: string | null | undefined): Role | null {
+  if (raw && (ROLES as readonly string[]).includes(raw)) return raw as Role
+  if (raw === 'admin') return 'platform_admin'
+  return null
+}
+
 export function can(role: Role, permission: Permission): boolean {
   return GRANTS[role].includes(permission)
 }
