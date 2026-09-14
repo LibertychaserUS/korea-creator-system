@@ -89,6 +89,114 @@ services:
     profiles:
       - full
 
+  marketing:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.workspace-app
+      args:
+        APP: marketing
+    container_name: kcs-marketing
+    depends_on:
+      - api
+    environment:
+      NITRO_PORT: "7000"
+      NUXT_PUBLIC_API_BASE: http://localhost:7100
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_OPS_URL: http://localhost:7002
+      NUXT_PUBLIC_DEV_URL: http://localhost:7003
+      NUXT_PUBLIC_SELECT_URL: http://localhost:7004
+      DB_DIALECT: sqlite
+      SQLITE_DB_PATH: /data/panel.sqlite
+      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+    volumes:
+      - kcs_marketing_panel:/data
+    ports:
+      - "7000:7000"
+    profiles:
+      - full
+
+  ops:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.workspace-app
+      args:
+        APP: ops
+    container_name: kcs-ops
+    depends_on:
+      - api
+    environment:
+      NITRO_PORT: "7002"
+      NUXT_PUBLIC_API_BASE: http://localhost:7100
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_OPS_URL: http://localhost:7002
+      NUXT_PUBLIC_DEV_URL: http://localhost:7003
+      NUXT_PUBLIC_SELECT_URL: http://localhost:7004
+      DB_DIALECT: sqlite
+      SQLITE_DB_PATH: /data/panel.sqlite
+      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+    volumes:
+      - kcs_ops_panel:/data
+    ports:
+      - "7002:7002"
+    profiles:
+      - full
+
+  dev:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.workspace-app
+      args:
+        APP: dev
+    container_name: kcs-dev
+    depends_on:
+      - api
+    environment:
+      NITRO_PORT: "7003"
+      NUXT_PUBLIC_API_BASE: http://localhost:7100
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_OPS_URL: http://localhost:7002
+      NUXT_PUBLIC_DEV_URL: http://localhost:7003
+      NUXT_PUBLIC_SELECT_URL: http://localhost:7004
+      DB_DIALECT: sqlite
+      SQLITE_DB_PATH: /data/panel.sqlite
+      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+    volumes:
+      - kcs_dev_panel:/data
+    ports:
+      - "7003:7003"
+    profiles:
+      - full
+
+  select:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.workspace-app
+      args:
+        APP: select
+    container_name: kcs-select
+    depends_on:
+      - api
+    environment:
+      NITRO_PORT: "7004"
+      NUXT_PUBLIC_API_BASE: http://localhost:7100
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
+      NUXT_PUBLIC_OPS_URL: http://localhost:7002
+      NUXT_PUBLIC_DEV_URL: http://localhost:7003
+      NUXT_PUBLIC_SELECT_URL: http://localhost:7004
+      DB_DIALECT: sqlite
+      SQLITE_DB_PATH: /data/panel.sqlite
+      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+    volumes:
+      - kcs_select_panel:/data
+    ports:
+      - "7004:7004"
+    profiles:
+      - full
+
 volumes:
   kcs_pg:
   kcs_minio:
+  kcs_marketing_panel:
+  kcs_ops_panel:
+  kcs_dev_panel:
+  kcs_select_panel:

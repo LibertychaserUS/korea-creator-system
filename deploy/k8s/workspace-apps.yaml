@@ -1,0 +1,254 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workspace-app-env
+  namespace: kcs
+data:
+  # 运行期覆盖 Nuxt public runtimeConfig（NUXT_PUBLIC_<KEY>）。
+  # KCS_*_URL 只在 nuxt build 时被读取，镜像里已固化成 localhost 默认值，运行期改它没用。
+  NUXT_PUBLIC_API_BASE: https://kcs.example.com
+  NUXT_PUBLIC_MARKETING_URL: https://kcs.example.com
+  NUXT_PUBLIC_OPS_URL: https://ops.kcs.example.com
+  NUXT_PUBLIC_DEV_URL: https://dev.kcs.example.com
+  NUXT_PUBLIC_SELECT_URL: https://select.kcs.example.com
+  NITRO_HOST: 0.0.0.0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketing
+  namespace: kcs
+spec:
+  selector:
+    app: kcs-marketing
+  ports:
+    - name: http
+      port: 7000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcs-marketing
+  namespace: kcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcs-marketing
+  template:
+    metadata:
+      labels:
+        app: kcs-marketing
+    spec:
+      serviceAccountName: kcs-web
+      containers:
+        - name: marketing
+          image: kcs-marketing:local
+          ports:
+            - name: http
+              containerPort: 7000
+          env:
+            - name: NITRO_PORT
+              value: "7000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: database-url
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: better-auth-secret
+          envFrom:
+            - configMapRef:
+                name: workspace-app-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops
+  namespace: kcs
+spec:
+  selector:
+    app: kcs-ops
+  ports:
+    - name: http
+      port: 7002
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcs-ops
+  namespace: kcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcs-ops
+  template:
+    metadata:
+      labels:
+        app: kcs-ops
+    spec:
+      serviceAccountName: kcs-web
+      containers:
+        - name: ops
+          image: kcs-ops:local
+          ports:
+            - name: http
+              containerPort: 7002
+          env:
+            - name: NITRO_PORT
+              value: "7002"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: database-url
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: better-auth-secret
+          envFrom:
+            - configMapRef:
+                name: workspace-app-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev
+  namespace: kcs
+spec:
+  selector:
+    app: kcs-dev
+  ports:
+    - name: http
+      port: 7003
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcs-dev
+  namespace: kcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcs-dev
+  template:
+    metadata:
+      labels:
+        app: kcs-dev
+    spec:
+      serviceAccountName: kcs-web
+      containers:
+        - name: dev
+          image: kcs-dev:local
+          ports:
+            - name: http
+              containerPort: 7003
+          env:
+            - name: NITRO_PORT
+              value: "7003"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: database-url
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: better-auth-secret
+          envFrom:
+            - configMapRef:
+                name: workspace-app-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: select
+  namespace: kcs
+spec:
+  selector:
+    app: kcs-select
+  ports:
+    - name: http
+      port: 7004
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcs-select
+  namespace: kcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcs-select
+  template:
+    metadata:
+      labels:
+        app: kcs-select
+    spec:
+      serviceAccountName: kcs-web
+      containers:
+        - name: select
+          image: kcs-select:local
+          ports:
+            - name: http
+              containerPort: 7004
+          env:
+            - name: NITRO_PORT
+              value: "7004"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: database-url
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-web
+                  key: better-auth-secret
+          envFrom:
+            - configMapRef:
+                name: workspace-app-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
