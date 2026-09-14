@@ -1,5 +1,12 @@
 # Agent接力记录
 
+## 2026-09-12 文档棒：三语升为第一刀
+
+- 分支：`docs/tinyship-rebuild`（SSOT）。
+- 完成：把 `zh-CN` / `en` / `ko` 写成绿地硬约束；i18n 抄 TinyShip 真实 API，不搬旧 SPA。
+- 下一棒入口：用户批 `TINYSHIP-REBUILD.md` §9（现含三语）后，writing-plans 写 `KCS-TS-01`（含 `01I`），再脚手架。
+- 不要做：中文-only 宿主、`KCS-LATER-01`、archive `t()` 字典、Harness.io。
+
 ## 2026-06-16 第一棒
 - 负责人：Codex
 - 完成内容：项目骨架、文档骨架、配置骨架、`0201` 只读统计入口。
@@ -150,5 +157,19 @@ uvicorn app.web:app --reload --port 8000
   - 不要在 archive 上做 Stage 8B 或续写 `/api/v2/*`。
   - 不要在 `TINYSHIP-REBUILD.md` 落地前另起脚手架。
 - 下一阶段入口：
-  - 研究代理落地 `docs/product/TINYSHIP-REBUILD.md`（`KCS-TS-00`）。
-  - 其后第一刀必须同时接入 tinyship + forge + overlay（`KCS-TS-01` / `01F` / `01O`）。
+  - 四端实现线已落地 tinyship + forge + overlay，交接状态、已知 bug 与顺序见 `docs/HANDOFF.md`。
+  - 旧 `main`（仅 `docs/` + `archive/`）通过合并四端线被替换；此后不要再从旧布局起分支。
+
+## 2026-09-13 四端前端设计重做（Fable 5.1 + sol 子代理）
+- 负责人：Cloud Agent（前端 Fable 5.1；后端/部署/e2e 由 sol 子代理并行完成）
+- 当前状态：
+  - 旧 Python 代码已从仓库删除（PR #9 早期提交）。
+  - 四端前端完成一轮完整设计升级并截图验收通过（36 张，0 错误），详见 `docs/HANDOFF.md` §2。
+  - 分支 `cursor/land-four-apps-on-main-d3aa`，PR #9 待用户决定是否合入 main。
+- 本地验证栈：Postgres 16（`kcs:kcs@localhost:5432/kcs`）、API 7100、marketing 7005、ops 7002、dev 7003、select 7004，均为生产构建 `node .output/server/index.mjs`。
+- 不要做：
+  - 不要重新引入 Python / archive。
+  - 不要改 e2e testid 契约（`packages/kcs-contract/src/testids.ts`）。
+  - scoped 样式里不要写 `:global(.dark) .x`。
+- 下一阶段入口：
+  - `docs/HANDOFF.md` §7。

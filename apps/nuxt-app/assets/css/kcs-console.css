@@ -1,0 +1,303 @@
+/* Screening-desk tokens. Contrast checked against GitHub / Stripe / HIG discipline.
+   Light is not inverted dark. Secondary text stays ≥ 4.5:1 on its canvas. */
+:root {
+  --kcs-bg: #eef1ed;
+  --kcs-surface: #fbfcfb;
+  --kcs-border: #6d7a74;
+  --kcs-text-primary: #17201d;
+  --kcs-text-secondary: #33413c;
+  --kcs-text-tertiary: #3e524b;
+  --kcs-accent: #8a3212;
+  --kcs-accent-fg: #fffaf6;
+  --kcs-danger: #8f1d1d;
+  --kcs-success: #14533a;
+  --kcs-warn: #7a4a0b;
+  --kcs-rail: #c24e1d;
+  --kcs-chip: #dce6e1;
+  --font-kcs-display: "Source Serif 4", "Songti SC", "Noto Serif KR", "Iowan Old Style", Georgia, serif;
+  --font-kcs-body: "SUIT", "PingFang SC", "Apple SD Gothic Neo", "Noto Sans KR", "Noto Sans SC", system-ui, sans-serif;
+  --font-kcs-data: "IBM Plex Mono", "Source Han Mono", ui-monospace, monospace;
+}
+
+html.dark {
+  --kcs-bg: #121615;
+  --kcs-surface: #1b221f;
+  --kcs-border: #8b9a93;
+  --kcs-text-primary: #e9eeea;
+  --kcs-text-secondary: #c2cdc8;
+  --kcs-text-tertiary: #a8b6b0;
+  --kcs-accent: #f0b089;
+  --kcs-accent-fg: #2a140a;
+  --kcs-danger: #f3b4b4;
+  --kcs-success: #8fd4b0;
+  --kcs-warn: #f0c27a;
+  --kcs-rail: #e08a52;
+  --kcs-chip: #24302c;
+}
+
+.kcs-desk {
+  min-height: 100vh;
+  background: var(--kcs-bg);
+  color: var(--kcs-text-primary);
+  font-family: var(--font-kcs-body);
+}
+
+.kcs-desk a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.kcs-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 0.85rem 1.5rem;
+  border-bottom: 1px solid var(--kcs-border);
+  background: var(--kcs-surface);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.kcs-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+}
+
+.kcs-brand strong {
+  font-family: var(--font-kcs-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.kcs-brand span {
+  color: var(--kcs-text-secondary);
+  font-size: 0.78rem;
+}
+
+.kcs-nav {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.kcs-nav a {
+  padding: 0.4rem 0.75rem;
+  color: var(--kcs-text-secondary);
+  border: 1px solid transparent;
+}
+
+.kcs-nav a:hover,
+.kcs-nav a:focus-visible {
+  color: var(--kcs-text-primary);
+  outline: 2px solid var(--kcs-accent);
+  outline-offset: 2px;
+}
+
+.kcs-nav a.is-active {
+  color: var(--kcs-text-primary);
+  border-bottom: 2px solid var(--kcs-rail);
+}
+
+.kcs-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.kcs-seg {
+  display: inline-flex;
+  border: 1px solid var(--kcs-border);
+  background: var(--kcs-bg);
+}
+
+.kcs-seg button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--kcs-text-secondary);
+  padding: 0.35rem 0.65rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.kcs-seg button[aria-pressed="true"] {
+  background: var(--kcs-surface);
+  color: var(--kcs-text-primary);
+}
+
+.kcs-seg button:focus-visible {
+  outline: 2px solid var(--kcs-accent);
+  outline-offset: 1px;
+}
+
+.kcs-main {
+  width: min(1180px, calc(100% - 2.5rem));
+  margin: 0 auto;
+  padding: 1.75rem 0 3rem;
+}
+
+.kcs-eyebrow {
+  color: var(--kcs-accent);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kcs-title {
+  font-family: var(--font-kcs-display);
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-weight: 600;
+  margin: 0.35rem 0 0.5rem;
+  letter-spacing: -0.03em;
+}
+
+.kcs-lead,
+.kcs-note,
+.kcs-empty p,
+.kcs-cell-meta {
+  color: var(--kcs-text-secondary);
+}
+
+.kcs-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1.4rem 0;
+}
+
+.kcs-stat {
+  background: var(--kcs-surface);
+  border: 1px solid var(--kcs-border);
+  padding: 0.9rem 1rem;
+}
+
+.kcs-stat b {
+  display: block;
+  font-family: var(--font-kcs-display);
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+
+.kcs-stat span {
+  color: var(--kcs-text-secondary);
+  font-size: 0.8rem;
+}
+
+.kcs-table-wrap {
+  border: 1px solid var(--kcs-border);
+  background: var(--kcs-surface);
+  overflow: auto;
+}
+
+.kcs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.kcs-table th {
+  text-align: left;
+  color: var(--kcs-text-secondary);
+  font-weight: 600;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--kcs-border);
+  white-space: nowrap;
+}
+
+.kcs-table td {
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--kcs-border) 55%, transparent);
+  vertical-align: top;
+}
+
+.kcs-rank {
+  font-family: var(--font-kcs-display);
+  color: var(--kcs-rail);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.kcs-data {
+  font-family: var(--font-kcs-data);
+}
+
+.kcs-chip {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  background: var(--kcs-chip);
+  color: var(--kcs-text-primary);
+  font-size: 0.75rem;
+}
+
+.kcs-chip.is-success { color: var(--kcs-success); }
+.kcs-chip.is-warn { color: var(--kcs-warn); }
+.kcs-chip.is-danger { color: var(--kcs-danger); }
+
+.kcs-empty {
+  border: 1px dashed var(--kcs-border);
+  padding: 2rem 1.25rem;
+  background: var(--kcs-surface);
+}
+
+.kcs-empty h2,
+.kcs-card h2 {
+  font-family: var(--font-kcs-display);
+  margin: 0 0 0.4rem;
+}
+
+.kcs-search {
+  width: min(22rem, 100%);
+  margin: 1rem 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--kcs-border);
+  background: var(--kcs-surface);
+  color: var(--kcs-text-primary);
+  font: inherit;
+}
+
+.kcs-search:focus-visible {
+  outline: 2px solid var(--kcs-accent);
+  outline-offset: 1px;
+}
+
+.kcs-cards {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.kcs-card {
+  background: var(--kcs-surface);
+  border: 1px solid var(--kcs-border);
+  padding: 1rem 1.1rem;
+  display: grid;
+  grid-template-columns: 3.2rem 1fr;
+  gap: 0.85rem;
+}
+
+.kcs-link {
+  display: inline-block;
+  margin-top: 0.75rem;
+  color: var(--kcs-accent);
+  border-bottom: 1px solid var(--kcs-accent);
+}
+
+@media (max-width: 1100px) {
+  .kcs-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 800px) {
+  .kcs-top { flex-wrap: wrap; }
+  .kcs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kcs-main { width: calc(100% - 1.5rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

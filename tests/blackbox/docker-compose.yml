@@ -1,0 +1,30 @@
+# Isolated Postgres for black-box tests when the root stack is not running.
+# Prefer the repo-root service (same credentials) so the API and these tests share one DB:
+#
+#   docker compose up -d postgres
+#
+# Use this file only if you need a dedicated instance:
+#   docker compose -f tests/blackbox/docker-compose.yml up -d --wait
+
+name: kcs-blackbox
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kcs
+      POSTGRES_PASSWORD: kcs
+      POSTGRES_DB: kcs
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kcs -d kcs']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - kcs-blackbox-pg:/var/lib/postgresql/data
+      - ../../deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  kcs-blackbox-pg:

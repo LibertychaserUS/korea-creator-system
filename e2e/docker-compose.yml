@@ -1,0 +1,40 @@
+# Optional isolated infra (ports 55432 / 59000) when you must not
+# touch the repo-root compose (5432 / 9000). Prefer:
+#   docker compose up -d postgres minio minio-init
+#   pnpm test:e2e
+
+name: kcs-e2e
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kcs
+      POSTGRES_PASSWORD: kcs
+      POSTGRES_DB: kcs_e2e
+    ports:
+      - '55432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kcs -d kcs_e2e']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - kcs-e2e-pg:/var/lib/postgresql/data
+
+  # Official minio/minio Hub tags were pulled Oct 2025. Chainguard is the public S3 stand-in.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: kcsminio
+      MINIO_ROOT_PASSWORD: kcsminio-e2e-secret
+    ports:
+      - '59000:9000'
+      - '59001:9001'
+    volumes:
+      - kcs-e2e-minio:/data
+
+volumes:
+  kcs-e2e-pg:
+  kcs-e2e-minio:

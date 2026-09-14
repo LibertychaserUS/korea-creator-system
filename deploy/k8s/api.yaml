@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: kcs
+spec:
+  ports:
+    - port: 7100
+  selector:
+    app: kcs-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcs-api
+  namespace: kcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcs-api
+  template:
+    metadata:
+      labels:
+        app: kcs-api
+    spec:
+      serviceAccountName: kcs-api
+      containers:
+        - name: api
+          image: kcs-api:local
+          ports:
+            - containerPort: 7100
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-api
+                  key: database-url
+            - name: S3_ENDPOINT
+              value: http://minio:9000
+            - name: S3_BUCKET
+              value: kcs-assets
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-api
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kcs-api
+                  key: s3-secret-key
+            - name: S3_FORCE_PATH_STYLE
+              value: "true"
+            - name: WEB_ORIGIN
+              value: https://kcs.example.com,https://legacy.kcs.example.com,https://ops.kcs.example.com,https://dev.kcs.example.com,https://select.kcs.example.com
+            - name: PGY_APP_ID
+              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-app-id } }
+            - name: PGY_APP_SECRET
+              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-app-secret } }
+            - name: PGY_ACCESS_TOKEN
+              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-access-token } }
+            - name: QIANGUA_TOKEN
+              valueFrom: { secretKeyRef: { name: kcs-api, key: qiangua-token } }
+            - name: XINHONG_TOKEN
+              valueFrom: { secretKeyRef: { name: kcs-api, key: xinhong-token } }
+            - name: PGY_BASE_URL
+              value: https://ad-market.xiaohongshu.com/openapi
+            - name: QIANGUA_BASE_URL
+              value: https://api.qiangua.com
+            - name: XINHONG_BASE_URL
+              value: https://api.newrank.cn/xinhong
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 7100

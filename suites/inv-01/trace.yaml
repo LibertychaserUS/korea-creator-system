@@ -1,0 +1,15 @@
+schema: overlay-trace/v1
+suite: inv-01
+items:
+  - function_id: INV-01
+    case_id: INV-01/functional
+    type: functional
+    level: unit
+  - function_id: INV-01
+    case_id: INV-01/negative
+    type: negative
+    level: unit
+  - function_id: INV-01
+    case_id: INV-01/edge
+    type: edge
+    level: unit

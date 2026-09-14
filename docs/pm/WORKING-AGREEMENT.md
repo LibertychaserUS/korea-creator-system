@@ -30,17 +30,17 @@
 ## 仓库布局
 
 - `docs/`：**留下**。编号文档是历史；`docs/product/` 与 `docs/pm/` 是产品意图与施工约定。不要 archive 文档。
-- `archive/`：旧 Demo **冻结** + 墓碑。不要假设仓库根还有可改的 `app/`。
-- 新代码：只进 **tinyship + forge + overlay** 绿地（硬约束见 [`STACK.md`](./STACK.md)；细则见 `TINYSHIP-REBUILD.md`）。
+- 旧 Python Demo：**已删除**（历史 git `f31c882`）。不要假设仓库根还有可改的 `app/`，也不要把它加回来。
+- 新代码：只进 **tinyship + forge + overlay** 绿地（硬约束见 [`STACK.md`](./STACK.md)；细则见 `TINYSHIP-REBUILD.md`）。用户可见文案进 `libs/i18n` 的 `en` / `zh-CN` / `ko`，禁止中文-only 宿主。
 
 ## 改哪里
 
 | 任务 | 做 | 不做 |
 |------|----|------|
 | 产品意图 / 范围 | `docs/product/*` `docs/pm/*` | 把编号 `docs/00_*`–`10_*` 改成新栈说明书；把 `docs/` 搬进 archive |
-| 实现 | tinyship + forge + overlay（见 `STACK.md` / `TINYSHIP-REBUILD.md`） | 新功能打进 `archive/`；只用其中一件；手写 FastAPI 顶替 |
-| 对照口径 | 只读 `archive/`（跟墓碑）+ `docs/03` `docs/04` | 删除 archive、续写旧页 |
-| 脚手架 | 等 `TINYSHIP-REBUILD.md` | 第二套自创框架 |
+| 实现 | tinyship + forge + overlay（见 `STACK.md` / `TINYSHIP-REBUILD.md`） | 把旧 Python 加回来；只用其中一件；手写 FastAPI 顶替 |
+| 对照口径 | 只读 `docs/02` `docs/03` `docs/04`；代码考古 git `f31c882` | 续写旧页 |
+| 脚手架 | 按已落地的 `TINYSHIP-REBUILD.md`；先等人批 §9 | 第二套自创框架；vendor `forge/` `overlay/`；live-apply |
 
 ## 文档同步
 
@@ -65,4 +65,4 @@ Key 只用环境变量或本地未跟踪配置。`config/settings.example.json` 
 
 ## 完成标准（文档任务）
 
-本约定被遵守，当且仅当：后续代理读完本文件 + `STACK.md` + `ROADMAP.md` 后，会把第一刀同时用上 tinyship、forge、overlay，把旧 Demo 当成 `archive/` 冻结物，把 `docs/` 留在原处，并且不会去建 Harness.io 项目。
+本约定被遵守，当且仅当：后续代理读完本文件 + `STACK.md` + `ROADMAP.md` 后，会把第一刀同时用上 tinyship、forge、overlay，**并且**宿主带 `zh-CN` / `en` / `ko` 语言切换（`KCS-TS-01I`，不是 Later），不把旧 Python Demo 加回仓库，把 `docs/` 留在原处，并且不会去建 Harness.io 项目。

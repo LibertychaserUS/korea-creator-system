@@ -1,10 +1,9 @@
 # AI 开发与 Git 规则
 
-## 仓库布局（先读）
+产品：`korea-creator-system` / 全球达人情报系统。宿主是 TinyShip Nuxt，不是 Ascendia，也不是 Harness.io。
+语言：`zh-CN` / `en` / `ko`。门：旁边 checkout 的 AIOps（`overlay-v2.0.0` + `forge-v1.1.1`）上跑 `python3 -m forge check`。不要 live-apply，不要 vendor `forge/` / `overlay/`。
+旧 Python / FastAPI Demo 已删除，仓库里没有 `archive/`；字段口径看 `docs/02`–`04`，代码考古看 git `f31c882`。不要把它加回来。
 
-- `docs/`：留下。编号文档是历史快照；`docs/product/` 与 `docs/pm/` 是产品意图。
-- `archive/`：旧 Python / FastAPI Demo **冻结** + 墓碑。仓库根没有可施工的 `app/`。
-- 新代码只进 tinyship + forge + overlay。细则等 `docs/product/TINYSHIP-REBUILD.md`；未落地前不要另起脚手架，也不要把 archive 里的进程当运行入口。
 
 开始任何开发任务前，必须：
 
