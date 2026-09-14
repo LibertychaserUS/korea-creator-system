@@ -88,6 +88,7 @@ async function seedUsers(db: Db, orgId: string) {
 }
 
 async function seedCreators(db: Db) {
+  const canonicalIds = new Map<string, string>()
   let index = 0
   for (const adapter of ADAPTERS) {
     const page = fixturePage(
@@ -100,7 +101,14 @@ async function seedCreators(db: Db) {
       if (!result.ok) continue
       index += 1
       const creator = result.creator
-      const id = `seed_${adapter.id}_${creator.externalId}`
+      const sourceId = `seed_${adapter.id}_${creator.externalId}`
+      const matched = creator.xhsId
+        ? await db.query('SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1', [
+            creator.xhsId,
+          ])
+        : { rows: [] as Array<{ id: string }> }
+      const id = matched.rows[0]?.id ?? sourceId
+      canonicalIds.set(sourceId, id)
       const isBad = creator.metrics.health === 'abnormal'
       const released = !isBad && index % 6 !== 0
       const status = released ? 'released' : 'draft'
@@ -170,7 +178,11 @@ async function seedCreators(db: Db) {
           `INSERT INTO creator_metrics_history
             (id, creator_id, source, "window", fetched_at, job_id, metrics)
            VALUES ($1,$2,$3,$4,$5,NULL,$6)
-           ON CONFLICT (id) DO UPDATE SET fetched_at = EXCLUDED.fetched_at, metrics = EXCLUDED.metrics`,
+           ON CONFLICT (id) DO UPDATE SET
+             source = EXCLUDED.source,
+             "window" = EXCLUDED."window",
+             fetched_at = EXCLUDED.fetched_at,
+             metrics = EXCLUDED.metrics`,
           [
             `${id}_history_${weeksAgo}`,
             id,
@@ -204,9 +216,10 @@ async function seedCreators(db: Db) {
       }
     }
   }
+  return canonicalIds
 }
 
-async function seedProjects(db: Db, orgId: string) {
+async function seedProjects(db: Db, orgId: string, canonicalIds: Map<string, string>) {
   for (const [id, name, members] of PROJECTS) {
     await db.query(
       `INSERT INTO projects (id, org_id, name, note, status) VALUES ($1,$2,$3,$4,'open')
@@ -214,7 +227,7 @@ async function seedProjects(db: Db, orgId: string) {
       [id, orgId, name, 'fixture 指标项目'],
     )
     await db.query('DELETE FROM assignments WHERE project_id = $1', [id])
-    for (const creatorId of members) {
+    for (const creatorId of new Set(members.map((member) => canonicalIds.get(member) ?? member))) {
       await db.query(
         `INSERT INTO assignments (id, project_id, creator_id, status, assigned_by, note)
          VALUES ($1,$2,$3,'assigned','user_selector','种子项目')
@@ -284,8 +297,8 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
       ],
     )
   }
-  await seedCreators(db)
-  await seedProjects(db, orgId)
+  const canonicalIds = await seedCreators(db)
+  await seedProjects(db, orgId, canonicalIds)
   for (const spec of SAVED_QUERIES) {
     await db.query(
       `INSERT INTO saved_queries (id, org_id, name, version, spec, created_by)
