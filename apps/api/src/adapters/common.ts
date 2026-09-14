@@ -29,6 +29,34 @@ export type FieldMap = Partial<Record<
 
 export type AdapterPage = SourcePage & { sourceMode: 'live' | 'fixture' }
 
+/** Common id keys across 蒲公英 (`userId`), vendors and our fixtures. */
+export function payloadId(payload: Record<string, unknown>, fallback: string): string {
+  const value = payload.userId ?? payload.external_id ?? payload.author_id ?? payload.user_id ?? payload.id ?? payload.博主ID ?? payload.达人ID
+  return value == null || value === '' ? fallback : String(value)
+}
+
+/**
+ * Vendors without public docs (千瓜 / 新红) ship their field list with the
+ * contract. `<PREFIX>_FIELD_MAP` accepts a JSON object of
+ * `{ canonicalKey: ["path.in.response", ...] }` and is merged over the
+ * in-code default so a schema fix needs no redeploy.
+ */
+export function fieldMapFromEnv(envName: string, defaults: FieldMap): FieldMap {
+  const raw = process.env[envName]
+  if (!raw) return defaults
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const merged: Record<string, readonly string[]> = { ...(defaults as Record<string, readonly string[]>) }
+    for (const [key, value] of Object.entries(parsed)) {
+      if (Array.isArray(value) && value.every((v) => typeof v === 'string')) merged[key] = value as string[]
+      else if (typeof value === 'string') merged[key] = [value]
+    }
+    return merged as FieldMap
+  } catch {
+    return defaults
+  }
+}
+
 export function first(payload: unknown, paths: readonly string[] | undefined): unknown {
   for (const path of paths ?? []) {
     const value = pickPath(payload, path)
@@ -81,7 +109,7 @@ export function fixturePage(source: SourceId, fixtureUrl: URL, query: SourceQuer
   let payloads = JSON.parse(readFileSync(fixtureUrl, 'utf8')) as Record<string, unknown>[]
   if (query.externalIds?.length) {
     const wanted = new Set(query.externalIds.map(String))
-    payloads = payloads.filter((p) => wanted.has(String(p.external_id ?? p.author_id ?? p.user_id ?? p.博主ID ?? p.达人ID)))
+    payloads = payloads.filter((p, index) => wanted.has(payloadId(p, `${source}-${index + 1}`)))
   }
   if (query.limit) payloads = payloads.slice(0, Math.max(0, query.limit))
   const fetchedAt = new Date().toISOString()
@@ -91,7 +119,7 @@ export function fixturePage(source: SourceId, fixtureUrl: URL, query: SourceQuer
     records: payloads.map((payload, index) => ({
       source,
       platform: 'xhs',
-      externalId: String(payload.external_id ?? payload.author_id ?? payload.user_id ?? payload.博主ID ?? payload.达人ID ?? `${source}-${index + 1}`),
+      externalId: payloadId(payload, `${source}-${index + 1}`),
       fetchedAt,
       payload,
     })),
@@ -130,14 +158,25 @@ export async function fetchJsonPage(input: {
   query: SourceQuery
   headers: Record<string, string>
   body?: Record<string, unknown>
+  /** 新榜-style APIs take `application/x-www-form-urlencoded`. */
+  encoding?: 'json' | 'form'
 }): Promise<AdapterPage> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 10_000)
   try {
+    const payload = input.body ?? input.query
+    const form = input.encoding === 'form'
+    const body = form
+      ? new URLSearchParams(
+          Object.entries(payload)
+            .filter(([, v]) => v != null && v !== '')
+            .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)]),
+        ).toString()
+      : JSON.stringify(payload)
     const response = await fetch(input.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...input.headers },
-      body: JSON.stringify(input.body ?? input.query),
+      headers: { 'content-type': form ? 'application/x-www-form-urlencoded;charset=utf-8' : 'application/json', ...input.headers },
+      body,
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`${input.source} HTTP ${response.status}`)
@@ -151,7 +190,7 @@ export async function fetchJsonPage(input: {
       records: payloads.map((payload, index) => ({
         source: input.source,
         platform: 'xhs',
-        externalId: String(payload.external_id ?? payload.author_id ?? payload.user_id ?? payload.id ?? `${input.source}-${index + 1}`),
+        externalId: payloadId(payload, `${input.source}-${index + 1}`),
         fetchedAt,
         payload,
       })),

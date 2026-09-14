@@ -1,56 +1,83 @@
 /**
- * Assumed 新红 bearer API paths: result.author.*, result.stat.*, result.quote.*.
- * Flat aliases and fixture names are intentionally kept in FIELD_MAP; update
- * paths here after validating the customer's vendor plan and API version.
+ * 新红 adapter (route B, vendor; 新榜 group).
+ *
+ * Status of the source (checked 2026-09): 新榜 sells a data API
+ * (api.newrank.cn, header `Key: <apiKey>`, form-encoded POST, endpoints under
+ * `/api/sync/<platform>/...`), but the endpoint list and field docs live in the
+ * paid console (newrank.cn 数据API → 控制台) and are not public. The 小红书
+ * (新红) endpoints must be copied from that console after purchase, so this
+ * adapter keeps the transport and endpoint configurable:
+ *   XINHONG_BASE_URL     default https://api.newrank.cn
+ *   XINHONG_SEARCH_PATH  e.g. /api/sync/xh/account/search   (from the console)
+ *   XINHONG_FIELD_MAP    JSON override of the default field paths below
+ *
+ * 新红-specific fields worth keeping: 新红指数 (vendorIndex), 互动粉丝比,
+ * 品牌合作数据 (coopBrands), cpe from 投放分析.
  */
 import type { SourceAdapter, SourceQuery } from '@kcs/contract'
-import { fetchJsonPage, filterFixturePage, fixturePage, normalizeRecord, type AdapterPage, type FieldMap } from './common'
+import {
+  fetchJsonPage,
+  fieldMapFromEnv,
+  filterFixturePage,
+  fixturePage,
+  normalizeRecord,
+  type AdapterPage,
+  type FieldMap,
+} from './common'
 
-export const FIELD_MAP: FieldMap = {
-  externalId: ['达人ID', 'result.author.id', 'user_id', 'author_id'],
-  displayName: ['昵称', 'result.author.nickname', 'nickname', 'name'],
-  xhsId: ['小红书号', 'result.author.xhs_id', 'xhs_id'],
-  avatarUrl: ['头像', 'result.author.avatar', 'avatar'],
-  regions: ['地区', 'result.author.region', 'region'],
-  verticals: ['垂类', 'result.author.tags', 'tags'],
-  followers: ['粉丝数', 'result.stat.followers', 'followers'],
-  followerGrowth: ['近30天涨粉', '涨粉', 'result.stat.follower_growth_30d'],
-  impressionMedian: ['曝光中位数', 'result.stat.impression_median'],
-  readMedian: ['阅读中位数', 'result.stat.read_median'],
-  interactionMedian: ['互动中位数', 'result.stat.interaction_median'],
-  likeMedian: ['点赞中位数', 'result.stat.like_median'],
-  collectMedian: ['收藏中位数', 'result.stat.collect_median'],
-  commentMedian: ['评论中位数', 'result.stat.comment_median'],
-  noteCount: ['近30天发文', 'result.stat.note_count_30d'],
-  viralCount: ['爆文数', 'result.stat.viral_count_30d'],
-  priceImage: ['图文报价', '预估报价', 'result.quote.image'],
-  priceVideo: ['视频报价', 'result.quote.video'],
-  cpe: ['CPE', 'result.quote.cpe'],
-  cpm: ['CPM', 'result.quote.cpm'],
-  authenticity: ['粉丝真实度', 'result.stat.real_fan_ratio'],
-  vendorIndex: ['新红指数', 'result.index', 'index'],
-  coopBrands: ['合作品牌', 'result.commercial.brands'],
-  health: ['健康等级', 'result.stat.health'],
+const DEFAULT_FIELD_MAP: FieldMap = {
+  externalId: ['达人ID', 'user_id', 'author_id', 'accountId', 'id'],
+  displayName: ['昵称', 'nickname', 'name'],
+  xhsId: ['小红书号', 'xhs_id', 'redId'],
+  avatarUrl: ['头像', 'avatar', 'headPhoto'],
+  regions: ['地区', 'region', 'location', 'ipLocation'],
+  verticals: ['垂类', 'tags', 'category', 'contentTags'],
+  followers: ['粉丝数', 'followers', 'fansCount', 'fans'],
+  followerGrowth: ['近30天涨粉', '涨粉', 'follower_growth_30d', 'fansIncrease'],
+  impressionMedian: ['曝光中位数', 'impression_median'],
+  readMedian: ['阅读中位数', 'read_median', 'readMedian'],
+  interactionMedian: ['互动中位数', 'interaction_median', 'interactionMedian'],
+  likeMedian: ['点赞中位数', 'like_median', 'likeMedian'],
+  collectMedian: ['收藏中位数', 'collect_median', 'collectMedian'],
+  commentMedian: ['评论中位数', 'comment_median', 'commentMedian'],
+  noteCount: ['近30天发文', 'note_count_30d', 'noteCount'],
+  viralCount: ['爆文数', 'viral_count_30d', 'hotNoteCount'],
+  priceImage: ['图文报价', '预估报价', 'price_image', 'picturePrice'],
+  priceVideo: ['视频报价', 'price_video', 'videoPrice'],
+  cpe: ['CPE', 'cpe'],
+  cpm: ['CPM', 'cpm'],
+  engagedFanRatio: ['互动粉丝比', 'engaged_fan_ratio'],
+  authenticity: ['粉丝真实度', 'real_fan_ratio', 'authenticity'],
+  vendorIndex: ['新红指数', 'index', 'xinhongIndex'],
+  coopBrands: ['合作品牌', 'brands', 'coopBrands'],
+  health: ['健康等级', 'health'],
 }
+
+export const FIELD_MAP: FieldMap = fieldMapFromEnv('XINHONG_FIELD_MAP', DEFAULT_FIELD_MAP)
+const PERCENT_FIELDS = ['authenticity', 'engagedFanRatio'] as const
 
 export const xinhongAdapter: SourceAdapter = {
   id: 'xinhong',
   supports: ['window', 'keyword', 'category', 'region', 'followersMin', 'followersMax', 'priceMin', 'priceMax', 'externalIds', 'cursor', 'limit'],
-  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
+  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'engagedFanRatio', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const token = process.env.XINHONG_TOKEN
     if (!token) {
       const page = fixturePage('xinhong', new URL('./fixtures/xinhong.json', import.meta.url), query)
-      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP, ['authenticity']))
+      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP, PERCENT_FIELDS))
     }
+    const base = (process.env.XINHONG_BASE_URL || 'https://api.newrank.cn').replace(/\/$/, '')
+    const path = process.env.XINHONG_SEARCH_PATH || '/api/sync/xh/account/search'
     return fetchJsonPage({
       source: 'xinhong',
-      url: `${process.env.XINHONG_BASE_URL || 'https://api.newrank.cn/xinhong'}/v1/creators/search`,
+      url: `${base}${path}`,
       query,
-      headers: { authorization: `Bearer ${token}` },
+      // 新榜 data API authenticates with a `Key` header rather than Bearer.
+      headers: { Key: token },
+      encoding: 'form',
     })
   },
   normalize(raw) {
-    return normalizeRecord(raw, FIELD_MAP, ['authenticity'])
+    return normalizeRecord(raw, FIELD_MAP, PERCENT_FIELDS)
   },
 }
