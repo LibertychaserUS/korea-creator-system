@@ -5,6 +5,7 @@ import { migrate } from './migrate'
 import { createS3Store } from './s3'
 import { seed } from './seed'
 import { MemoryObjectStore } from './store'
+import { startIngestWorker } from './ingest/worker'
 
 const port = Number(process.env.PORT || 7100)
 
@@ -28,7 +29,9 @@ async function main() {
           forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
         })
       : new MemoryObjectStore()
-  const app = createApp({ db, store, now: () => new Date() })
+  const env = { db, store, now: () => new Date() }
+  const app = createApp(env)
+  startIngestWorker(env)
   serve({ fetch: app.fetch, port }, () => {
     console.log(`kcs-api listening on :${port}`)
   })

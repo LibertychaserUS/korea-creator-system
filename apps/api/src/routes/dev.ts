@@ -1,4 +1,5 @@
-import { runIngest } from '../ingest/service'
+import { audit } from '../http/audit'
+import { camelJobs } from '../http/creators'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -25,7 +26,7 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { denied } = await helpers.requireAuth(context, 'dev.read')
     if (denied) return denied
     const { rows } = await env.db.query('SELECT * FROM ingest_jobs ORDER BY updated_at DESC')
-    return context.json({ items: rows })
+    return context.json({ items: camelJobs(rows) })
   })
 
   app.get('/api/dev/jobs/:id', async (context) => {
@@ -35,26 +36,28 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       context.req.param('id'),
     ])
     if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    return context.json(rows[0])
+    return context.json(camelJobs(rows)[0])
   })
 
   app.post('/api/dev/jobs/:id/retry', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'dev.retry')
     if (denied) return denied
-    const { rows } = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [
-      context.req.param('id'),
-    ])
-    if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    return context.json(
-      await runIngest(
-        env,
-        rows[0].source_id,
-        rows[0].schedule,
-        Number(rows[0].sample_rate),
-        user!.id,
-        rows[0],
-      ),
+    const { rows } = await env.db.query(
+      `UPDATE ingest_jobs SET status = 'queued', attempts = 0, next_run_at = now(),
+       error = NULL, error_code = NULL, error_summary = NULL, ended_at = NULL, updated_at = now()
+       WHERE id = $1 AND status IN ('failed','partial') RETURNING *`,
+      [context.req.param('id')],
     )
+    if (!rows[0]) {
+      const exists = await env.db.query('SELECT 1 FROM ingest_jobs WHERE id = $1', [
+        context.req.param('id'),
+      ])
+      return exists.rowCount
+        ? jsonError(context, 409, 'JOB-STATE', 'job_not_retryable')
+        : jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    }
+    await audit(env.db, user!.id, 'ingest.retry', 'ingest_job', rows[0].id, 'retry')
+    return context.json(camelJobs(rows)[0])
   })
 
   app.get('/api/dev/failures', async (context) => {
@@ -63,7 +66,7 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { rows } = await env.db.query(
       "SELECT * FROM ingest_jobs WHERE status = 'failed' ORDER BY updated_at DESC",
     )
-    return context.json({ items: rows })
+    return context.json({ items: camelJobs(rows) })
   })
 
   app.get('/api/dev/pipeline', async (context) => {

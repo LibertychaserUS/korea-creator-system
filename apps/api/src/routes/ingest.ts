@@ -1,6 +1,8 @@
 import { SOURCE_IDS, type SourceQuery } from '@kcs/contract'
 import { adapterDescriptions } from '../adapters'
-import { runAdapterIngest, runIngest } from '../ingest/service'
+import { runIngest } from '../ingest/service'
+import { enqueueIngestJob, processJob } from '../ingest/worker'
+import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
@@ -35,7 +37,12 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (!query || !SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
       return jsonError(context, 400, 'SOURCE-INVALID', 'invalid_source_query')
     }
-    return context.json(await runAdapterIngest(env, query, user!.id), 201)
+    const maxPages = Number((query as SourceQuery & { maxPages?: number }).maxPages ?? 5)
+    const job = await enqueueIngestJob(env, query, user!.id, maxPages)
+    if (context.req.query('sync') === '1') {
+      return context.json(await processJob(env, job!.id), 201)
+    }
+    return context.json({ job }, 202)
   })
 
   app.get('/api/ingest/raw/:creatorId', async (context) => {
@@ -110,19 +117,44 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
   app.post('/api/ingest/jobs/:id/retry', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ingest.retry')
     if (denied) return denied
-    const { rows } = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [
+    const { rows } = await env.db.query(
+      `UPDATE ingest_jobs SET status = 'queued', attempts = 0, next_run_at = now(),
+       error = NULL, error_code = NULL, error_summary = NULL, ended_at = NULL, updated_at = now()
+       WHERE id = $1 AND status IN ('failed','partial') RETURNING *`,
+      [
       context.req.param('id'),
-    ])
-    if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    return context.json(
-      await runIngest(
-        env,
-        rows[0].source_id,
-        rows[0].schedule,
-        Number(rows[0].sample_rate),
-        user!.id,
-        rows[0],
-      ),
+      ],
     )
+    if (!rows[0]) {
+      const exists = await env.db.query('SELECT 1 FROM ingest_jobs WHERE id = $1', [
+        context.req.param('id'),
+      ])
+      return exists.rowCount
+        ? jsonError(context, 409, 'JOB-STATE', 'job_not_retryable')
+        : jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    }
+    await audit(env.db, user!.id, 'ingest.retry', 'ingest_job', rows[0].id, 'retry')
+    return context.json(camelJobs(rows)[0])
+  })
+
+  app.post('/api/ingest/jobs/:id/cancel', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { rows } = await env.db.query(
+      `UPDATE ingest_jobs SET status = 'failed', error = 'cancelled',
+       error_code = 'CANCELLED', error_summary = 'cancelled', ended_at = now(), updated_at = now()
+       WHERE id = $1 AND status IN ('queued','running') RETURNING *`,
+      [context.req.param('id')],
+    )
+    if (!rows[0]) {
+      const exists = await env.db.query('SELECT 1 FROM ingest_jobs WHERE id = $1', [
+        context.req.param('id'),
+      ])
+      return exists.rowCount
+        ? jsonError(context, 409, 'JOB-STATE', 'job_not_cancellable')
+        : jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    }
+    await audit(env.db, user!.id, 'ingest.cancel', 'ingest_job', rows[0].id, 'cancel')
+    return context.json(camelJobs(rows)[0])
   })
 }
