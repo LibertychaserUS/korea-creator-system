@@ -205,7 +205,7 @@ export function createApp(env: AppEnv) {
       FROM creators
     `)
     const jobs = await env.db.query(
-      `SELECT id, status, written_count, batch_name, file_name, created_at FROM ingest_jobs ORDER BY created_at DESC LIMIT 5`,
+      `SELECT id, status, written_count, failed_count, batch_name, file_name, created_at FROM ingest_jobs ORDER BY created_at DESC LIMIT 5`,
     )
     return c.json({ counts: counts.rows[0], recentJobs: jobs.rows })
   })

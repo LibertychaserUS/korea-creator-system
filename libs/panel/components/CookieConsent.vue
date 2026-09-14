@@ -2,12 +2,13 @@
   <div
     v-if="show"
     data-testid="cookie-consent"
-    class="fixed inset-x-0 bottom-0 z-50 px-4 pb-4"
+    class="fixed inset-x-0 bottom-0 z-50 px-4 pb-4 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-full sm:max-w-sm sm:p-0"
     role="dialog"
     :aria-label="t('kcs.prefs.consentTitle')"
   >
-    <Card class="mx-auto max-w-2xl border-border/60 shadow-lg">
-      <CardContent class="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+    <!-- 桌面端收成右下角小卡：全宽底栏会盖住表单底部的保存/发布按钮。 -->
+    <Card class="border-border/60 shadow-lg">
+      <CardContent class="flex flex-col gap-3 pt-4">
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-foreground">{{ t('kcs.prefs.consentTitle') }}</p>
           <p class="mt-1 text-xs leading-relaxed text-muted-foreground">{{ t('kcs.prefs.consentBody') }}</p>
