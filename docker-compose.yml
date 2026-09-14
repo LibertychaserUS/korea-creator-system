@@ -70,24 +70,19 @@ services:
       S3_FORCE_PATH_STYLE: "true"
       WEB_ORIGIN: http://localhost:7000,http://localhost:7001,http://localhost:7002,http://localhost:7003,http://localhost:7004
       SESSION_SECRET: local-dev-session-secret-change-me
+      PGY_APP_ID: ""
+      PGY_APP_SECRET: ""
+      PGY_ACCESS_TOKEN: ""
+      PGY_BASE_URL: https://ad-market.xiaohongshu.com/openapi
+      QIANGUA_TOKEN: ""
+      QIANGUA_BASE_URL: https://api.qiangua.com
+      XINHONG_TOKEN: ""
+      XINHONG_BASE_URL: https://api.newrank.cn/xinhong
     ports:
       - "7100:7100"
     profiles:
       - full
 
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    container_name: kcs-web
-    depends_on:
-      - api
-    environment:
-      NUXT_PUBLIC_API_BASE: http://localhost:7100
-    ports:
-      - "7001:7001"
-    profiles:
-      - full
 
   marketing:
     build:
