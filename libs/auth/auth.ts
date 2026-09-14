@@ -1,7 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { phoneNumber, admin, bearer, captcha } from "better-auth/plugins"
-import { validator, StandardAdapter } from "validation-better-auth"
 import { createAuthMiddleware, APIError } from "better-auth/api"
 import { nanoid } from "nanoid";
 
@@ -9,6 +8,7 @@ import { db, user, account, session, verification, isSqliteDialect } from '@libs
 import { sendSMS } from '@libs/sms';
 import { emailSignInSchema, emailSignUpSchema } from '@libs/validators/user'
 import { wechatPlugin } from './plugins/wechat'
+import { validateBody } from './plugins/validate-body'
 import { sendVerificationEmail, sendResetPasswordEmail } from '@libs/email'
 import { locales, defaultLocale, getTranslation, type SupportedLocale } from '@libs/i18n'
 import { config } from '@config'
@@ -302,13 +302,11 @@ export const auth = betterAuth({
       }
       }
     }),
-    // https://github.com/Daanish2003/validation-better-auth
-    validator(
-      [
-        {path: "/sign-up/email", adapter: StandardAdapter(emailSignUpSchema)},
-        {path: "/sign-in/email", adapter: StandardAdapter(emailSignInSchema)},
-      ]
-    ),
+    // Body validation with 400 + field issues (not 500) on bad input.
+    validateBody([
+      { path: '/sign-up/email', schema: emailSignUpSchema },
+      { path: '/sign-in/email', schema: emailSignInSchema },
+    ]),
   ],
   rateLimit: {
     enabled: true,
