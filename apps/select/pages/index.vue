@@ -333,7 +333,7 @@
               <div v-for="key in mobileColumns" :key="key" class="min-w-0">
                 <dt class="truncate text-muted-foreground">{{ label(key) }}</dt>
                 <dd class="font-semibold">
-                  <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" compact />
+                  <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" :cohort="row.cohort" compact />
                 </dd>
               </div>
             </dl>
@@ -415,7 +415,7 @@
               <TableCell><TierBadge :tier="row.tier" /></TableCell>
               <TableCell><HealthBadge :health="row.metrics?.health" /></TableCell>
               <TableCell v-for="key in spec.columns" :key="key" class="text-right text-[13px]">
-                <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" compact />
+                <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" :cohort="row.cohort" compact />
               </TableCell>
             </TableRow>
           </TableBody>

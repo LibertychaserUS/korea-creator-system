@@ -123,8 +123,14 @@
               {{ running ? t('kcs.ingest.running') : t('kcs.ingest.run') }}
             </Button>
             <p v-if="result" class="text-sm text-muted-foreground" data-testid="fetch-result">
-              {{ t('kcs.ingest.done', { written: result.writtenCount ?? 0, skipped: result.skippedDupes ?? 0, failed: result.failedCount ?? 0 }) }}
-              <SourceBadge :source="result.sourceId ?? form.source" :mode="result.sourceMode" class="ml-1" />
+              <template v-if="result.queued">
+                {{ t('kcs.ingest.queued') }}
+                <span class="ml-1 font-mono text-[11px]">{{ String(result.jobId).slice(0, 8) }}</span>
+              </template>
+              <template v-else>
+                {{ t('kcs.ingest.done', { written: result.writtenCount ?? 0, skipped: result.skippedDupes ?? 0, failed: result.failedCount ?? 0 }) }}
+                <SourceBadge :source="result.sourceId ?? form.source" :mode="result.sourceMode" class="ml-1" />
+              </template>
             </p>
             <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
           </div>
@@ -140,7 +146,8 @@
               <TableHead class="hidden md:table-cell">{{ t('kcs.ingest.jobQuery') }}</TableHead>
               <TableHead class="text-right">{{ t('kcs.ingest.jobWritten') }}</TableHead>
               <TableHead class="hidden text-right sm:table-cell">{{ t('kcs.ingest.jobFailed') }}</TableHead>
-              <TableHead class="w-24">{{ t('kcs.panel.status') }}</TableHead>
+              <TableHead class="w-32">{{ t('kcs.panel.status') }}</TableHead>
+              <TableHead class="w-20 text-right"><span class="sr-only">{{ t('kcs.ingest.jobActions') }}</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -151,6 +158,7 @@
                 <TableCell><Skeleton class="ml-auto h-4 w-8" /></TableCell>
                 <TableCell class="hidden sm:table-cell"><Skeleton class="ml-auto h-4 w-8" /></TableCell>
                 <TableCell><Skeleton class="h-5 w-16" /></TableCell>
+                <TableCell />
               </TableRow>
             </template>
             <TableRow v-for="job in jobs" :key="job.id" data-testid="row-fetch-job">
@@ -165,7 +173,40 @@
               </TableCell>
               <TableCell class="text-right tabular-nums">{{ formatNumber(job.writtenCount) }}</TableCell>
               <TableCell class="hidden text-right tabular-nums sm:table-cell" :class="job.failedCount ? 'text-destructive' : 'text-muted-foreground'">{{ formatNumber(job.failedCount) }}</TableCell>
-              <TableCell><StatusBadge :status="job.status" /></TableCell>
+              <TableCell>
+                <div class="flex flex-col items-start gap-1">
+                  <StatusBadge :status="job.status" />
+                  <span v-if="progress(job)" class="text-[11px] tabular-nums text-muted-foreground" :title="job.error || undefined">{{ progress(job) }}</span>
+                </div>
+              </TableCell>
+              <TableCell class="text-right">
+                <div class="inline-flex gap-1">
+                  <Button
+                    v-if="job.status === 'failed' || job.status === 'partial'"
+                    variant="ghost"
+                    size="icon"
+                    class="size-7"
+                    :title="t('kcs.ingest.retry')"
+                    :disabled="acting === job.id"
+                    data-testid="job-retry"
+                    @click="act(job, 'retry')"
+                  >
+                    <RotateCcw class="size-3.5" />
+                  </Button>
+                  <Button
+                    v-if="job.status === 'queued' || job.status === 'running'"
+                    variant="ghost"
+                    size="icon"
+                    class="size-7 text-destructive hover:text-destructive"
+                    :title="t('kcs.ingest.cancel')"
+                    :disabled="acting === job.id"
+                    data-testid="job-cancel"
+                    @click="act(job, 'cancel')"
+                  >
+                    <X class="size-3.5" />
+                  </Button>
+                </div>
+              </TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -176,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, KeyRound, Play, Radar, TriangleAlert } from 'lucide-vue-next'
+import { ChevronDown, KeyRound, Play, Radar, RotateCcw, TriangleAlert, X } from 'lucide-vue-next'
 import { SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
 
 type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
@@ -194,6 +235,8 @@ const loadingJobs = ref(true)
 const running = ref(false)
 const result = ref<any>(null)
 const error = ref('')
+const acting = ref<string | null>(null)
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const form = reactive<SourceQuery & { health: HealthGrade[] }>({
   source: SOURCE_IDS[0],
@@ -245,6 +288,17 @@ async function loadAdapters() {
   }
 }
 
+/** 排队/进行中/部分完成时的进度说明：第几页、用了多少次调用、几点继续。 */
+function progress(job: any): string {
+  const parts: string[] = []
+  if (job.pagesDone || job.quotaUsed) parts.push(t('kcs.ingest.progress', { pages: job.pagesDone ?? 0, calls: job.quotaUsed ?? 0 }))
+  if (job.status === 'partial' && job.nextRunAt) parts.push(t('kcs.ingest.nextRun', { time: formatDate(job.nextRunAt) }))
+  if (job.status === 'failed' && job.error) parts.push(String(job.error).slice(0, 60))
+  return parts.join(' · ')
+}
+
+const hasActive = computed(() => jobs.value.some((j) => j.status === 'queued' || j.status === 'running'))
+
 async function loadJobs() {
   try {
     const res = await request<any>('/api/ingest/jobs')
@@ -252,6 +306,28 @@ async function loadJobs() {
     jobs.value = list.filter((j: any) => SOURCE_IDS.includes(j.sourceId)).slice(0, 20)
   } finally {
     loadingJobs.value = false
+    schedulePoll()
+  }
+}
+
+/** worker 在后台跑，有活动任务时每 3 秒刷一次，没有就停。 */
+function schedulePoll() {
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = null
+  if (!hasActive.value) return
+  pollTimer = setTimeout(loadJobs, 3000)
+}
+
+async function act(job: any, action: 'retry' | 'cancel') {
+  acting.value = job.id
+  error.value = ''
+  try {
+    await request(`/api/ingest/jobs/${job.id}/${action}`, { method: 'POST' })
+    await loadJobs()
+  } catch (e: any) {
+    error.value = e?.data?.error ?? e?.message ?? String(e)
+  } finally {
+    acting.value = null
   }
 }
 
@@ -266,7 +342,9 @@ async function runFetch() {
   }
   if (form.health.length && supports('health')) body.health = form.health
   try {
-    result.value = await request<any>('/api/ingest/fetch', { method: 'POST', body: JSON.stringify(body) })
+    const res = await request<any>('/api/ingest/fetch', { method: 'POST', body: JSON.stringify(body) })
+    // 202：任务已入队，worker 按配额执行；201（sync=1）：直接拿到结果
+    result.value = res.job && res.writtenCount == null ? { queued: true, jobId: res.job.id ?? res.job } : res
     await loadJobs()
   } catch (e: any) {
     error.value = e?.data?.error ?? e?.message ?? String(e)
@@ -278,5 +356,8 @@ async function runFetch() {
 onMounted(() => {
   loadAdapters()
   loadJobs()
+})
+onBeforeUnmount(() => {
+  if (pollTimer) clearTimeout(pollTimer)
 })
 </script>
