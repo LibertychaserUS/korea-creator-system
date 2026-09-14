@@ -178,10 +178,7 @@
       <div class="mt-4 grid gap-4 md:grid-cols-3">
         <div v-for="src in sources" :key="src.id" class="relative overflow-hidden rounded-xl border border-border/60 bg-card p-6 shadow-xs">
           <span class="absolute inset-x-0 top-0 h-0.5" :class="src.route === 'official' ? 'bg-primary' : 'bg-amber-500/70'" aria-hidden="true" />
-          <div class="flex items-center justify-between">
-            <span class="font-mono text-xs text-primary">{{ src.route === 'official' ? 'A' : 'B' }}</span>
-            <span class="rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">{{ t(`kcs.source.${src.route}`) }}</span>
-          </div>
+          <span class="inline-flex rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">{{ t(`kcs.source.${src.route}`) }}</span>
           <h4 class="mt-3 text-base font-semibold">{{ t(`kcs.landing.sources.${src.id}.label`) }}</h4>
           <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t(`kcs.landing.sources.${src.id}.body`) }}</p>
         </div>
@@ -222,7 +219,7 @@
           </div>
           <div class="tide-rule-card relative overflow-hidden rounded-xl p-6 text-white">
             <p class="text-xs uppercase tracking-[0.16em] text-white/60">{{ t('kcs.landing.transformTitle') }}</p>
-            <p class="mt-2 font-mono text-sm leading-relaxed text-white/90">raw JSON → FIELD_MAP → CreatorMetrics</p>
+            <p class="mt-2 text-lg font-semibold leading-snug text-white">{{ t('kcs.landing.transformLine') }}</p>
             <p class="mt-3 text-sm leading-relaxed text-white/75">{{ t('kcs.landing.transformBody') }}</p>
           </div>
         </div>

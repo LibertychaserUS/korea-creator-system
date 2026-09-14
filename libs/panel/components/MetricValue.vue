@@ -36,7 +36,7 @@ const showDot = computed(() => props.dot && (props.band === 'top10' || props.ban
 
 const title = computed(() => {
   const parts = [help(props.metricKey)]
-  if (props.band) parts.push(props.percentile != null ? `${bandLabel(props.band)} · P${Math.round(props.percentile)}` : bandLabel(props.band))
+  if (props.band) parts.push(bandLabel(props.band))
   if (props.cohort && props.band) {
     parts.push(
       t('kcs.band.cohort', {

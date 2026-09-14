@@ -44,7 +44,7 @@
             @click="selectQuery(q)"
           >
             {{ q.name }}
-            <span class="ml-1 font-mono text-[10px] opacity-70">{{ t('kcs.query.version', { n: q.version }) }}</span>
+            <span class="ml-1 text-[10px] opacity-70">{{ t('kcs.query.version', { n: q.version }) }}</span>
           </button>
           <span
             v-if="dirty"

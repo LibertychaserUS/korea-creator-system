@@ -85,14 +85,14 @@
               <TableCell>
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-center gap-2">
-                    <span class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || job.id }}</span>
+                    <span class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || (isSource(job.source_id) ? t(`kcs.source.${job.source_id}`) : t('kcs.ingest.fetchTitle')) }}</span>
                     <SourceBadge v-if="isSource(job.source_id)" :source="job.source_id" :mode="job.source_mode" class="h-5" />
                   </div>
-                  <div class="truncate font-mono text-[11px] text-muted-foreground">
-                    {{ job.id }}<template v-if="job.updated_at"> · {{ formatDate(job.updated_at) }}</template>
+                  <div class="truncate text-[11px] tabular-nums text-muted-foreground" :title="job.id">
+                    <template v-if="job.updated_at">{{ formatDate(job.updated_at) }}</template>
                   </div>
-                  <p v-if="job.status === 'failed' && job.error_summary" class="mt-1 truncate text-xs text-destructive">
-                    {{ job.error_code ? `${job.error_code} · ` : '' }}{{ job.error_summary }}
+                  <p v-if="job.status === 'failed' && job.error_summary" class="mt-1 truncate text-xs text-destructive" :title="job.error_code || undefined">
+                    {{ job.error_summary }}
                   </p>
                 </div>
               </TableCell>
