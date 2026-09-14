@@ -15,7 +15,7 @@
       >
         <div class="flex items-start justify-between gap-3 px-5 pt-4">
           <div>
-            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">{{ t('kcs.ingest.route') }} {{ a.route === 'official' ? 'A' : 'B' }} · {{ t(`kcs.source.${a.route}`) }}</p>
+            <p class="text-[11px] font-medium text-primary">{{ t(`kcs.source.${a.route}`) }}</p>
             <h3 class="mt-1 text-base font-semibold">{{ t(`kcs.source.${a.id}`) }}</h3>
           </div>
           <span
@@ -36,9 +36,8 @@
           </div>
           <div>
             <dt class="text-muted-foreground">{{ t('kcs.ingest.credentials') }}</dt>
-            <dd class="mt-1 font-mono text-[11px] text-muted-foreground">
-              <span class="text-foreground">{{ (a.envVars || []).join(' · ') }}</span>
-              <span v-if="(a.optionalEnvVars || []).length" class="block opacity-70">{{ (a.optionalEnvVars || []).join(' · ') }}</span>
+            <dd class="mt-1 text-foreground">
+              {{ a.configured ? t('kcs.source.configuredHint') : t('kcs.source.notConfiguredHint') }}
             </dd>
           </div>
         </dl>
@@ -123,10 +122,7 @@
               {{ running ? t('kcs.ingest.running') : t('kcs.ingest.run') }}
             </Button>
             <p v-if="result" class="text-sm text-muted-foreground" data-testid="fetch-result">
-              <template v-if="result.queued">
-                {{ t('kcs.ingest.queued') }}
-                <span class="ml-1 font-mono text-[11px]">{{ String(result.jobId).slice(0, 8) }}</span>
-              </template>
+              <template v-if="result.queued">{{ t('kcs.ingest.queued') }}</template>
               <template v-else>
                 {{ t('kcs.ingest.done', { written: result.writtenCount ?? 0, skipped: result.skippedDupes ?? 0, failed: result.failedCount ?? 0 }) }}
                 <SourceBadge :source="result.sourceId ?? form.source" :mode="result.sourceMode" class="ml-1" />
@@ -165,11 +161,11 @@
               <TableCell>
                 <div class="flex flex-col gap-1">
                   <SourceBadge :source="job.sourceId" :mode="job.sourceMode" />
-                  <span class="font-mono text-[11px] text-muted-foreground">{{ job.id.slice(0, 8) }}<template v-if="job.createdAt"> · {{ formatDate(job.createdAt) }}</template></span>
+                  <span v-if="job.createdAt" class="text-[11px] tabular-nums text-muted-foreground">{{ formatDate(job.createdAt) }}</span>
                 </div>
               </TableCell>
               <TableCell class="hidden max-w-64 md:table-cell">
-                <span class="block truncate font-mono text-[11px] text-muted-foreground" :title="describe(job.query)">{{ describe(job.query) || job.batchName || job.fileName || '—' }}</span>
+                <span class="block truncate text-xs text-muted-foreground" :title="describe(job.query)">{{ describe(job.query) || job.batchName || job.fileName || '—' }}</span>
               </TableCell>
               <TableCell class="text-right tabular-nums">{{ formatNumber(job.writtenCount) }}</TableCell>
               <TableCell class="hidden text-right tabular-nums sm:table-cell" :class="job.failedCount ? 'text-destructive' : 'text-muted-foreground'">{{ formatNumber(job.failedCount) }}</TableCell>
@@ -270,12 +266,24 @@ function metricLabel(key: string) {
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
 }
+/** 把抓取参数说成人话：近 30 天 · 关键词 护肤 · 粉丝 1万–50万 · 只要优秀。 */
 function describe(q: any) {
   if (!q || typeof q !== 'object') return ''
-  return Object.entries(q)
-    .filter(([k, v]) => k !== 'source' && v !== '' && v != null && !(Array.isArray(v) && !v.length))
-    .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join('|') : v}`)
-    .join(' ')
+  const parts: string[] = []
+  if (q.window) parts.push(t(`kcs.ingest.window${q.window}`))
+  if (q.keyword) parts.push(`${t('kcs.ingest.keyword')} ${q.keyword}`)
+  if (q.category) parts.push(`${t('kcs.ingest.category')} ${q.category}`)
+  if (q.region) parts.push(`${t('kcs.ingest.region')} ${q.region}`)
+  if (q.followersMin != null || q.followersMax != null) parts.push(`${t('kcs.ingest.followersRange')} ${range(q.followersMin, q.followersMax)}`)
+  if (q.priceMin != null || q.priceMax != null) parts.push(`${t('kcs.ingest.priceRange')} ${range(q.priceMin, q.priceMax)}`)
+  if (Array.isArray(q.health) && q.health.length && q.health.length < healthIds.length) parts.push(q.health.map((h: HealthGrade) => t(`kcs.health.${h}`)).join(' / '))
+  if (Array.isArray(q.externalIds) && q.externalIds.length) parts.push(t('kcs.ingest.byIds', { n: q.externalIds.length }))
+  return parts.join(' · ')
+}
+function range(min?: number | null, max?: number | null) {
+  const a = min == null ? '' : formatNumber(min)
+  const b = max == null ? '' : formatNumber(max)
+  return a && b ? `${a}–${b}` : a ? `≥ ${a}` : `≤ ${b}`
 }
 
 async function loadAdapters() {

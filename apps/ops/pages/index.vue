@@ -47,9 +47,9 @@
                     <FileSpreadsheet class="size-4" />
                   </span>
                   <div class="min-w-0">
-                    <div class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || job.id }}</div>
-                    <div class="truncate font-mono text-[11px] text-muted-foreground">
-                      {{ job.id }}<template v-if="job.created_at"> · {{ formatDate(job.created_at) }}</template>
+                    <div class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || t('kcs.ingest.fetchTitle') }}</div>
+                    <div class="truncate text-[11px] tabular-nums text-muted-foreground">
+                      <template v-if="job.created_at">{{ formatDate(job.created_at) }}</template>
                       <span class="sm:hidden"> · {{ t('kcs.panel.ready') }} {{ formatNumber(job.written_count) }}</span>
                     </div>
                   </div>

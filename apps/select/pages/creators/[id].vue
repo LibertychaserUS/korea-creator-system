@@ -35,7 +35,6 @@
             </div>
             <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span v-if="creator.xhsId" class="font-mono">@{{ creator.xhsId }}</span>
-              <span class="font-mono">{{ creator.creatorKey }}</span>
               <span v-if="creator.metricsFetchedAt">{{ t('kcs.source.fetchedAt') }} · {{ formatDate(creator.metricsFetchedAt) }}</span>
               <span v-if="creator.metricsLocked" class="inline-flex items-center gap-1 text-primary">
                 <Lock class="size-3" />
@@ -54,7 +53,7 @@
                 <MetricValue :metric-key="key" :value="metrics[key]" :band="percentiles[key]?.band" :percentile="percentiles[key]?.percentile" :cohort="creator.cohort" compact />
               </p>
               <p v-if="percentiles[key]" class="text-[11px] tabular-nums text-muted-foreground" data-testid="headline-percentile">
-                P{{ Math.round(percentiles[key]!.percentile) }} · {{ bandLabel(percentiles[key]!.band) }}
+                {{ bandLabel(percentiles[key]!.band) }}
               </p>
             </div>
           </div>
@@ -123,7 +122,7 @@
         <Card v-for="group in groups" :key="group" class="gap-0 border-border/60 py-0 shadow-xs">
           <div class="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <h3 class="text-sm font-semibold">{{ groupLabel(group) }}</h3>
-            <span class="text-[11px] text-muted-foreground">{{ t('kcs.ingest.window') }} · {{ metrics.window ?? 30 }}d</span>
+            <span class="text-[11px] text-muted-foreground">{{ t(`kcs.ingest.window${metrics.window === 90 ? 90 : 30}`) }}</span>
           </div>
           <dl class="divide-y divide-border/40">
             <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="help(field.key)">
@@ -135,7 +134,6 @@
               </dt>
               <dd class="text-right text-sm">
                 <MetricValue :metric-key="field.key" :value="metrics[field.key]" :band="percentiles[field.key]?.band" :percentile="percentiles[field.key]?.percentile" :cohort="creator.cohort" />
-                <span v-if="field.derived" class="ml-1 font-mono text-[10px] text-muted-foreground" title="derived">ƒ</span>
               </dd>
             </div>
           </dl>
@@ -187,11 +185,8 @@
             </div>
             <ul class="divide-y divide-border/40">
               <li v-for="link in sourceLinks" :key="`${link.source}:${link.externalId}`" class="flex items-center justify-between gap-3 px-5 py-2.5">
-                <div class="flex min-w-0 items-center gap-2">
-                  <SourceBadge :source="link.source" />
-                  <span class="truncate font-mono text-[11px] text-muted-foreground">{{ link.externalId }}</span>
-                </div>
-                <span v-if="link.lastSeenAt" class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{{ formatDate(link.lastSeenAt) }}</span>
+                <SourceBadge :source="link.source" />
+                <span v-if="link.lastSeenAt" class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{{ t('kcs.creators.lastSeen', { date: formatDate(link.lastSeenAt) }) }}</span>
               </li>
             </ul>
           </Card>
