@@ -54,22 +54,31 @@ spec:
               value: "true"
             - name: WEB_ORIGIN
               value: https://kcs.example.com,https://legacy.kcs.example.com,https://ops.kcs.example.com,https://dev.kcs.example.com,https://select.kcs.example.com
-            - name: PGY_APP_ID
-              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-app-id } }
-            - name: PGY_APP_SECRET
-              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-app-secret } }
             - name: PGY_ACCESS_TOKEN
               valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-access-token } }
+            # official | tikhub | justoneapi — all relay the same 蒲公英 solar JSON
+            - name: PGY_GATEWAY
+              value: tikhub
+            # leave empty to use the gateway default host; set for the official OpenAPI host
+            - name: PGY_BASE_URL
+              value: ""
+            - name: PGY_BRAND_USER_ID
+              value: ""
+            # "1" = also pull dataSummary/fansSummary/notesRate/fansProfile per creator on searches (4 billed calls each)
+            - name: PGY_ENRICH
+              value: "0"
             - name: QIANGUA_TOKEN
               valueFrom: { secretKeyRef: { name: kcs-api, key: qiangua-token } }
+            - name: QIANGUA_BASE_URL
+              value: https://api.qian-gua.com
+            - name: QIANGUA_SEARCH_PATH
+              value: /v1/xhs/creators/search
             - name: XINHONG_TOKEN
               valueFrom: { secretKeyRef: { name: kcs-api, key: xinhong-token } }
-            - name: PGY_BASE_URL
-              value: https://ad-market.xiaohongshu.com/openapi
-            - name: QIANGUA_BASE_URL
-              value: https://api.qiangua.com
             - name: XINHONG_BASE_URL
-              value: https://api.newrank.cn/xinhong
+              value: https://api.newrank.cn
+            - name: XINHONG_SEARCH_PATH
+              value: /api/sync/xh/account/search
           readinessProbe:
             httpGet:
               path: /api/health

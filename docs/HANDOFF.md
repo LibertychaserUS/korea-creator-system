@@ -94,6 +94,9 @@
 
 - 不再有综合分 / 等级 / 排名。契约见 `packages/kcs-contract/src/{metrics,source-adapter,saved-query}.ts`；口径见 `docs/03_指标口径与数据源.md`。
 - 数据源只做 A（蒲公英 OpenAPI）与 B（千瓜 / 新红），**不做自建爬虫**。无凭证时 API 走 `apps/api/src/adapters/fixtures/*.json`，任务标 `sourceMode: 'fixture'`，界面显示「样例数据」。
-- 接真实接口：填 `PGY_APP_ID / PGY_APP_SECRET / PGY_ACCESS_TOKEN`、`QIANGUA_TOKEN`、`XINHONG_TOKEN`（`deploy/k8s/secret.example.yaml`、`docker-compose.yml` 已留位），再按真实返回改各适配器顶部的 `FIELD_MAP`。
+- 接真实接口：
+  - 蒲公英：填 `PGY_ACCESS_TOKEN` + `PGY_GATEWAY`（`tikhub` / `justoneapi` / `official`），字段映射已按真实 `solar` 字段名写死在 `apps/api/src/adapters/pugongying.ts`，无需再改；`PGY_ENRICH=1` 才在搜索时逐个补拉 dataSummary / fansSummary / notesRate / fansProfile（付费按次）。
+  - 千瓜 / 新红：没有公开 API 文档，Token 与接口路径随企业合同下发；填 `QIANGUA_TOKEN` / `XINHONG_TOKEN`、`*_BASE_URL` / `*_SEARCH_PATH`，真实字段路径用 `*_FIELD_MAP`（JSON）覆盖，不改代码。
+  - 接口与字段对照见 `docs/03_指标口径与数据源.md`。
 - 前端入口：选人端 `/`（方案栏 + 编辑器）、`/creators/[id]`（指标面板）；运营端 `/sources`（抓取参数）。
 - `apps/web` 已删除；`apps/nuxt-app` + `libs/kcs-domain` 仍是旧六维口径的 mockup，未接触，建议下线。

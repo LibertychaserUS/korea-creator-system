@@ -1,10 +1,1099 @@
 [
-  {"博主ID":"pgy_001","博主名称":"清潭护肤研习社","小红书号":"cheongdam_skin","地区":"上海","垂类":"美妆,护肤","粉丝数":680000,"涨粉":18200,"阅读中位数":92000,"互动中位数":5600,"曝光中位数":180000,"点赞中位数":4300,"收藏中位数":980,"评论中位数":320,"互动率":"6.09%","阅读粉丝占比":"32%","活跃粉丝占比":"78%","健康等级":"优秀","图文报价":16800,"视频报价":26000,"预估阅读成本":0.18,"CPE":3,"合作品牌":["雪花秀","兰芝"]},
-  {"博主ID":"pgy_002","博主名称":"Mina的空瓶记","小红书号":"mina_empty","地区":"首尔","垂类":"美妆,空瓶","粉丝数":286000,"涨粉":9400,"阅读中位数":61000,"互动中位数":4100,"曝光中位数":126000,"点赞中位数":3100,"收藏中位数":760,"评论中位数":240,"互动率":"6.72%","阅读粉丝占比":"29%","活跃粉丝占比":"72%","健康等级":"优秀","图文报价":9800,"视频报价":15000,"CPE":2.39,"合作品牌":"悦诗风吟,赫妍"},
-  {"博主ID":"pgy_003","博主名称":"周末去圣水","小红书号":"weekend_seongsu","地区":"首尔","垂类":"生活方式,探店","粉丝数":128000,"涨粉":3800,"阅读中位数":28000,"互动中位数":1600,"曝光中位数":57000,"点赞中位数":1180,"收藏中位数":310,"评论中位数":110,"互动率":"5.71%","阅读粉丝占比":"24%","活跃粉丝占比":"66%","健康等级":"普通","图文报价":5200,"视频报价":8000,"合作品牌":["emis"]},
-  {"博主ID":"pgy_004","博主名称":"釜山海边食堂","小红书号":"busan_table","地区":"釜山","垂类":"美食,探店","粉丝数":72000,"涨粉":2100,"阅读中位数":18500,"互动中位数":1240,"曝光中位数":39000,"点赞中位数":920,"收藏中位数":240,"评论中位数":80,"互动率":"6.7%","阅读粉丝占比":"20%","活跃粉丝占比":"71%","健康等级":"优秀","图文报价":3600,"视频报价":6000,"CPE":2.9,"合作品牌":[]},
-  {"博主ID":"pgy_005","博主名称":"汉江夜跑女孩","小红书号":"hangang_runner","地区":"首尔","垂类":"运动,健身","粉丝数":39000,"涨粉":1700,"阅读中位数":13600,"互动中位数":970,"曝光中位数":24000,"点赞中位数":720,"收藏中位数":180,"评论中位数":70,"互动率":"7.13%","阅读粉丝占比":"18%","活跃粉丝占比":"75%","健康等级":"优秀","图文报价":2600,"视频报价":4300,"合作品牌":["rockfish"]},
-  {"博主ID":"pgy_006","博主名称":"敏感肌小海","小红书号":"hae_sensitive","地区":"杭州","垂类":"护肤","粉丝数":16800,"涨粉":820,"阅读中位数":7400,"互动中位数":520,"曝光中位数":14500,"点赞中位数":380,"收藏中位数":110,"评论中位数":30,"互动率":"7.03%","阅读粉丝占比":"16%","活跃粉丝占比":"69%","健康等级":"普通","图文报价":1500,"视频报价":2600,"合作品牌":[]},
-  {"博主ID":"pgy_007","博主名称":"留学新生日常","小红书号":"freshman_kr","地区":"首尔","垂类":"留学,生活","粉丝数":4200,"涨粉":460,"阅读中位数":3100,"互动中位数":260,"曝光中位数":6900,"点赞中位数":190,"收藏中位数":58,"评论中位数":12,"互动率":"8.39%","阅读粉丝占比":"12%","活跃粉丝占比":"81%","健康等级":"优秀","图文报价":620,"视频报价":980,"合作品牌":[]},
-  {"博主ID":"pgy_008","博主名称":"折扣情报站","小红书号":"deal_station","地区":"广州","垂类":"折扣,综合","粉丝数":950000,"涨粉":-8300,"阅读中位数":21000,"互动中位数":380,"曝光中位数":68000,"点赞中位数":280,"收藏中位数":72,"评论中位数":28,"互动率":"1.81%","阅读粉丝占比":"74%","活跃粉丝占比":"19%","健康等级":"异常","图文报价":23000,"视频报价":35000,"CPE":60.53,"合作品牌":["综合电商"]}
+  {
+    "userId": "pgy_001",
+    "valid": 1,
+    "name": "清潭护肤研习社",
+    "redId": "cheongdam_skin",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_001.jpg",
+    "location": "上海 上海 徐汇区",
+    "gender": "女",
+    "fansNum": 680000,
+    "fansCount": 680000,
+    "likeCollectCountInfo": 224000,
+    "businessNoteCount": 241,
+    "totalNoteCount": null,
+    "picturePrice": 16800,
+    "videoPrice": 26000,
+    "lowerPrice": 16800,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": {
+      "userId": "mcn_a1",
+      "name": "派芽星球"
+    },
+    "contentTags": [
+      {
+        "taxonomy1Tag": "护肤",
+        "taxonomy2Tags": [
+          "面部保养",
+          "护肤合集"
+        ]
+      },
+      {
+        "taxonomy1Tag": "美妆",
+        "taxonomy2Tags": [
+          "底妆"
+        ]
+      }
+    ],
+    "featureTags": [
+      "测评",
+      "教程"
+    ],
+    "personalTags": null,
+    "tradeType": "美妆个护 食品饮料",
+    "clickMidNum": 92000,
+    "clickMidNumMcn": 92000,
+    "interMidNum": 5600,
+    "mEngagementNum": 5600,
+    "mEngagementNumMcn": 5600,
+    "accumCommonImpMedinNum30d": 180000,
+    "accumPicCommonImpMedinNum30d": 180000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 92000,
+    "pictureInterMidNum": 5600,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": 18200,
+    "fans30GrowthRate": "2.8",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "21.5",
+    "pictureReadCost": 0.18,
+    "videoReadCost": null,
+    "estimatePictureCpm": 91.3,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 3.0,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": 84000,
+    "interMidCoop30": 5100,
+    "coopNoteNum30d": 6,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0,
+    "dataSummary": {
+      "mAccumImpNum": 180000,
+      "readMedian": 92000,
+      "readMedianBeyondRate": "90.0",
+      "mValidRawReadFeedNum": 92000,
+      "picReadCost": 0.18,
+      "responseRate": "98.0",
+      "interactionBeyondRate": "88.0",
+      "activeDayInLast7": 7,
+      "fans30GrowthRate": "2.7",
+      "mEngagementNum": 5600,
+      "noteNumber": 33,
+      "interactionMedian": 5600,
+      "estimatePictureCpm": 91.3,
+      "estimatePictureEngageCost": 3.0,
+      "kolAdvantage": "品效型博主",
+      "isActive": true,
+      "easyConnect": true,
+      "inviteNum": 120,
+      "dateKey": "2026-09-12",
+      "tradeNames": [
+        "护肤",
+        "美妆"
+      ],
+      "noteType": [
+        {
+          "contentTag": "护肤",
+          "percent": "88.0"
+        },
+        {
+          "contentTag": "美妆",
+          "percent": "12.0"
+        }
+      ]
+    },
+    "fansSummary": {
+      "fansNum": 680000,
+      "fansIncreaseNum": 18200,
+      "fansGrowthRate": "2.7",
+      "fansGrowthBeyondRate": "80.0",
+      "activeFansL28": 530400,
+      "activeFansRate": "78.0",
+      "activeFansBeyondRate": "60.0",
+      "engageFansRate": "3.1",
+      "engageFansL30": 21080,
+      "engageFansBeyondRate": "70.0",
+      "readFansIn30": 217600,
+      "readFansRate": "32.0",
+      "readFansBeyondRate": "65.0",
+      "payFansUserRate30d": "8.2",
+      "payFansUserNum30d": 55760
+    },
+    "notesRate": {
+      "noteNumber": 33,
+      "videoNoteNumber": 6,
+      "hundredLikePercent": "81.8",
+      "thousandLikePercent": "21.2",
+      "impMedian": 180000,
+      "impMedianBeyondRate": "90.0",
+      "readMedian": 92000,
+      "readMedianBeyondRate": "90.0",
+      "interactionMedian": 5600,
+      "interactionRate": "6.1",
+      "interactionBeyondRate": "85.0",
+      "likeMedian": 4300,
+      "collectMedian": 980,
+      "commentMedian": 320,
+      "shareMedian": 410,
+      "videoFullViewRate": "41.2",
+      "videoFullViewBeyondRate": "50.0",
+      "picture3sViewRate": "70.0",
+      "pagePercentVo": {
+        "impHomefeedPercent": 0.75,
+        "impSearchPercent": 0.18,
+        "impFollowPercent": 0.03,
+        "impDetailPercent": 0.001,
+        "impNearbyPercent": 0.0,
+        "impOtherPercent": 0.039,
+        "readHomefeedPercent": 0.75,
+        "readSearchPercent": 0.18,
+        "readFollowPercent": 0.03,
+        "readDetailPercent": 0.0,
+        "readNearbyPercent": 0.0,
+        "readOtherPercent": 0.04
+      },
+      "mEngagementNum": 5600,
+      "mFollowCnt": 1
+    },
+    "fansProfile": {
+      "ages": [
+        {
+          "group": "<18",
+          "percent": 0.04
+        },
+        {
+          "group": "18-24",
+          "percent": 0.31
+        },
+        {
+          "group": "25-34",
+          "percent": 0.44
+        },
+        {
+          "group": "35-44",
+          "percent": 0.16
+        },
+        {
+          "group": ">44",
+          "percent": 0.05
+        }
+      ],
+      "gender": {
+        "male": 0.14,
+        "female": 0.86
+      },
+      "interests": [
+        {
+          "name": "护肤",
+          "percent": 0.21
+        },
+        {
+          "name": "美妆",
+          "percent": 0.17
+        },
+        {
+          "name": "穿搭",
+          "percent": 0.09
+        }
+      ],
+      "provinces": [
+        {
+          "name": "上海",
+          "percent": 0.19
+        },
+        {
+          "name": "广东",
+          "percent": 0.14
+        },
+        {
+          "name": "浙江",
+          "percent": 0.11
+        }
+      ],
+      "cities": [],
+      "devices": [
+        {
+          "name": "apple inc.",
+          "desc": "苹果",
+          "percent": 0.41
+        }
+      ],
+      "dateKey": "2026-09-12"
+    },
+    "kcsWindow": 30
+  },
+  {
+    "userId": "pgy_002",
+    "valid": 1,
+    "name": "Mina的空瓶记",
+    "redId": "mina_empty",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_002.jpg",
+    "location": "海外 韩国 首尔",
+    "gender": "女",
+    "fansNum": 286000,
+    "fansCount": 286000,
+    "likeCollectCountInfo": 164000,
+    "businessNoteCount": 96,
+    "totalNoteCount": null,
+    "picturePrice": 9800,
+    "videoPrice": 15000,
+    "lowerPrice": 9800,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": null,
+    "contentTags": [
+      {
+        "taxonomy1Tag": "美妆",
+        "taxonomy2Tags": [
+          "美妆合集",
+          "唇妆"
+        ]
+      }
+    ],
+    "featureTags": [
+      "空瓶",
+      "测评"
+    ],
+    "personalTags": null,
+    "tradeType": "美妆个护",
+    "clickMidNum": 61000,
+    "clickMidNumMcn": 61000,
+    "interMidNum": 4100,
+    "mEngagementNum": 4100,
+    "mEngagementNumMcn": 4100,
+    "accumCommonImpMedinNum30d": 126000,
+    "accumPicCommonImpMedinNum30d": 126000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 61000,
+    "pictureInterMidNum": 4100,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": 9400,
+    "fans30GrowthRate": "3.4",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "18.9",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 80.3,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 2.39,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": 56000,
+    "interMidCoop30": 3600,
+    "coopNoteNum30d": 4,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0
+  },
+  {
+    "userId": "pgy_003",
+    "valid": 1,
+    "name": "周末去圣水",
+    "redId": "weekend_seongsu",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_003.jpg",
+    "location": "海外 韩国 首尔",
+    "gender": "女",
+    "fansNum": 128000,
+    "fansCount": 128000,
+    "likeCollectCountInfo": 64000,
+    "businessNoteCount": 12,
+    "totalNoteCount": null,
+    "picturePrice": 5200,
+    "videoPrice": 8000,
+    "lowerPrice": 5200,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": null,
+    "contentTags": [
+      {
+        "taxonomy1Tag": "生活方式",
+        "taxonomy2Tags": [
+          "探店",
+          "城市漫步"
+        ]
+      }
+    ],
+    "featureTags": [
+      "探店"
+    ],
+    "personalTags": null,
+    "tradeType": "餐饮 生活服务",
+    "clickMidNum": 28000,
+    "clickMidNumMcn": 28000,
+    "interMidNum": 1600,
+    "mEngagementNum": 1600,
+    "mEngagementNumMcn": 1600,
+    "accumCommonImpMedinNum30d": 57000,
+    "accumPicCommonImpMedinNum30d": 57000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 28000,
+    "pictureInterMidNum": 1600,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": 3800,
+    "fans30GrowthRate": "3.1",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "9.4",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 91.2,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 3.25,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": null,
+    "interMidCoop30": null,
+    "coopNoteNum30d": 0,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0,
+    "dataSummary": {
+      "mAccumImpNum": 57000,
+      "readMedian": 28000,
+      "readMedianBeyondRate": "90.0",
+      "mValidRawReadFeedNum": 28000,
+      "picReadCost": 0.19,
+      "responseRate": "71.0",
+      "interactionBeyondRate": "88.0",
+      "activeDayInLast7": 1,
+      "fans30GrowthRate": "3.1",
+      "mEngagementNum": 1600,
+      "noteNumber": 21,
+      "interactionMedian": 1600,
+      "estimatePictureCpm": 91.2,
+      "estimatePictureEngageCost": 3.25,
+      "kolAdvantage": "种草型博主",
+      "isActive": false,
+      "easyConnect": true,
+      "inviteNum": 120,
+      "dateKey": "2026-09-12",
+      "tradeNames": [
+        "生活方式",
+        "餐饮"
+      ],
+      "noteType": [
+        {
+          "contentTag": "生活方式",
+          "percent": "88.0"
+        },
+        {
+          "contentTag": "餐饮",
+          "percent": "12.0"
+        }
+      ]
+    },
+    "fansSummary": {
+      "fansNum": 128000,
+      "fansIncreaseNum": 3800,
+      "fansGrowthRate": "3.1",
+      "fansGrowthBeyondRate": "80.0",
+      "activeFansL28": 84480,
+      "activeFansRate": "66.0",
+      "activeFansBeyondRate": "60.0",
+      "engageFansRate": "2.2",
+      "engageFansL30": 2816,
+      "engageFansBeyondRate": "70.0",
+      "readFansIn30": 30720,
+      "readFansRate": "24.0",
+      "readFansBeyondRate": "65.0",
+      "payFansUserRate30d": "8.2",
+      "payFansUserNum30d": 10496
+    },
+    "notesRate": {
+      "noteNumber": 21,
+      "videoNoteNumber": 9,
+      "hundredLikePercent": "66.7",
+      "thousandLikePercent": "9.5",
+      "impMedian": 57000,
+      "impMedianBeyondRate": "90.0",
+      "readMedian": 28000,
+      "readMedianBeyondRate": "90.0",
+      "interactionMedian": 1600,
+      "interactionRate": "5.7",
+      "interactionBeyondRate": "85.0",
+      "likeMedian": 1180,
+      "collectMedian": 310,
+      "commentMedian": 110,
+      "shareMedian": 90,
+      "videoFullViewRate": "38.0",
+      "videoFullViewBeyondRate": "50.0",
+      "picture3sViewRate": "70.0",
+      "pagePercentVo": {
+        "impHomefeedPercent": 0.62,
+        "impSearchPercent": 0.31,
+        "impFollowPercent": 0.04,
+        "impDetailPercent": 0.001,
+        "impNearbyPercent": 0.0,
+        "impOtherPercent": 0.029,
+        "readHomefeedPercent": 0.62,
+        "readSearchPercent": 0.31,
+        "readFollowPercent": 0.04,
+        "readDetailPercent": 0.0,
+        "readNearbyPercent": 0.0,
+        "readOtherPercent": 0.03
+      },
+      "mEngagementNum": 1600,
+      "mFollowCnt": 1
+    },
+    "fansProfile": {
+      "ages": [
+        {
+          "group": "<18",
+          "percent": 0.06
+        },
+        {
+          "group": "18-24",
+          "percent": 0.38
+        },
+        {
+          "group": "25-34",
+          "percent": 0.39
+        },
+        {
+          "group": "35-44",
+          "percent": 0.12
+        },
+        {
+          "group": ">44",
+          "percent": 0.05
+        }
+      ],
+      "gender": {
+        "male": 0.21,
+        "female": 0.79
+      },
+      "interests": [
+        {
+          "name": "旅行",
+          "percent": 0.19
+        },
+        {
+          "name": "美食",
+          "percent": 0.15
+        }
+      ],
+      "provinces": [
+        {
+          "name": "上海",
+          "percent": 0.16
+        },
+        {
+          "name": "广东",
+          "percent": 0.13
+        },
+        {
+          "name": "北京",
+          "percent": 0.1
+        }
+      ],
+      "cities": [],
+      "devices": [
+        {
+          "name": "apple inc.",
+          "desc": "苹果",
+          "percent": 0.41
+        }
+      ],
+      "dateKey": "2026-09-12"
+    },
+    "kcsWindow": 30
+  },
+  {
+    "userId": "pgy_004",
+    "valid": 1,
+    "name": "釜山海边食堂",
+    "redId": "busan_table",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_004.jpg",
+    "location": "海外 韩国 釜山",
+    "gender": "男",
+    "fansNum": 72000,
+    "fansCount": 72000,
+    "likeCollectCountInfo": 49600,
+    "businessNoteCount": 31,
+    "totalNoteCount": null,
+    "picturePrice": 3600,
+    "videoPrice": 6000,
+    "lowerPrice": 3600,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": null,
+    "contentTags": [
+      {
+        "taxonomy1Tag": "美食",
+        "taxonomy2Tags": [
+          "探店",
+          "美食教程"
+        ]
+      }
+    ],
+    "featureTags": [
+      "探店"
+    ],
+    "personalTags": null,
+    "tradeType": "餐饮 食品饮料",
+    "clickMidNum": 18500,
+    "clickMidNumMcn": 18500,
+    "interMidNum": 1240,
+    "mEngagementNum": 1240,
+    "mEngagementNumMcn": 1240,
+    "accumCommonImpMedinNum30d": 39000,
+    "accumPicCommonImpMedinNum30d": 39000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 18500,
+    "pictureInterMidNum": 1240,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": 2100,
+    "fans30GrowthRate": "3.0",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "11.0",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 92.3,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 2.9,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": 16800,
+    "interMidCoop30": 1180,
+    "coopNoteNum30d": 2,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0
+  },
+  {
+    "userId": "pgy_005",
+    "valid": 1,
+    "name": "汉江夜跑女孩",
+    "redId": "hangang_runner",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_005.jpg",
+    "location": "海外 韩国 首尔",
+    "gender": "女",
+    "fansNum": 39000,
+    "fansCount": 39000,
+    "likeCollectCountInfo": 38800,
+    "businessNoteCount": 9,
+    "totalNoteCount": null,
+    "picturePrice": 2600,
+    "videoPrice": 4300,
+    "lowerPrice": 2600,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": null,
+    "contentTags": [
+      {
+        "taxonomy1Tag": "运动健身",
+        "taxonomy2Tags": [
+          "跑步",
+          "健身"
+        ]
+      }
+    ],
+    "featureTags": [
+      "教程"
+    ],
+    "personalTags": null,
+    "tradeType": "服装配饰 运动户外",
+    "clickMidNum": 13600,
+    "clickMidNumMcn": 13600,
+    "interMidNum": 970,
+    "mEngagementNum": 970,
+    "mEngagementNumMcn": 970,
+    "accumCommonImpMedinNum30d": 24000,
+    "accumPicCommonImpMedinNum30d": 24000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 13600,
+    "pictureInterMidNum": 970,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": 44.0,
+    "fans30GrowthNum": 1700,
+    "fans30GrowthRate": "4.6",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "12.6",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 108.3,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 2.68,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": null,
+    "interMidCoop30": null,
+    "coopNoteNum30d": 0,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0
+  },
+  {
+    "userId": "pgy_006",
+    "valid": 1,
+    "name": "敏感肌小海",
+    "redId": "hae_sensitive",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_006.jpg",
+    "location": "浙江 杭州 西湖区",
+    "gender": "女",
+    "fansNum": 16800,
+    "fansCount": 16800,
+    "likeCollectCountInfo": 20800,
+    "businessNoteCount": 5,
+    "totalNoteCount": null,
+    "picturePrice": 1500,
+    "videoPrice": 2600,
+    "lowerPrice": 1500,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": null,
+    "contentTags": [
+      {
+        "taxonomy1Tag": "护肤",
+        "taxonomy2Tags": [
+          "面部保养"
+        ]
+      }
+    ],
+    "featureTags": [
+      "测评"
+    ],
+    "personalTags": null,
+    "tradeType": "美妆个护",
+    "clickMidNum": 7400,
+    "clickMidNumMcn": 7400,
+    "interMidNum": 520,
+    "mEngagementNum": 520,
+    "mEngagementNumMcn": 520,
+    "accumCommonImpMedinNum30d": 14500,
+    "accumPicCommonImpMedinNum30d": 14500,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 7400,
+    "pictureInterMidNum": 520,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": 820,
+    "fans30GrowthRate": "5.1",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "7.8",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 103.4,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 2.88,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": null,
+    "interMidCoop30": null,
+    "coopNoteNum30d": 0,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0
+  },
+  {
+    "userId": "pgy_007",
+    "valid": 1,
+    "name": "留学新生日常",
+    "redId": "freshman_kr",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_007.jpg",
+    "location": "海外 韩国 首尔",
+    "gender": "女",
+    "fansNum": 4200,
+    "fansCount": 4200,
+    "likeCollectCountInfo": 10400,
+    "businessNoteCount": 1,
+    "totalNoteCount": null,
+    "picturePrice": 620,
+    "videoPrice": 980,
+    "lowerPrice": 620,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": null,
+    "contentTags": [
+      {
+        "taxonomy1Tag": "教育",
+        "taxonomy2Tags": [
+          "留学"
+        ]
+      },
+      {
+        "taxonomy1Tag": "生活方式",
+        "taxonomy2Tags": [
+          "日常"
+        ]
+      }
+    ],
+    "featureTags": [
+      "vlog"
+    ],
+    "personalTags": null,
+    "tradeType": "教育培训 生活服务",
+    "clickMidNum": 3100,
+    "clickMidNumMcn": 3100,
+    "interMidNum": 260,
+    "mEngagementNum": 260,
+    "mEngagementNumMcn": 260,
+    "accumCommonImpMedinNum30d": 6900,
+    "accumPicCommonImpMedinNum30d": 6900,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 3100,
+    "pictureInterMidNum": 260,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": 51.0,
+    "fans30GrowthNum": 460,
+    "fans30GrowthRate": "12.3",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "6.0",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 89.9,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 2.38,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": null,
+    "interMidCoop30": null,
+    "coopNoteNum30d": 0,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0
+  },
+  {
+    "userId": "pgy_008",
+    "valid": 1,
+    "name": "折扣情报站",
+    "redId": "deal_station",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_008.jpg",
+    "location": "广东 广州 天河区",
+    "gender": "女",
+    "fansNum": 950000,
+    "fansCount": 950000,
+    "likeCollectCountInfo": 15200,
+    "businessNoteCount": 512,
+    "totalNoteCount": null,
+    "picturePrice": 23000,
+    "videoPrice": 35000,
+    "lowerPrice": 23000,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": {
+      "userId": "mcn_b2",
+      "name": "星链传媒"
+    },
+    "contentTags": [
+      {
+        "taxonomy1Tag": "购物",
+        "taxonomy2Tags": [
+          "折扣",
+          "好物推荐"
+        ]
+      }
+    ],
+    "featureTags": [
+      "合集"
+    ],
+    "personalTags": null,
+    "tradeType": "互联网 日用百货",
+    "clickMidNum": 21000,
+    "clickMidNumMcn": 21000,
+    "interMidNum": 380,
+    "mEngagementNum": 380,
+    "mEngagementNumMcn": 380,
+    "accumCommonImpMedinNum30d": 68000,
+    "accumPicCommonImpMedinNum30d": 68000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 21000,
+    "pictureInterMidNum": 380,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": -8300,
+    "fans30GrowthRate": "-0.9",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "0.4",
+    "pictureReadCost": 1.1,
+    "videoReadCost": null,
+    "estimatePictureCpm": 338.2,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 60.53,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": 19000,
+    "interMidCoop30": 300,
+    "coopNoteNum30d": 9,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": true,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0,
+    "dataSummary": {
+      "mAccumImpNum": 68000,
+      "readMedian": 21000,
+      "readMedianBeyondRate": "90.0",
+      "mValidRawReadFeedNum": 21000,
+      "picReadCost": 1.1,
+      "responseRate": "99.0",
+      "interactionBeyondRate": "88.0",
+      "activeDayInLast7": 7,
+      "fans30GrowthRate": "-0.9",
+      "mEngagementNum": 380,
+      "noteNumber": 61,
+      "interactionMedian": 380,
+      "estimatePictureCpm": 338.2,
+      "estimatePictureEngageCost": 60.53,
+      "kolAdvantage": "曝光型博主",
+      "isActive": true,
+      "easyConnect": true,
+      "inviteNum": 120,
+      "dateKey": "2026-09-12",
+      "tradeNames": [
+        "购物",
+        "互联网"
+      ],
+      "noteType": [
+        {
+          "contentTag": "购物",
+          "percent": "88.0"
+        },
+        {
+          "contentTag": "互联网",
+          "percent": "12.0"
+        }
+      ]
+    },
+    "fansSummary": {
+      "fansNum": 950000,
+      "fansIncreaseNum": -8300,
+      "fansGrowthRate": "-0.9",
+      "fansGrowthBeyondRate": "80.0",
+      "activeFansL28": 180500,
+      "activeFansRate": "19.0",
+      "activeFansBeyondRate": "60.0",
+      "engageFansRate": "0.3",
+      "engageFansL30": 2850,
+      "engageFansBeyondRate": "70.0",
+      "readFansIn30": 703000,
+      "readFansRate": "74.0",
+      "readFansBeyondRate": "65.0",
+      "payFansUserRate30d": "8.2",
+      "payFansUserNum30d": 77900
+    },
+    "notesRate": {
+      "noteNumber": 61,
+      "videoNoteNumber": 2,
+      "hundredLikePercent": "12.3",
+      "thousandLikePercent": "0.4",
+      "impMedian": 68000,
+      "impMedianBeyondRate": "90.0",
+      "readMedian": 21000,
+      "readMedianBeyondRate": "90.0",
+      "interactionMedian": 380,
+      "interactionRate": "1.8",
+      "interactionBeyondRate": "85.0",
+      "likeMedian": 280,
+      "collectMedian": 72,
+      "commentMedian": 28,
+      "shareMedian": 15,
+      "videoFullViewRate": "12.0",
+      "videoFullViewBeyondRate": "50.0",
+      "picture3sViewRate": "70.0",
+      "pagePercentVo": {
+        "impHomefeedPercent": 0.9,
+        "impSearchPercent": 0.05,
+        "impFollowPercent": 0.01,
+        "impDetailPercent": 0.001,
+        "impNearbyPercent": 0.0,
+        "impOtherPercent": 0.039,
+        "readHomefeedPercent": 0.9,
+        "readSearchPercent": 0.05,
+        "readFollowPercent": 0.01,
+        "readDetailPercent": 0.0,
+        "readNearbyPercent": 0.0,
+        "readOtherPercent": 0.04
+      },
+      "mEngagementNum": 380,
+      "mFollowCnt": 1
+    },
+    "fansProfile": {
+      "ages": [
+        {
+          "group": "<18",
+          "percent": 0.11
+        },
+        {
+          "group": "18-24",
+          "percent": 0.29
+        },
+        {
+          "group": "25-34",
+          "percent": 0.33
+        },
+        {
+          "group": "35-44",
+          "percent": 0.19
+        },
+        {
+          "group": ">44",
+          "percent": 0.08
+        }
+      ],
+      "gender": {
+        "male": 0.42,
+        "female": 0.58
+      },
+      "interests": [
+        {
+          "name": "购物",
+          "percent": 0.24
+        },
+        {
+          "name": "数码",
+          "percent": 0.11
+        }
+      ],
+      "provinces": [
+        {
+          "name": "广东",
+          "percent": 0.22
+        },
+        {
+          "name": "江苏",
+          "percent": 0.1
+        },
+        {
+          "name": "山东",
+          "percent": 0.09
+        }
+      ],
+      "cities": [],
+      "devices": [
+        {
+          "name": "apple inc.",
+          "desc": "苹果",
+          "percent": 0.41
+        }
+      ],
+      "dateKey": "2026-09-12"
+    },
+    "kcsWindow": 30
+  },
+  {
+    "userId": "pgy_009",
+    "valid": 1,
+    "name": "首尔穿搭手记",
+    "redId": "seoul_ootd",
+    "headPhoto": "https://sns-avatar-qc.xhscdn.com/avatar/pgy_009.jpg",
+    "location": "海外 韩国 首尔",
+    "gender": "女",
+    "fansNum": 210000,
+    "fansCount": 210000,
+    "likeCollectCountInfo": 132000,
+    "businessNoteCount": 58,
+    "totalNoteCount": null,
+    "picturePrice": 8600,
+    "videoPrice": 13000,
+    "lowerPrice": 8600,
+    "pictureState": 1,
+    "videoState": 1,
+    "cooperateState": 1,
+    "userType": 2,
+    "noteSign": {
+      "userId": "mcn_a1",
+      "name": "派芽星球"
+    },
+    "contentTags": [
+      {
+        "taxonomy1Tag": "穿搭",
+        "taxonomy2Tags": [
+          "日常穿搭",
+          "穿搭合集"
+        ]
+      }
+    ],
+    "featureTags": [
+      "合集",
+      "教程"
+    ],
+    "personalTags": null,
+    "tradeType": "服装配饰",
+    "clickMidNum": 47000,
+    "clickMidNumMcn": 47000,
+    "interMidNum": 3300,
+    "mEngagementNum": 3300,
+    "mEngagementNumMcn": 3300,
+    "accumCommonImpMedinNum30d": 98000,
+    "accumPicCommonImpMedinNum30d": 98000,
+    "accumVideoCommonImpMedinNum30d": 0,
+    "pictureClickMidNum": 47000,
+    "pictureInterMidNum": 3300,
+    "videoClickMidNum": 0,
+    "videoInterMidNum": 0,
+    "videoFinishRate": null,
+    "fans30GrowthNum": 6100,
+    "fans30GrowthRate": "3.0",
+    "hundredLikePercent30": null,
+    "thousandLikePercent30": "17.2",
+    "pictureReadCost": null,
+    "videoReadCost": null,
+    "estimatePictureCpm": 87.8,
+    "estimateVideoCpm": 0.0,
+    "estimatePictureEngageCost": 2.61,
+    "estimateVideoEngageCost": 0.0,
+    "readMidCoop30": 41000,
+    "interMidCoop30": 2900,
+    "coopNoteNum30d": 3,
+    "inviteReply48hNumRatio": 0.0,
+    "lowActive": false,
+    "newHighQuality": 0,
+    "kolType": 0,
+    "kliveCnt30d": 0,
+    "avgLiveViewerNum": 0.0,
+    "avgAgmv90d": 0.0
+  }
 ]

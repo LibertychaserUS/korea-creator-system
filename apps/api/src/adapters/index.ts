@@ -27,14 +27,15 @@ export function adapterConfigured(id: SourceId): boolean {
 export function adapterDescriptions() {
   return SOURCE_IDS.map((id) => {
     const adapter = ADAPTERS[id]
-    const envVars = SOURCE_CREDENTIALS.find((item) => item.source === id)?.envVars ?? []
+    const ref = SOURCE_CREDENTIALS.find((item) => item.source === id)
     return {
       id,
       route: SOURCE_ROUTE[id],
       supports: adapter.supports,
       provides: adapter.provides,
       configured: adapterConfigured(id),
-      envVars,
+      envVars: ref?.envVars ?? [],
+      optionalEnvVars: ref?.optionalEnvVars ?? [],
     }
   })
 }
