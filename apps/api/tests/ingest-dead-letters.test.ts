@@ -404,6 +404,51 @@ describe('one drainer, one job at a time', () => {
     }
   }, 20_000)
 
+  it('picks up a run abandoned mid-page once its lease lapses', async () => {
+    const { context, ops } = await setup(pickyAdapter())
+    const { job } = await (await enqueue(context, ops)).json()
+    // A drainer claimed it, wrote a page, then died.
+    await context.db.query(
+      `UPDATE ingest_jobs SET status = 'running', pages_done = 0, locked_by = 'gone:1',
+         lease_expires_at = now() - interval '1 second' WHERE id = $1`,
+      [job.id],
+    )
+    const stop = startIngestWorker(context.env, { intervalMs: 50 })
+    try {
+      const deadline = Date.now() + 5_000
+      let status = 'running'
+      while (Date.now() < deadline && status !== 'ok') {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        const { rows } = await context.db.query('SELECT status FROM ingest_jobs WHERE id = $1', [job.id])
+        status = rows[0].status
+      }
+      expect(status).toBe('ok')
+    } finally {
+      stop()
+    }
+  }, 20_000)
+
+  it('leaves an abandoned run alone while its lease is still good', async () => {
+    const { context, ops } = await setup(pickyAdapter())
+    const { job } = await (await enqueue(context, ops)).json()
+    await context.db.query(
+      `UPDATE ingest_jobs SET status = 'running', locked_by = 'busy:1',
+         lease_expires_at = now() + interval '60 seconds' WHERE id = $1`,
+      [job.id],
+    )
+    const stop = startIngestWorker(context.env, { intervalMs: 50 })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      const { rows } = await context.db.query(
+        'SELECT status, locked_by FROM ingest_jobs WHERE id = $1',
+        [job.id],
+      )
+      expect(rows[0]).toMatchObject({ status: 'running', locked_by: 'busy:1' })
+    } finally {
+      stop()
+    }
+  })
+
   it('INGEST_WORKER=0 keeps a process out of the rotation entirely', async () => {
     const { context, ops } = await setup(pickyAdapter())
     const { job } = await (await enqueue(context, ops)).json()

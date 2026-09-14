@@ -285,8 +285,11 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
       if (!(await acquire())) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
-         WHERE (status = 'queued' OR (status = 'partial' AND next_run_at IS NOT NULL))
-           AND (next_run_at IS NULL OR next_run_at <= now())
+         WHERE (status = 'queued' AND (next_run_at IS NULL OR next_run_at <= now()))
+            OR (status = 'partial' AND next_run_at IS NOT NULL AND next_run_at <= now())
+            -- A run left mid-page by a drainer that died: its lease has lapsed,
+            -- so picking it up continues from the cursor instead of stalling forever.
+            OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= now())
          ORDER BY created_at
          LIMIT 1`,
       )

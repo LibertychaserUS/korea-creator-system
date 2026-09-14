@@ -11,8 +11,11 @@ import { createServer, type Server } from 'node:http'
  * Behaviour is chosen by the `keyword` the job carries:
  *   `bb-pages-N`      N pages of 2 creators (cursor "2".."N")
  *   `bb-slow-MS`      4 pages, each answered after MS milliseconds
- *   `bb-fail`         always HTTP 500
+ *   `bb-fail`         always HTTP 500 (transient — worth retrying)
  *   `bb-flaky-K`      first K calls HTTP 500, then 1 page
+ *   `bb-reject`       always HTTP 403 (permanent — retrying changes nothing)
+ *   `bb-shape`        HTTP 200 with a body that has no record list at all
+ *   `bb-badrecord`    1 page where the first creator has no name (unreadable)
  *   anything else     1 page of 2 creators
  * Every keyword is namespaced by the caller so creators never collide across runs.
  *
@@ -106,6 +109,14 @@ export function startMockVendor(port = VENDOR_PORT): Promise<Server> {
     }
 
     if (keyword.includes('bb-fail')) return reply(500, { error: 'vendor down' })
+    if (keyword.includes('bb-reject')) {
+      return reply(403, { error: 'forbidden', hint: 'token=super-secret-should-not-leak' })
+    }
+    if (keyword.includes('bb-shape')) return reply(200, { ok: true, unexpected: 'no list here' })
+    if (keyword.includes('bb-badrecord')) {
+      const broken = { ...record(keyword, page, 1), nickname: '', 昵称: '' }
+      return reply(200, { data: [broken, record(keyword, page, 2)], next_cursor: null })
+    }
 
     const flaky = keyword.match(/bb-flaky-(\d+)/)
     if (flaky) {
