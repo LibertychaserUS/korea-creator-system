@@ -211,49 +211,82 @@ async function persistPage(
     }
     try {
       const creator = normalized.creator
-      const found = await env.db.query('SELECT id FROM creators WHERE creator_key = $1', [
-        creator.creatorKey,
-      ])
-      const creatorId = found.rows[0]?.id ?? randomUUID()
-      const saved = await env.db.query(
-        `INSERT INTO creators (
-           id, creator_key, display_name, status, needs_review, followers, followers_unknown,
-           regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-           metrics_fetched_at, last_ingest_job_id
-         ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-         ON CONFLICT (creator_key) DO UPDATE SET
-           display_name = EXCLUDED.display_name, needs_review = true,
-           followers = EXCLUDED.followers, followers_unknown = EXCLUDED.followers_unknown,
-           regions = EXCLUDED.regions, verticals = EXCLUDED.verticals,
-           xhs_id = COALESCE(EXCLUDED.xhs_id, creators.xhs_id),
-           metrics = EXCLUDED.metrics, metrics_window = EXCLUDED.metrics_window,
-           source = EXCLUDED.source, external_id = EXCLUDED.external_id,
-           metrics_fetched_at = EXCLUDED.metrics_fetched_at,
-           last_ingest_job_id = EXCLUDED.last_ingest_job_id, updated_at = now()
-         RETURNING id`,
-        [
-          creatorId,
-          creator.creatorKey,
-          creator.displayName,
-          creator.metrics.followers,
-          creator.metrics.followers == null,
-          creator.regions,
-          creator.verticals,
-          creator.xhsId,
-          JSON.stringify(creator.metrics),
-          creator.metrics.window,
-          source,
-          creator.externalId,
-          raw.fetchedAt,
-          jobId,
-        ],
+      const linked = await env.db.query(
+        'SELECT creator_id FROM creator_sources WHERE source = $1 AND external_id = $2',
+        [source, creator.externalId],
+      )
+      const byXhs = !linked.rows[0] && creator.xhsId
+        ? await env.db.query(
+            'SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
+            [creator.xhsId],
+          )
+        : { rows: [] as Array<{ id: string }> }
+      const existingId = linked.rows[0]?.creator_id ?? byXhs.rows[0]?.id
+      const creatorId = existingId ?? randomUUID()
+      if (existingId) {
+        await env.db.query(
+          `UPDATE creators SET
+             display_name = $2, needs_review = true, followers = $3, followers_unknown = $4,
+             regions = $5, verticals = $6, xhs_id = COALESCE($7, xhs_id),
+             metrics = $8, metrics_window = $9, source = $10, external_id = $11,
+             metrics_fetched_at = $12, last_ingest_job_id = $13, updated_at = now()
+           WHERE id = $1`,
+          [
+            creatorId,
+            creator.displayName,
+            creator.metrics.followers,
+            creator.metrics.followers == null,
+            creator.regions,
+            creator.verticals,
+            creator.xhsId,
+            JSON.stringify(creator.metrics),
+            creator.metrics.window,
+            source,
+            creator.externalId,
+            raw.fetchedAt,
+            jobId,
+          ],
+        )
+      } else {
+        await env.db.query(
+          `INSERT INTO creators (
+             id, creator_key, display_name, status, needs_review, followers, followers_unknown,
+             regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
+             metrics_fetched_at, last_ingest_job_id
+           ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [
+            creatorId,
+            creator.creatorKey,
+            creator.displayName,
+            creator.metrics.followers,
+            creator.metrics.followers == null,
+            creator.regions,
+            creator.verticals,
+            creator.xhsId,
+            JSON.stringify(creator.metrics),
+            creator.metrics.window,
+            source,
+            creator.externalId,
+            raw.fetchedAt,
+            jobId,
+          ],
+        )
+      }
+      await env.db.query(
+        `INSERT INTO creator_sources
+          (creator_id, source, external_id, first_seen_at, last_seen_at)
+         VALUES ($1,$2,$3,$4,$4)
+         ON CONFLICT (source, external_id) DO UPDATE SET
+           creator_id = EXCLUDED.creator_id,
+           last_seen_at = GREATEST(creator_sources.last_seen_at, EXCLUDED.last_seen_at)`,
+        [creatorId, source, creator.externalId, raw.fetchedAt],
       )
       await env.db.query(
         `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload)
          VALUES ($1,$2,$3,$4,$5,$6)`,
         [
           randomUUID(),
-          saved.rows[0].id,
+          creatorId,
           source,
           raw.externalId,
           raw.fetchedAt,
@@ -266,7 +299,7 @@ async function persistPage(
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [
           randomUUID(),
-          saved.rows[0].id,
+          creatorId,
           source,
           creator.metrics.window,
           raw.fetchedAt,
@@ -274,7 +307,7 @@ async function persistPage(
           JSON.stringify(creator.metrics),
         ],
       )
-      if (found.rows[0]) skipped += 1
+      if (existingId) skipped += 1
       else written += 1
     } catch {
       failed += 1

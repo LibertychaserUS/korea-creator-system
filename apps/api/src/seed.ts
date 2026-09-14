@@ -138,6 +138,14 @@ async function seedCreators(db: Db) {
           `${adapter.id} fixture`,
         ],
       )
+      await db.query(
+        `INSERT INTO creator_sources
+          (creator_id, source, external_id, first_seen_at, last_seen_at)
+         VALUES ($1,$2,$3,$4,$4)
+         ON CONFLICT (source, external_id) DO UPDATE SET
+           creator_id = EXCLUDED.creator_id, last_seen_at = EXCLUDED.last_seen_at`,
+        [id, adapter.id, creator.externalId, raw.fetchedAt],
+      )
       await db.query('DELETE FROM creator_categories WHERE creator_id = $1', [id])
       const latestAt = new Date(raw.fetchedAt)
       for (let weeksAgo = 3; weeksAgo >= 0; weeksAgo -= 1) {
@@ -222,7 +230,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     await db.query(`
       TRUNCATE TABLE
         audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
-        creator_raw, creator_metrics_history, prices, collaborations, creator_categories, creators, assets,
+        creator_raw, creator_metrics_history, creator_sources, prices, collaborations, creator_categories, creators, assets,
         ingest_jobs, ingest_source_usage, ingest_sources, users, orgs, categories
       RESTART IDENTITY CASCADE
     `)
