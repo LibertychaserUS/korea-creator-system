@@ -103,7 +103,7 @@
               </TableCell>
               <TableCell v-if="canRetry" class="text-right">
                 <Button
-                  v-if="job.status === 'failed'"
+                  v-if="job.status === 'failed' || job.status === 'partial'"
                   data-testid="btn-retry-job"
                   size="sm"
                   variant="outline"

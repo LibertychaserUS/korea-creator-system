@@ -1997,6 +1997,7 @@ export const zhCN: Locale = {
       hint: "蒲公英每月 1 日更新。异常（低活博主）为硬门槛不可合作，正常审慎评估。"
     },
     band: {
+      cohort: "同源同量级 {n} 人 · {source} · {tier}",
       top10: "同源同量级前 10%",
       top25: "同源同量级前 25%",
       upper: "同源同量级中上 (P50–P75)",
@@ -2067,6 +2068,12 @@ export const zhCN: Locale = {
       }
     },
     ingest: {
+      queued: "已加入队列，worker 将按数据源的速率与日配额执行。任务号",
+      progress: "第 {pages} 页 · 调用 {calls} 次",
+      nextRun: "{time} 自动续跑",
+      retry: "重试（从游标继续）",
+      cancel: "取消任务",
+      jobActions: "操作",
       title: "数据源",
       lead: "系统本质是有参数的爬虫：运营配置抓取参数发起任务，Worker 遵循源端频控与配额入库原始 JSON，经转换层规范为统一指标。",
       adapters: "适配器",
@@ -2381,6 +2388,12 @@ export const zhCN: Locale = {
       emptyBody: "执行抓取任务或调整筛选方案后，将在此展示博主列表。"
     },
     creators: {
+      trend: "趋势",
+      trendLead: "每次抓取写一条指标快照；变化是首末两条快照的相对差。",
+      snapshots: "查看全部 {n} 条快照",
+      noHistory: "还没有历史快照，抓取一次后这里会出现趋势。",
+      sources: "数据来源",
+      sourcesLead: "同一小红书号在多个数据源出现时会归并到同一博主。",
       eyebrow: "博主池",
       title: "博主",
       lead: "列表按筛选方案指定指标排序。昵称与小红书号保持原文。",

@@ -1990,6 +1990,7 @@ export const en: Locale = {
       hint: "Updated by Pugongying on the 1st of each month. Abnormal (low activity) is a hard block, normal requires prudent review."
     },
     band: {
+      cohort: "Among {n} creators · {source} · {tier}",
       top10: "Top 10% in cohort",
       top25: "Top 25% in cohort",
       upper: "Upper half in cohort (P50–P75)",
@@ -2060,6 +2061,12 @@ export const en: Locale = {
       }
     },
     ingest: {
+      queued: "Queued. The worker runs it within the source's rate limit and daily quota. Job",
+      progress: "Page {pages} · {calls} calls",
+      nextRun: "Resumes at {time}",
+      retry: "Retry (continue from cursor)",
+      cancel: "Cancel job",
+      jobActions: "Actions",
       title: "Data sources",
       lead: "The system operates as a parameterised crawler: operators configure ingest parameters to dispatch tasks; workers write raw platform JSON following rate limits and quotas, normalised by the transform layer into uniform metrics.",
       adapters: "Adapters",
@@ -2374,6 +2381,12 @@ export const en: Locale = {
       emptyBody: "Creators will appear here after running ingest jobs or modifying query criteria."
     },
     creators: {
+      trend: "Trend",
+      trendLead: "Every fetch writes one metric snapshot; the change is the relative difference between the first and latest snapshot.",
+      snapshots: "Show all {n} snapshots",
+      noHistory: "No snapshots yet. Run one fetch and the trend will appear here.",
+      sources: "Data sources",
+      sourcesLead: "Records sharing the same Xiaohongshu ID across sources are merged into one creator.",
       eyebrow: "Creator pool",
       title: "Creators",
       lead: "Ranked according to the sort metrics defined in the saved query. Nicknames and Xiaohongshu IDs remain unedited.",
