@@ -23,7 +23,7 @@
 
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <KpiTile :label="t('kcs.panel.members')" :value="formatNumber(assignments.length)" :icon="Users" tone="sea" />
-      <KpiTile :label="t('kcs.creators.cols.score')" :value="formatScore(avgScore)" :icon="Gauge" tone="sand" :hint="t('kcs.panel.kpiHint')" />
+      <KpiTile :label="t('kcs.metric.cpe')" :value="format('cpe', medianCpe)" :icon="Gauge" tone="sand" :hint="t('kcs.metricHelp.cpe')" />
       <KpiTile :label="t('kcs.creators.cols.fans')" :value="formatNumber(totalFollowers, { notation: 'compact' })" :icon="Radio" tone="moss" />
       <KpiTile :label="t('kcs.panel.quote')" :icon="Coins" tone="ink">
         {{ formatPrice(totalQuote, 'CNY') }}
@@ -37,10 +37,11 @@
       <Table>
         <TableHeader>
           <TableRow class="hover:bg-transparent">
-            <TableHead class="w-16">{{ t('kcs.creators.cols.rank') }}</TableHead>
             <TableHead>{{ t('kcs.creators.cols.creator') }}</TableHead>
-            <TableHead class="w-20">{{ t('kcs.creators.cols.grade') }}</TableHead>
-            <TableHead class="text-right">{{ t('kcs.creators.cols.score') }}</TableHead>
+            <TableHead class="w-24">{{ t('kcs.tier.label') }}</TableHead>
+            <TableHead class="w-24">{{ t('kcs.health.label') }}</TableHead>
+            <TableHead class="text-right">{{ t('kcs.metric.cpe') }}</TableHead>
+            <TableHead class="hidden text-right md:table-cell">{{ t('kcs.metric.engagementRate') }}</TableHead>
             <TableHead class="text-right">{{ t('kcs.creators.cols.fans') }}</TableHead>
             <TableHead class="hidden text-right sm:table-cell">{{ t('kcs.panel.quote') }}</TableHead>
             <TableHead class="w-28">{{ t('kcs.panel.status') }}</TableHead>
@@ -49,10 +50,11 @@
         <TableBody>
           <template v-if="loading && !assignments.length">
             <TableRow v-for="i in 3" :key="`sk-${i}`" class="hover:bg-transparent">
-              <TableCell><Skeleton class="h-4 w-8" /></TableCell>
               <TableCell><Skeleton class="h-4 w-40" /></TableCell>
-              <TableCell><Skeleton class="size-7" /></TableCell>
+              <TableCell><Skeleton class="h-5 w-12" /></TableCell>
+              <TableCell><Skeleton class="h-5 w-12" /></TableCell>
               <TableCell><Skeleton class="ml-auto h-4 w-10" /></TableCell>
+              <TableCell class="hidden md:table-cell"><Skeleton class="ml-auto h-4 w-10" /></TableCell>
               <TableCell><Skeleton class="ml-auto h-4 w-16" /></TableCell>
               <TableCell class="hidden sm:table-cell"><Skeleton class="ml-auto h-4 w-20" /></TableCell>
               <TableCell><Skeleton class="h-5 w-16" /></TableCell>
@@ -64,10 +66,6 @@
             data-testid="row-project-assignment"
             :data-creator-key="row.creatorKey"
           >
-            <TableCell class="tabular-nums text-muted-foreground">
-              <span v-if="row.rank && row.rank <= 3" class="font-semibold text-primary">#{{ row.rank }}</span>
-              <span v-else>{{ row.rank ? `#${row.rank}` : '—' }}</span>
-            </TableCell>
             <TableCell>
               <div class="flex items-center gap-3">
                 <Avatar class="size-8 border border-border">
@@ -79,8 +77,10 @@
                 </div>
               </div>
             </TableCell>
-            <TableCell><GradeBadge :grade="row.grade" /></TableCell>
-            <TableCell class="text-right tabular-nums">{{ formatScore(row.final ?? row.rating) }}</TableCell>
+            <TableCell><TierBadge :tier="row.tier" /></TableCell>
+            <TableCell><HealthBadge :health="row.metrics?.health ?? row.health" /></TableCell>
+            <TableCell class="text-right"><MetricValue metric-key="cpe" :value="row.metrics?.cpe" :band="row.percentiles?.cpe?.band" /></TableCell>
+            <TableCell class="hidden text-right md:table-cell"><MetricValue metric-key="engagementRate" :value="row.metrics?.engagementRate" :band="row.percentiles?.engagementRate?.band" /></TableCell>
             <TableCell class="text-right tabular-nums">{{ formatNumber(row.followers) }}</TableCell>
             <TableCell class="hidden text-right tabular-nums sm:table-cell">
               {{ formatPrice(row.price?.amountMin, row.price?.currency) }}
@@ -111,16 +111,17 @@ const localePath = useLocalePath()
 const { request } = useApi()
 const { user } = useSession()
 const { formatPrice, toCny } = useCurrency()
-const { formatNumber, formatScore } = useFormat()
+const { formatNumber } = useFormat()
+const { format } = useMetrics()
 const project = ref<any>({ name: '', note: '', assignments: [] })
 const loading = ref(true)
 
 const assignments = computed<any[]>(() => project.value.assignments || [])
 const canAssign = computed(() => Boolean(user.value && can(user.value.role, 'select.assign')))
 
-const avgScore = computed(() => {
-  const vals = assignments.value.map((r) => Number(r.final ?? r.rating)).filter((n) => !Number.isNaN(n))
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+const medianCpe = computed(() => {
+  const vals = assignments.value.map((r) => Number(r.metrics?.cpe)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b)
+  return vals.length ? vals[Math.floor(vals.length / 2)] : null
 })
 const totalFollowers = computed(() => assignments.value.reduce((sum, r) => sum + (Number(r.followers) || 0), 0))
 const totalQuote = computed(() => assignments.value.reduce((sum, r) => sum + toCny(r.price?.amountMin, r.price?.currency), 0))

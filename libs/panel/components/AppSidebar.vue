@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { Activity, ClipboardList, FolderKanban, LayoutDashboard, LogOut, UserPlus, Users } from 'lucide-vue-next'
+import { Activity, ClipboardList, DatabaseZap, FolderKanban, LayoutDashboard, LogOut, UserPlus, Users } from 'lucide-vue-next'
 
 type KcsNavItem = { to: string; labelKey: string }
 type KcsAppConfig = {
@@ -101,6 +101,7 @@ const iconOf = (path: string) => {
   const key = `${kcs?.key ?? ''}${path}`
   if (key === 'select/projects') return FolderKanban
   if (key === 'ops/creators/new') return UserPlus
+  if (key === 'ops/sources') return DatabaseZap
   if (key.startsWith('select')) return Users
   if (key.startsWith('ops')) return ClipboardList
   if (key.startsWith('dev')) return Activity

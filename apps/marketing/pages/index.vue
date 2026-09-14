@@ -15,7 +15,7 @@
         <nav class="hidden items-center gap-7 text-sm text-muted-foreground md:flex" aria-label="sections">
           <a href="#workspaces" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navWorkspaces') }}</a>
           <a href="#flow" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navFlow') }}</a>
-          <a href="#scoring" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navScoring') }}</a>
+          <a href="#data" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navScoring') }}</a>
         </nav>
         <div class="flex items-center gap-2">
           <div class="flex items-center gap-1 rounded-md border border-border/60 bg-background/70 p-1 backdrop-blur-sm">
@@ -84,8 +84,8 @@
               <thead>
                 <tr class="text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th class="px-4 py-2 text-left font-medium">{{ t('kcs.landing.previewCols.creator') }}</th>
-                  <th class="px-2 py-2 text-left font-medium">{{ t('kcs.landing.previewCols.grade') }}</th>
-                  <th class="px-2 py-2 text-right font-medium">{{ t('kcs.landing.previewCols.score') }}</th>
+                  <th class="px-2 py-2 text-left font-medium">{{ t('kcs.landing.previewCols.tier') }}</th>
+                  <th class="px-2 py-2 text-right font-medium">{{ t('kcs.landing.previewCols.cpe') }}</th>
                   <th class="hidden px-4 py-2 text-right font-medium sm:table-cell">{{ t('kcs.landing.previewCols.fans') }}</th>
                 </tr>
               </thead>
@@ -100,14 +100,14 @@
                       </div>
                     </div>
                   </td>
-                  <td class="px-2 py-2.5"><GradeBadge :grade="row.grade" /></td>
-                  <td class="px-2 py-2.5 text-right font-semibold tabular-nums">{{ row.score }}</td>
+                  <td class="px-2 py-2.5"><TierBadge :tier="row.tier" /></td>
+                  <td class="px-2 py-2.5 text-right font-semibold tabular-nums" :class="row.top ? 'text-primary' : ''">{{ row.cpe }}</td>
                   <td class="hidden px-4 py-2.5 text-right tabular-nums text-muted-foreground sm:table-cell">{{ row.fans }}</td>
                 </tr>
               </tbody>
             </table>
             <div class="flex items-center justify-between border-t border-border/60 bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
-              <span class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3.5 text-primary" />{{ t('kcs.landing.ruleVersion') }} · {{ RULE_VERSION }}</span>
+              <span class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3.5 text-primary" />{{ t('kcs.health.label') }} · {{ t('kcs.health.excellent') }}</span>
               <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground"><UserPlus class="size-3.5" />{{ t('kcs.actions.assign') }}</span>
             </div>
           </div>
@@ -170,44 +170,60 @@
       </div>
     </section>
 
-    <!-- 评分 -->
-    <section id="scoring" class="mx-auto w-full max-w-6xl scroll-mt-16 px-6 py-20 md:px-8">
-      <SectionHead :eyebrow="t('kcs.landing.scoringEyebrow')" :title="t('kcs.landing.scoringTitle')" :lead="t('kcs.landing.scoringLead')" />
+    <!-- 数据：平台给什么，我们看什么 -->
+    <section id="data" class="mx-auto w-full max-w-6xl scroll-mt-16 px-6 py-20 md:px-8" data-testid="marketing-data">
+      <SectionHead :eyebrow="t('kcs.landing.dataEyebrow')" :title="t('kcs.landing.dataTitle')" :lead="t('kcs.landing.dataLead')" />
+
+      <h3 class="mt-10 text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{{ t('kcs.landing.sourcesTitle') }}</h3>
+      <div class="mt-4 grid gap-4 md:grid-cols-3">
+        <div v-for="src in sources" :key="src.id" class="relative overflow-hidden rounded-xl border border-border/60 bg-card p-6 shadow-xs">
+          <span class="absolute inset-x-0 top-0 h-0.5" :class="src.route === 'official' ? 'bg-primary' : 'bg-amber-500/70'" aria-hidden="true" />
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-xs text-primary">{{ src.route === 'official' ? 'A' : 'B' }}</span>
+            <span class="rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">{{ t(`kcs.source.${src.route}`) }}</span>
+          </div>
+          <h4 class="mt-3 text-base font-semibold">{{ t(`kcs.landing.sources.${src.id}.label`) }}</h4>
+          <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t(`kcs.landing.sources.${src.id}.body`) }}</p>
+        </div>
+      </div>
+
       <div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <div class="rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-          <ul class="space-y-4">
-            <li v-for="dim in RULE_DIMENSIONS" :key="dim.id">
-              <div class="flex items-baseline justify-between gap-3">
-                <div class="min-w-0">
-                  <span class="text-sm font-medium">{{ t(`kcs.landing.dims.${dim.id}.label`) }}</span>
-                  <span class="ml-2 text-xs text-muted-foreground">{{ t(`kcs.landing.dims.${dim.id}.body`) }}</span>
-                </div>
-                <span class="shrink-0 font-mono text-sm tabular-nums text-primary">{{ dim.weight }}%</span>
+          <h3 class="text-sm font-semibold">{{ t('kcs.landing.groupsTitle') }}</h3>
+          <ul class="mt-4 grid gap-4 sm:grid-cols-2">
+            <li v-for="group in groups" :key="group" class="rounded-lg border border-border/50 bg-muted/30 p-4">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium">{{ groupLabel(group) }}</span>
+                <span class="font-mono text-[11px] tabular-nums text-muted-foreground">{{ fieldsIn(group).length }}</span>
               </div>
-              <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div class="h-full rounded-full bg-primary/80" :style="{ width: `${dim.weight * 3.6}%` }" />
+              <p class="mt-1.5 text-xs leading-relaxed text-muted-foreground">{{ t(`kcs.landing.groups.${group}`) }}</p>
+              <div class="mt-3 flex flex-wrap gap-1">
+                <span v-for="f in fieldsIn(group).slice(0, 5)" :key="f.key" class="rounded-sm bg-background px-1.5 py-0.5 text-[11px] text-foreground/80 ring-1 ring-border/60">{{ label(f.key) }}</span>
               </div>
             </li>
           </ul>
-          <p class="mt-6 flex items-start gap-2 rounded-md bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
-            <AlertTriangle class="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
-            <span><span class="font-medium text-foreground">{{ t('kcs.landing.riskTitle') }}</span> · {{ t('kcs.landing.riskBody') }}</span>
-          </p>
         </div>
         <div class="flex flex-col gap-4">
           <div class="rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-            <h3 class="text-sm font-semibold">{{ t('kcs.landing.gradesTitle') }}</h3>
-            <ul class="mt-4 space-y-3">
-              <li v-for="g in grades" :key="g.grade" class="flex items-center gap-3 text-sm">
-                <GradeBadge :grade="g.grade" />
-                <span class="text-muted-foreground">{{ t(g.key) }}</span>
-              </li>
-            </ul>
+            <h3 class="text-sm font-semibold">{{ t('kcs.landing.tierTitle') }}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('kcs.landing.tierBody') }}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <TierBadge v-for="tier in tiers" :key="tier" :tier="tier" />
+            </div>
+          </div>
+          <div class="rounded-xl border border-border/60 bg-card p-6 shadow-xs">
+            <h3 class="text-sm font-semibold">{{ t('kcs.landing.gateTitle') }}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('kcs.landing.gateBody') }}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <HealthBadge health="excellent" />
+              <HealthBadge health="normal" />
+              <HealthBadge health="abnormal" />
+            </div>
           </div>
           <div class="tide-rule-card relative overflow-hidden rounded-xl p-6 text-white">
-            <p class="text-xs uppercase tracking-[0.16em] text-white/60">{{ t('kcs.landing.ruleVersion') }}</p>
-            <p class="mt-1 font-mono text-2xl font-semibold">{{ RULE_VERSION }}</p>
-            <p class="mt-3 text-sm leading-relaxed text-white/75">{{ t('kcs.panel.scoreLocked') }}</p>
+            <p class="text-xs uppercase tracking-[0.16em] text-white/60">{{ t('kcs.landing.transformTitle') }}</p>
+            <p class="mt-2 font-mono text-sm leading-relaxed text-white/90">raw JSON → FIELD_MAP → CreatorMetrics</p>
+            <p class="mt-3 text-sm leading-relaxed text-white/75">{{ t('kcs.landing.transformBody') }}</p>
           </div>
         </div>
       </div>
@@ -260,8 +276,8 @@
 <script setup lang="ts">
 // 听潮 · 宣传页：公开落地页，无工作台侧栏；语言/主题与登录页同一套潮声。
 import { h, type FunctionalComponent } from 'vue'
-import { Activity, AlertTriangle, ArrowRight, Check, ClipboardList, ShieldCheck, UserPlus, Users } from 'lucide-vue-next'
-import { GRADE_THRESHOLDS, RULE_DIMENSIONS, RULE_VERSION } from '@kcs/contract'
+import { Activity, ArrowRight, Check, ClipboardList, ShieldCheck, UserPlus, Users } from 'lucide-vue-next'
+import { CREATOR_TIERS, SOURCE_IDS, SOURCE_ROUTE, type CreatorTier } from '@kcs/contract'
 
 definePageMeta({ layout: false })
 
@@ -273,13 +289,15 @@ type Msg = { title: string; body: string }
 const steps = computed(() => (tm('kcs.landing.steps') as Msg[]) || [])
 const values = computed(() => (tm('kcs.landing.values') as Msg[]) || [])
 
-const grades = GRADE_THRESHOLDS.map((g) => ({ grade: g.grade, key: `kcs.landing.grade${g.grade}` }))
+const { label, groupLabel, groups, fieldsIn } = useMetrics()
+const sources = SOURCE_IDS.map((id) => ({ id, route: SOURCE_ROUTE[id] }))
+const tiers = CREATOR_TIERS.map((x) => x.id).filter((x) => x !== 'unknown') as CreatorTier[]
 
 const preview = [
-  { name: '서울살림노트', tags: 'home · 생활 · 韩系家居', grade: 'S', score: '88.4', fans: '428K' },
-  { name: '清潭洞护肤', tags: 'beauty · 护肤 · 时尚', grade: 'A', score: '79.2', fans: '375K' },
-  { name: '明洞开箱Leo', tags: 'unbox · 开箱 · vlog', grade: 'B', score: '68.3', fans: '210K' },
-  { name: '济州咖啡日记', tags: 'food · 探店 · 咖啡', grade: 'C', score: '52.1', fans: '61K' },
+  { name: '清潭洞护肤', tags: 'beauty · 护肤 · 时尚', tier: 'mid' as const, cpe: '¥1.8', fans: '375K', top: true },
+  { name: '서울살림노트', tags: 'home · 생활 · 韩系家居', tier: 'mid' as const, cpe: '¥2.4', fans: '428K', top: true },
+  { name: '济州咖啡日记', tags: 'food · 探店 · 咖啡', tier: 'mid' as const, cpe: '¥3.1', fans: '61K', top: false },
+  { name: '明洞开箱Leo', tags: 'unbox · 开箱 · vlog', tier: 'head' as const, cpe: '¥5.6', fans: '910K', top: false },
 ]
 
 const workspaces = computed(() => [

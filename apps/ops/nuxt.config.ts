@@ -12,6 +12,7 @@ export default defineNuxtConfig({
       nav: [
         { to: '/', labelKey: 'kcs.panel.opsHome' },
         { to: '/creators/new', labelKey: 'kcs.panel.createCreator' },
+        { to: '/sources', labelKey: 'kcs.nav.sources' },
       ],
     },
   },

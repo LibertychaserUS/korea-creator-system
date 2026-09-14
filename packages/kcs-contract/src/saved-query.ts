@@ -81,7 +81,7 @@ export function defaultSavedQuery(overrides: Partial<SavedQuery> = {}): SavedQue
     version: 1,
     sources: [],
     tiers: [],
-    health: ['excellent'],
+    health: [],
     regions: [],
     brandsAny: [],
     filters: [],
