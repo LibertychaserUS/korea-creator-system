@@ -330,7 +330,7 @@
               <SourceBadge :source="row.source" />
             </div>
             <dl class="mt-2.5 grid grid-cols-3 gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs">
-              <div v-for="key in spec.columns.slice(0, 3)" :key="key" class="min-w-0">
+              <div v-for="key in mobileColumns" :key="key" class="min-w-0">
                 <dt class="truncate text-muted-foreground">{{ label(key) }}</dt>
                 <dd class="font-semibold">
                   <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" compact />
@@ -523,6 +523,12 @@ const canAssign = computed(() => Boolean(user.value && can(user.value.role, 'sel
 const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'select.write')))
 const specJson = computed(() => JSON.stringify(spec))
 const dirty = computed(() => specJson.value !== baseline.value)
+
+/** 手机卡片只放三格：排序键优先，其余按方案列顺序补。 */
+const mobileColumns = computed<NumericMetricKey[]>(() => {
+  const first = spec.sort.key !== 'followers' ? [spec.sort.key] : []
+  return [...new Set([...first, ...spec.columns])].slice(0, 3)
+})
 
 const visible = computed(() => {
   const q = search.value.trim().toLowerCase()
