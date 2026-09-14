@@ -65,6 +65,8 @@ export default defineEventHandler(async (event) => {
     httpOnly: false,
   })
   const role = roleFromIdentity(data.user.role)
+  // Account exists in TinyShip but has no KCS job yet: signed in, nowhere to go.
+  if (!role) return sendRedirect(event, `/${locale}/denied`)
 
   // Workspace apps: land on the app's own home; the route middleware
   // re-checks this app's perm and sends misuse to /denied.

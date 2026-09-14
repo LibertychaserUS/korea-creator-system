@@ -11,11 +11,18 @@ export type SessionUser = {
   displayName: string
 }
 
+/**
+ * What the session verifier hands back: a KCS user, an identity TinyShip
+ * recognises but that has not been given a KCS role yet (`role: null`, →
+ * 403 on every route), or nothing (`null`, → 401).
+ */
+export type VerifiedIdentity = (Omit<SessionUser, 'role'> & { role: Role | null }) | null
+
 export type AppEnv = {
   db: Db
   store: ObjectStore
   now: () => Date
-  verifySession?: (token: string) => Promise<SessionUser | null>
+  verifySession?: (token: string) => Promise<VerifiedIdentity>
   getAdapter?: (source: string) => SourceAdapter | undefined
 }
 

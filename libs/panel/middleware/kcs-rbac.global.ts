@@ -23,7 +23,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!user.value && token.value) await refresh()
 
   if (publicPaths.includes(bare)) return
-  if (!user.value) return navigateTo(localePath('/login'))
+  // Session cookie still present after refresh → signed in but no KCS role (API said 403);
+  // an expired session would have cleared the cookie and belongs on /login.
+  if (!user.value) return navigateTo(localePath(token.value ? '/denied' : '/login'))
   if (!can(user.value.role, perm)) return navigateTo(localePath('/denied'))
 
   // Remember the workspace for cross-app login handoff (preference cookie, consent-gated).

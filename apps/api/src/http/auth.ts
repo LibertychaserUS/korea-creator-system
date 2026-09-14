@@ -1,6 +1,6 @@
 import { can, roleFromIdentity, SEED_USERS } from '@kcs/contract'
 import { jsonError } from './responses'
-import type { AppEnv, RouteHelpers, SessionUser } from './types'
+import type { AppEnv, RouteHelpers, SessionUser, VerifiedIdentity } from './types'
 
 export function bearer(header: string | undefined, cookie: string | undefined): string | undefined {
   if (header?.startsWith('Bearer ')) return header.slice(7)
@@ -10,14 +10,22 @@ export function bearer(header: string | undefined, cookie: string | undefined): 
 
 type CacheEntry = {
   expiresAt: number
-  user: SessionUser | null
+  user: VerifiedIdentity
 }
+
+/**
+ * Positive introspection results are cached briefly so a page full of
+ * requests costs one round-trip to TinyShip. The TTL also bounds how long a
+ * signed-out session keeps working here — keep it short.
+ */
+const SESSION_CACHE_MS = Number(process.env.SESSION_CACHE_MS || 10_000)
+const MISS_CACHE_MS = 5_000
 
 export function introspectTinyShip(env: AppEnv) {
   const cache = new Map<string, CacheEntry>()
   const authBaseUrl = (process.env.AUTH_BASE_URL || 'http://localhost:7004').replace(/\/$/, '')
 
-  return async (token: string): Promise<SessionUser | null> => {
+  return async (token: string): Promise<VerifiedIdentity> => {
     const now = env.now().getTime()
     const cached = cache.get(token)
     if (cached && cached.expiresAt > now) return cached.user
@@ -26,11 +34,11 @@ export function introspectTinyShip(env: AppEnv) {
     const devUser = developmentToken(token)
     if (devUser) {
       await mirrorProfile(env, devUser)
-      cache.set(token, { user: devUser, expiresAt: now + 30_000 })
+      cache.set(token, { user: devUser, expiresAt: now + SESSION_CACHE_MS })
       return devUser
     }
 
-    let user: SessionUser | null = null
+    let user: VerifiedIdentity = null
     try {
       const response = await fetch(`${authBaseUrl}/api/auth/get-session`, {
         headers: { authorization: `Bearer ${token}` },
@@ -41,16 +49,16 @@ export function introspectTinyShip(env: AppEnv) {
           user?: { id?: unknown; email?: unknown; role?: unknown; name?: unknown }
         } | null
         if (body?.user?.id && body.user.email) {
+          const role = roleFromIdentity(typeof body.user.role === 'string' ? body.user.role : null)
           user = {
             id: String(body.user.id),
             orgId: 'org_platform',
             email: String(body.user.email),
-            role: roleFromIdentity(
-              typeof body.user.role === 'string' ? body.user.role : null,
-            ),
+            role,
             displayName: String(body.user.name || body.user.email),
           }
-          await mirrorProfile(env, user)
+          // Only accounts with a KCS job are mirrored; strangers stay out of `users`.
+          if (role) await mirrorProfile(env, { ...user, role })
         }
       }
     } catch {
@@ -59,7 +67,7 @@ export function introspectTinyShip(env: AppEnv) {
 
     cache.set(token, {
       user,
-      expiresAt: now + (user ? 30_000 : 5_000),
+      expiresAt: now + (user ? SESSION_CACHE_MS : MISS_CACHE_MS),
     })
     return user
   }
@@ -102,13 +110,21 @@ export function createRouteHelpers(env: AppEnv): RouteHelpers {
   return {
     requireAuth: async (context, permission) => {
       const token = bearer(context.req.header('authorization'), context.req.header('cookie'))
-      const user = token ? await verifySession(token) : null
-      if (!user) {
+      const identity = token ? await verifySession(token) : null
+      if (!identity) {
         return {
           user: null,
           denied: jsonError(context, 401, 'AUTH-LOGIN', 'unauthenticated'),
         }
       }
+      if (!identity.role) {
+        // Signed in to TinyShip, but nobody has given this account a KCS job yet.
+        return {
+          user: null,
+          denied: jsonError(context, 403, 'AUTH-DENIED', 'no role assigned'),
+        }
+      }
+      const user: SessionUser = { ...identity, role: identity.role }
       if (permission && !can(user.role, permission)) {
         return {
           user,
