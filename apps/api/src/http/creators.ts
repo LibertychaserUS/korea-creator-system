@@ -1,4 +1,5 @@
 import {
+  cohortKey,
   cohortPercentiles,
   defaultSavedQuery,
   deriveMetrics,
@@ -222,21 +223,26 @@ export function enrichPoolItems(
   items: Array<Record<string, any>>,
   cohortItems: Array<Record<string, any>> = items,
 ): Array<Record<string, any>> {
-  const byTier = new Map<string, CreatorMetrics[]>()
+  const byCohort = new Map<string, CreatorMetrics[]>()
   for (const item of cohortItems) {
+    if (!item.source) continue
     const metrics = item.metrics as CreatorMetrics
     const tier = tierOf(metrics.followers)
-    byTier.set(tier, [...(byTier.get(tier) ?? []), metrics])
+    const key = cohortKey(item.source as SourceId, tier)
+    byCohort.set(key, [...(byCohort.get(key) ?? []), metrics])
   }
   return items.map((item) => {
     const metrics = item.metrics as CreatorMetrics
     const tier = tierOf(metrics.followers)
+    const key = item.source ? cohortKey(item.source as SourceId, tier) : null
+    const cohort = key ? byCohort.get(key) ?? [] : []
     return {
       ...item,
       followers: metrics.followers,
       tier,
+      cohort: item.source ? { source: item.source, tier, size: cohort.length } : null,
       metrics,
-      percentiles: cohortPercentiles(metrics, byTier.get(tier) ?? []),
+      percentiles: cohortPercentiles(metrics, cohort),
     }
   })
 }
