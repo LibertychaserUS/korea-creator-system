@@ -102,11 +102,13 @@ async function seedCreators(db: Db) {
       index += 1
       const creator = result.creator
       const sourceId = `seed_${adapter.id}_${creator.externalId}`
-      const matched = creator.xhsId
-        ? await db.query('SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1', [
-            creator.xhsId,
-          ])
-        : { rows: [] as Array<{ id: string }> }
+      const exact = await db.query('SELECT id FROM creators WHERE id = $1', [sourceId])
+      const matched = exact.rows[0] || !creator.xhsId
+        ? exact
+        : await db.query(
+            'SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
+            [creator.xhsId],
+          )
       const id = matched.rows[0]?.id ?? sourceId
       canonicalIds.set(sourceId, id)
       const isBad = creator.metrics.health === 'abnormal'
