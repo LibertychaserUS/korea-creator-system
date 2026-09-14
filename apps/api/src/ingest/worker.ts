@@ -260,6 +260,20 @@ async function persistPage(
           JSON.stringify(raw.payload),
         ],
       )
+      await env.db.query(
+        `INSERT INTO creator_metrics_history
+          (id, creator_id, source, "window", fetched_at, job_id, metrics)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          randomUUID(),
+          saved.rows[0].id,
+          source,
+          creator.metrics.window,
+          raw.fetchedAt,
+          jobId,
+          JSON.stringify(creator.metrics),
+        ],
+      )
       if (found.rows[0]) skipped += 1
       else written += 1
     } catch {
