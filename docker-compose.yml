@@ -107,6 +107,8 @@ services:
       DB_DIALECT: pg
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      BETTER_AUTH_URL: http://localhost:7005
+      APP_BASE_URL: http://localhost:7005
     ports:
       - "7005:7005"
     profiles:
@@ -131,6 +133,8 @@ services:
       DB_DIALECT: pg
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      BETTER_AUTH_URL: http://localhost:7002
+      APP_BASE_URL: http://localhost:7002
     ports:
       - "7002:7002"
     profiles:
@@ -155,6 +159,8 @@ services:
       DB_DIALECT: pg
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      BETTER_AUTH_URL: http://localhost:7003
+      APP_BASE_URL: http://localhost:7003
     ports:
       - "7003:7003"
     profiles:
@@ -179,6 +185,8 @@ services:
       DB_DIALECT: pg
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
       BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      BETTER_AUTH_URL: http://localhost:7004
+      APP_BASE_URL: http://localhost:7004
     ports:
       - "7004:7004"
     profiles:
