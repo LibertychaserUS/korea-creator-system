@@ -1,0 +1,140 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  creatorKeyFor,
+  emptyMetrics,
+  type RawRecord,
+  type SourceAdapter,
+  type SourceQuery,
+} from '@kcs/contract'
+import { processJob, TokenBucket } from '../src/ingest/worker'
+import { createTestApp, type TestCtx } from './helpers'
+
+const contexts: TestCtx[] = []
+
+afterEach(async () => {
+  await Promise.all(contexts.splice(0).map((context) => context.close()))
+})
+
+function pagedAdapter(): SourceAdapter {
+  return {
+    id: 'qiangua',
+    supports: ['cursor'],
+    provides: ['followers'],
+    async fetch(query: SourceQuery) {
+      const page = query.cursor ? Number(query.cursor) : 1
+      const raw: RawRecord = {
+        source: 'qiangua',
+        platform: 'xhs',
+        externalId: `queue-${page}`,
+        fetchedAt: `2026-09-${String(page).padStart(2, '0')}T00:00:00.000Z`,
+        payload: { page },
+      }
+      return {
+        records: [raw],
+        nextCursor: page === 1 ? '2' : null,
+      }
+    },
+    normalize(raw) {
+      const page = Number(raw.payload.page)
+      return {
+        ok: true,
+        creator: {
+          creatorKey: creatorKeyFor('xhs', raw.externalId),
+          externalId: raw.externalId,
+          platform: 'xhs',
+          displayName: `队列达人${page}`,
+          xhsId: null,
+          avatarUrl: null,
+          regions: [],
+          verticals: [],
+          metrics: { ...emptyMetrics(30), followers: page * 10_000 },
+          warnings: [],
+        },
+      }
+    },
+  }
+}
+
+async function setup() {
+  const adapter = pagedAdapter()
+  const context = await createTestApp({
+    getAdapter: (source) => source === adapter.id ? adapter : undefined,
+  })
+  contexts.push(context)
+  const token = (await context.loginJson('ops@kcs.local')).token
+  const devToken = (await context.loginJson('devops@kcs.local')).token
+  return { context, token, devToken }
+}
+
+async function enqueue(context: TestCtx, token: string) {
+  return context.app.request('/api/ingest/fetch', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ source: 'qiangua', window: 30, maxPages: 5 }),
+  })
+}
+
+describe('ingest worker', () => {
+  it('queues with 202 and processes all pages to ok', async () => {
+    const { context, token } = await setup()
+    const response = await enqueue(context, token)
+    expect(response.status).toBe(202)
+    const { job } = await response.json()
+    expect(job).toMatchObject({
+      status: 'queued',
+      pagesDone: 0,
+      cursor: null,
+      quotaUsed: 0,
+      attempts: 0,
+    })
+
+    const completed = await processJob(context.env, job.id)
+    expect(completed).toMatchObject({
+      status: 'ok',
+      pagesDone: 2,
+      cursor: null,
+      quotaUsed: 2,
+      writtenCount: 2,
+    })
+  })
+
+  it('keeps the cursor on quota partial and retry resumes it', async () => {
+    const { context, token, devToken } = await setup()
+    await context.db.query("UPDATE ingest_sources SET quota = 1 WHERE id = 'qiangua'")
+    const response = await enqueue(context, token)
+    const { job } = await response.json()
+    const partial = await processJob(context.env, job.id)
+    expect(partial).toMatchObject({
+      status: 'partial',
+      pagesDone: 1,
+      cursor: '2',
+      quotaUsed: 1,
+      error: 'quota_exhausted',
+    })
+
+    await context.db.query("UPDATE ingest_sources SET quota = 2 WHERE id = 'qiangua'")
+    const retried = await context.app.request(`/api/ingest/jobs/${job.id}/retry`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${devToken}` },
+    })
+    expect(retried.status).toBe(200)
+    expect(await processJob(context.env, job.id)).toMatchObject({
+      status: 'ok',
+      pagesDone: 2,
+      cursor: null,
+      quotaUsed: 2,
+    })
+  })
+
+  it('refills a token bucket at the configured rate', () => {
+    const bucket = new TokenBucket(2, 0)
+    expect(bucket.tryTake(0)).toBe(true)
+    expect(bucket.tryTake(0)).toBe(true)
+    expect(bucket.tryTake(0)).toBe(false)
+    expect(bucket.waitMs(0)).toBe(30_000)
+    expect(bucket.tryTake(30_000)).toBe(true)
+  })
+})

@@ -1,5 +1,5 @@
 import type { Hono } from 'hono'
-import type { Permission, Role } from '@kcs/contract'
+import type { Permission, Role, SourceAdapter } from '@kcs/contract'
 import type { Db } from '../db'
 import type { ObjectStore } from '../store'
 
@@ -16,6 +16,7 @@ export type AppEnv = {
   store: ObjectStore
   now: () => Date
   verifySession?: (token: string) => Promise<SessionUser | null>
+  getAdapter?: (source: string) => SourceAdapter | undefined
 }
 
 export type KcsApp = Hono

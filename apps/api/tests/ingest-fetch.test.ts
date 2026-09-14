@@ -13,7 +13,7 @@ describe('adapter ingest fetch', () => {
   afterAll(() => ctx.close())
 
   async function fetchOne() {
-    const res = await ctx.app.request('/api/ingest/fetch', {
+    const res = await ctx.app.request('/api/ingest/fetch?sync=1', {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ source: 'qiangua', window: 30, externalIds: ['qg_001'], limit: 1 }),

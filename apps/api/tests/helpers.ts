@@ -4,9 +4,13 @@ import { connectDb } from '../src/db'
 import { migrate } from '../src/migrate'
 import { seed } from '../src/seed'
 import { MemoryObjectStore } from '../src/store'
+import type { SourceAdapter } from '@kcs/contract'
+import type { Db } from '../src/db'
 
 export type TestCtx = {
   app: ReturnType<typeof createApp>
+  env: AppEnv
+  db: Db
   close: () => Promise<void>
   login: (email: string, password?: string) => Promise<Response>
   loginJson: (email: string, password?: string) => Promise<{ token: string; user: { role: string } }>
@@ -14,7 +18,9 @@ export type TestCtx = {
 
 const DEFAULT_URL = 'postgres://kcs:kcs@127.0.0.1:5432/kcs_test'
 
-export async function createTestApp(): Promise<TestCtx> {
+export async function createTestApp(options: {
+  getAdapter?: (source: string) => SourceAdapter | undefined
+} = {}): Promise<TestCtx> {
   const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || DEFAULT_URL
   const db = await connectDb(url)
   await migrate(db)
@@ -37,11 +43,14 @@ export async function createTestApp(): Promise<TestCtx> {
     store,
     now: () => new Date(),
     verifySession: async (token) => usersByToken.get(token) ?? null,
+    getAdapter: options.getAdapter,
   }
   const app = createApp(env)
 
   return {
     app,
+    env,
+    db,
     close: async () => {
       await db.end()
     },
