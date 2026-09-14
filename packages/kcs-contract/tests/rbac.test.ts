@@ -18,6 +18,8 @@ const ALL: Permission[] = [
   'select.read',
   'select.write',
   'select.assign',
+  'rules.read',
+  'rules.publish',
   'admin.secrets',
 ]
 
@@ -40,24 +42,33 @@ describe('RBAC matrix', () => {
         'dev.read',
         'ingest.read',
         'ingest.write',
+        'rules.read',
+        'rules.publish',
       ].sort(),
     )
   })
 
   it('lets devops monitor and retry jobs but never assign or change prices/publish', () => {
     expect(allowed('devops').sort()).toEqual(
-      ['dev.read', 'dev.retry', 'ingest.read', 'ingest.retry'].sort(),
+      ['dev.read', 'dev.retry', 'ingest.read', 'ingest.retry', 'rules.read'].sort(),
     )
   })
 
   it('lets selector read the pool, create projects, and assign', () => {
     expect(allowed('selector').sort()).toEqual(
-      ['select.read', 'select.write', 'select.assign'].sort(),
+      ['select.read', 'select.write', 'select.assign', 'rules.read'].sort(),
     )
   })
 
   it('lets selector_viewer only read the front pool', () => {
-    expect(allowed('selector_viewer')).toEqual(['select.read'])
+    expect(allowed('selector_viewer').sort()).toEqual(['rules.read', 'select.read'])
+  })
+
+  it('only ops and platform_admin can publish a rule version', () => {
+    expect(can('ops', 'rules.publish')).toBe(true)
+    expect(can('platform_admin', 'rules.publish')).toBe(true)
+    expect(can('devops', 'rules.publish')).toBe(false)
+    expect(can('selector', 'rules.publish')).toBe(false)
   })
 
   it('denies devops select.assign so they cannot pick talent', () => {

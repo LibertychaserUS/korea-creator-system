@@ -45,4 +45,11 @@ export const API = {
   ingestJob: { method: 'GET', path: '/api/ingest/jobs/:id', perm: 'ingest.read' },
   ingestSample: { method: 'GET', path: '/api/ingest/jobs/:id/sample', perm: 'ingest.read' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
+  rulesPublic: { method: 'GET', path: '/api/rules/public', auth: false },
+  rulesCurrent: { method: 'GET', path: '/api/rules/current', auth: true },
+  rulesVersions: { method: 'GET', path: '/api/rules/versions', perm: 'rules.read' },
+  rulesVersion: { method: 'GET', path: '/api/rules/versions/:version', perm: 'rules.read' },
+  rulesPreview: { method: 'POST', path: '/api/rules/preview', perm: 'rules.read' },
+  rulesPublish: { method: 'POST', path: '/api/rules/versions', perm: 'rules.publish' },
+  rulesActivate: { method: 'POST', path: '/api/rules/versions/:version/activate', perm: 'rules.publish' },
 } as const

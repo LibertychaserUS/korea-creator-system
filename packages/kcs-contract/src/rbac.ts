@@ -21,6 +21,8 @@ export const PERMISSIONS = [
   'select.read',
   'select.write',
   'select.assign',
+  'rules.read',
+  'rules.publish',
   'admin.secrets',
 ] as const
 
@@ -36,10 +38,12 @@ const GRANTS: Record<Role, readonly Permission[]> = {
     'dev.read',
     'ingest.read',
     'ingest.write',
+    'rules.read',
+    'rules.publish',
   ],
-  devops: ['dev.read', 'dev.retry', 'ingest.read', 'ingest.retry'],
-  selector: ['select.read', 'select.write', 'select.assign'],
-  selector_viewer: ['select.read'],
+  devops: ['dev.read', 'dev.retry', 'ingest.read', 'ingest.retry', 'rules.read'],
+  selector: ['select.read', 'select.write', 'select.assign', 'rules.read'],
+  selector_viewer: ['select.read', 'rules.read'],
 }
 
 export function can(role: Role, permission: Permission): boolean {
