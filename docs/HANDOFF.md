@@ -44,7 +44,8 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 |---|---|
 | `DATABASE_URL` | `kcs` 库 |
 | `AUTH_BASE_URL` | 任一工作端源站，用于 `GET /api/auth/get-session` 校验会话 |
-| `KCS_DEV_TOKENS` | `1` 时接受 `Bearer dev:<email>`（仅非生产；黑盒测试用） |
+| `KCS_DEV_TOKENS` | `1` 时接受 `Bearer dev:<email>`（仅非生产、仅本地临时 curl；黑盒与 E2E 都走真实登录，默认关） |
+| `SESSION_CACHE_MS` | API 侧会话正缓存，默认 10000；也是退出后旧 token 最长存活时间 |
 | `PGY_ACCESS_TOKEN` | 蒲公英；网关 token（TikHub / JustOneAPI）或官方 access token |
 | `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official` |
 | `PGY_BASE_URL` `PGY_BRAND_USER_ID` `PGY_ENRICH` | 可选：自定义网关地址、官方品牌账号、搜索结果是否逐个补全详情 |
