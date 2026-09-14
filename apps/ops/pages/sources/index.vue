@@ -36,7 +36,10 @@
           </div>
           <div>
             <dt class="text-muted-foreground">{{ t('kcs.ingest.credentials') }}</dt>
-            <dd class="mt-1 font-mono text-[11px] text-muted-foreground">{{ (a.envVars || []).join(' · ') }}</dd>
+            <dd class="mt-1 font-mono text-[11px] text-muted-foreground">
+              <span class="text-foreground">{{ (a.envVars || []).join(' · ') }}</span>
+              <span v-if="(a.optionalEnvVars || []).length" class="block opacity-70">{{ (a.optionalEnvVars || []).join(' · ') }}</span>
+            </dd>
           </div>
         </dl>
       </Card>
@@ -176,7 +179,7 @@
 import { ChevronDown, KeyRound, Play, Radar, TriangleAlert } from 'lucide-vue-next'
 import { SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
 
-type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[] }
+type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
 
 const { t, te, locale } = useI18n()
 const { request } = useApi()
