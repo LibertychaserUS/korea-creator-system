@@ -1,7 +1,6 @@
 /**
- * Cohort rank / percentile are display-only.
- * scoreCreator stays a single-row pure function so the same input always
- * yields the same final/grade (no hidden dependency on who else is in the pool).
+ * Cohort rank / percentile: a metric is only ever "good" relative to creators
+ * in the same follower tier (蒲公英 / 千瓜 / 星图 all compare within tier).
  */
 
 export function percentileRank(value: number, cohort: number[]): number {
