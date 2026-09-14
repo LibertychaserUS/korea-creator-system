@@ -1843,8 +1843,6 @@ export const zhCN: Locale = {
       }
     },
     nav: {
-      sources: "数据源",
-      queries: "筛选方案",
       docs: "文档",
       blog: "博客"
     },
@@ -2173,6 +2171,8 @@ export const zhCN: Locale = {
       runLabel: "选人，分到项目。"
     },
     nav: {
+      sources: "数据源",
+      queries: "筛选方案",
       overview: "总览",
       creators: "达人",
       reviews: "风险复核",

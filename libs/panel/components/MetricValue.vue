@@ -6,7 +6,7 @@
     :data-metric="metricKey"
     :data-band="band ?? undefined"
   >
-    <span v-if="band && dot" class="size-1.5 shrink-0 rounded-full" :class="bandDot(band)" aria-hidden="true" />
+    <span v-if="showDot" class="size-1.5 shrink-0 rounded-full" :class="bandDot(band)" aria-hidden="true" />
     {{ format(metricKey, value, compact) }}
   </span>
 </template>
@@ -28,6 +28,9 @@ const props = withDefaults(
 )
 
 const { format, bandClass, bandDot, bandLabel, help } = useMetrics()
+
+/** 只给极端分位点亮：前 25% 与后 25%，中段不加噪。 */
+const showDot = computed(() => props.dot && (props.band === 'top10' || props.band === 'top25' || props.band === 'bottom'))
 
 const title = computed(() => {
   const parts = [help(props.metricKey)]

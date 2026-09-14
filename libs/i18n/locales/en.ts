@@ -1836,8 +1836,6 @@ export const en: Locale = {
       }
     },
     nav: {
-      sources: "Sources",
-      queries: "Queries",
       docs: "Docs",
       blog: "Blog"
     },
@@ -2166,6 +2164,8 @@ export const en: Locale = {
       runLabel: "Select people. Assign them to a project."
     },
     nav: {
+      sources: "Sources",
+      queries: "Queries",
       overview: "Overview",
       creators: "Creators",
       reviews: "Risk review",

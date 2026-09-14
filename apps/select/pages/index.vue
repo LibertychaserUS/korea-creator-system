@@ -283,7 +283,7 @@
     </Card>
 
     <!-- 达人表：列由方案决定 -->
-    <TableCard :title="t('kcs.panel.pool')">
+    <TableCard :title="t('kcs.panel.pool')" dense>
       <template #meta>
         <span class="tabular-nums" data-testid="pool-count">{{ t('kcs.query.matched', { n: formatNumber(visible.length) }) }}</span>
       </template>
@@ -346,9 +346,9 @@
           <TableHeader>
             <TableRow class="hover:bg-transparent">
               <TableHead v-if="canAssign" class="w-10"><span class="sr-only">{{ t('kcs.panel.assign') }}</span></TableHead>
-              <TableHead class="min-w-56">{{ t('kcs.creators.cols.creator') }}</TableHead>
-              <TableHead class="w-24">{{ t('kcs.tier.label') }}</TableHead>
-              <TableHead class="w-24">{{ t('kcs.health.label') }}</TableHead>
+              <TableHead class="min-w-48">{{ t('kcs.creators.cols.creator') }}</TableHead>
+              <TableHead class="w-20">{{ t('kcs.tier.label') }}</TableHead>
+              <TableHead class="w-20">{{ t('kcs.health.label') }}</TableHead>
               <TableHead
                 v-for="key in spec.columns"
                 :key="key"
@@ -414,8 +414,8 @@
               </TableCell>
               <TableCell><TierBadge :tier="row.tier" /></TableCell>
               <TableCell><HealthBadge :health="row.metrics?.health" /></TableCell>
-              <TableCell v-for="key in spec.columns" :key="key" class="text-right">
-                <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" />
+              <TableCell v-for="key in spec.columns" :key="key" class="text-right text-[13px]">
+                <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" compact />
               </TableCell>
             </TableRow>
           </TableBody>
