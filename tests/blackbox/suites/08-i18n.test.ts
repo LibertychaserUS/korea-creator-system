@@ -5,13 +5,13 @@ import { createAndPublish, runId } from '../helpers/fixtures'
 import { errorCode, itemsOf, request } from '../helpers/http'
 
 /**
- * PRD §9 / DOMAIN §7: locale switches chrome only. Scores, ids, display_name stay put.
- * Break: Accept-Language or ?locale= rewrites creator_key, id, or rating.
+ * PRD §9 / DOMAIN §7: locale switches chrome only. Metrics, ids, display_name stay put.
+ * Break: Accept-Language or ?locale= rewrites creator_key, id, or metrics.
  */
 
 const LOCALES = ['zh-CN', 'en', 'ko'] as const
 
-describe('i18n — stable codes, ids, and scores', () => {
+describe('i18n — stable codes, ids, and metrics', () => {
   let ops: Session
   let selector: Session
   let id: string
@@ -25,7 +25,8 @@ describe('i18n — stable codes, ids, and scores', () => {
       creatorKey: key,
       displayName: '서울살림노트',
       followers: 17250,
-      rating: 4.2,
+      source: 'pugongying',
+      metrics: { window: 30, followers: 17250, cpe: 2.4, health: 'excellent' },
       regions: ['서울'],
       verticals: ['life'],
       categories: ['never_collaborated'],
@@ -64,8 +65,8 @@ describe('i18n — stable codes, ids, and scores', () => {
     expect(new Set(codes).size).toBe(1)
   })
 
-  it('pool ids, creator_key, rating, followers do not change with Accept-Language (DOMAIN §7)', async () => {
-    const snapshots: Array<{ id: unknown; key: unknown; rating: unknown; followers: unknown; name: unknown }> =
+  it('pool ids, creator_key, metrics and followers do not change with Accept-Language (DOMAIN §7)', async () => {
+    const snapshots: Array<{ id: unknown; key: unknown; cpe: unknown; followers: unknown; name: unknown }> =
       []
     for (const lang of LOCALES) {
       const res = await request('GET', PATHS.pool, {
@@ -79,7 +80,7 @@ describe('i18n — stable codes, ids, and scores', () => {
       snapshots.push({
         id: hit?.id,
         key: hit?.creatorKey,
-        rating: hit?.rating,
+        cpe: (hit?.metrics as Record<string, unknown> | undefined)?.cpe,
         followers: hit?.followers,
         name: hit?.displayName,
       })
@@ -87,7 +88,7 @@ describe('i18n — stable codes, ids, and scores', () => {
     for (const snap of snapshots) {
       expect(snap.id).toBe(id)
       expect(snap.key).toBe(creatorKey)
-      expect(Number(snap.rating)).toBe(4.2)
+      expect(Number(snap.cpe)).toBe(2.4)
       expect(Number(snap.followers)).toBe(17250)
       expect(snap.name).toBe('서울살림노트')
     }
@@ -102,6 +103,6 @@ describe('i18n — stable codes, ids, and scores', () => {
     expect(res.status).toBe(200)
     expect(res.json.displayName).toBe('서울살림노트')
     expect(res.json.id).toBe(id)
-    expect(Number(res.json.rating)).toBe(4.2)
+    expect(Number((res.json.metrics as Record<string, unknown>).cpe)).toBe(2.4)
   })
 })

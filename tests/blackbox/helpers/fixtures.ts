@@ -13,7 +13,8 @@ export type CreatorDraft = {
   followersUnknown?: boolean
   regions?: string[]
   verticals?: string[]
-  rating?: number
+  source?: 'pugongying' | 'qiangua' | 'xinhong'
+  metrics?: Record<string, unknown>
   categories?: string[]
   collaborations?: Array<{ brand: string; happenedAt?: string; note?: string }>
   price?: {

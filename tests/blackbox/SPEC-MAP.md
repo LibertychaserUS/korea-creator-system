@@ -68,7 +68,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 
 | case | spec | HTTP |
 |------|------|------|
-| default `rating`↓ then `followers`↓ | PRD §6.2 SEL-LIBRARY | `GET /api/select/pool` |
+| default `cpe`↑ (null last) then `followers`↓ | 指标口径 §SavedQuery | `GET /api/select/pool` |
 | followers ∩ hasCollaborated ∩ overlapping price | PRD §6 AND | `?followersMin&hasCollaborated&priceMin&priceMax&currency` |
 | followers ∩ collab_count | PRD §6.1 | `?followersMin&followersMax&collabCountMin&collabCountMax` |
 | sort followers desc / asc | PRD §6.1 | `?sort=followers&order=` |
@@ -117,5 +117,5 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 |------|------|------|
 | `AUTH-DENIED` stable for zh-CN / en / ko | PRD §2; SCREEN AUTH-DENIED | `GET /api/ops/creators` + `Accept-Language` + `?locale=` |
 | `AUTH-LOGIN` stable | UX 未登录 | `GET /api/select/pool` unauthenticated |
-| id / creator_key / rating / followers / display_name unchanged | DOMAIN §7; PRD §9 | `GET /api/select/pool` |
+| id / creator_key / metrics / followers / display_name unchanged | DOMAIN §7; PRD §9 | `GET /api/select/pool` |
 | detail keeps 서울살림노트 under `locale=ko` | PRD §9 原文 | `GET /api/select/creators/:id` |

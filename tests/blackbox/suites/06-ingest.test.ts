@@ -24,6 +24,15 @@ describe('Ingest jobs', () => {
     sourceId = String(source.id)
   })
 
+  it('exposes only the official and vendor adapters (no self-built scraper)', async () => {
+    const res = await request('GET', PATHS.ingestAdapters, { token: ops.token })
+    expect(res.status).toBe(200)
+    const adapters = itemsOf(res.json)
+    expect(adapters.map((row) => row.id).sort()).toEqual(['pugongying', 'qiangua', 'xinhong'])
+    expect(adapters.find((row) => row.id === 'pugongying')?.route).toBe('official')
+    expect(adapters.filter((row) => row.route === 'vendor')).toHaveLength(2)
+  })
+
   it('creates a job against an enabled configured source (PRD §8.3 / §12)', async () => {
     const res = await request('POST', PATHS.ingestJobs, {
       token: ops.token,
