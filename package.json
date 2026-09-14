@@ -26,6 +26,7 @@
     "db:generate": "node libs/database/scripts.js generate",
     "db:migrate": "node libs/database/scripts.js migrate",
     "db:seed": "node libs/database/scripts.js seed",
+    "db:seed:auth": "tsx libs/database/seed-auth.ts",
     "db:studio": "node libs/database/scripts.js studio",
     "db:check:sqlite": "node libs/database/scripts.js check:sqlite",
     "db:generate:sqlite": "node libs/database/scripts.js generate:sqlite",

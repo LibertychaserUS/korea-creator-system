@@ -1,7 +1,6 @@
 import {
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
-  SEED_PASSWORD,
   SEED_USERS,
   type SavedQuery,
   type SourceId,
@@ -9,7 +8,6 @@ import {
 import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
-import { hashPassword } from './password'
 
 const CATEGORIES = [
   ['collaborated', '合作过的', 'Collaborated', '협업함', 'coop_history', true],
@@ -71,15 +69,10 @@ async function seedUsers(db: Db, orgId: string) {
   for (const user of SEED_USERS) {
     const id = `user_${user.role}`
     await db.query(
-      `INSERT INTO users (id, org_id, email, password_hash, role, display_name)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO users (id, org_id, email, role, display_name)
+       VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, display_name = EXCLUDED.display_name`,
-      [id, orgId, user.email, hashPassword(SEED_PASSWORD), user.role, user.displayName],
-    )
-    await db.query(
-      `INSERT INTO "user" (id, email, name, role) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, name = EXCLUDED.name, updated_at = now()`,
-      [id, user.email, user.displayName, user.role],
+      [id, orgId, user.email, user.role, user.displayName],
     )
   }
   for (const extra of [
@@ -87,14 +80,9 @@ async function seedUsers(db: Db, orgId: string) {
     ['user_selector_viewer_e2e', 'selector.viewer@kcs.local', 'selector_viewer', 'Selector Viewer'],
   ]) {
     await db.query(
-      `INSERT INTO users (id, org_id, email, password_hash, role, display_name)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role`,
-      [extra[0], orgId, extra[1], hashPassword('KcsE2e!2026'), extra[2], extra[3]],
-    )
-    await db.query(
-      `INSERT INTO "user" (id, email, name, role) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, updated_at = now()`,
-      [extra[0], extra[1], extra[3], extra[2]],
+      `INSERT INTO users (id, org_id, email, role, display_name)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role`,
+      [extra[0], orgId, extra[1], extra[2], extra[3]],
     )
   }
 }
@@ -201,7 +189,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
       TRUNCATE TABLE
         audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
         creator_raw, prices, collaborations, creator_categories, creators, assets,
-        ingest_jobs, ingest_sources, sessions, "user", users, orgs, categories
+        ingest_jobs, ingest_sources, users, orgs, categories
       RESTART IDENTITY CASCADE
     `)
   }
