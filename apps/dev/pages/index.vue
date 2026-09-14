@@ -8,7 +8,7 @@
     </template>
 
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      <KpiTile label="SQL" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
+      <KpiTile :label="t('kcs.panel.storage')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
         <span class="flex items-center gap-2 text-xl md:text-2xl">
           <span class="relative flex size-2.5" aria-hidden="true">
             <span v-if="health.ok" class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
@@ -85,21 +85,21 @@
               <TableCell>
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-center gap-2">
-                    <span class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || (isSource(job.source_id) ? t(`kcs.source.${job.source_id}`) : t('kcs.ingest.fetchTitle')) }}</span>
-                    <SourceBadge v-if="isSource(job.source_id)" :source="job.source_id" :mode="job.source_mode" class="h-5" />
+                    <span class="truncate font-medium text-foreground">{{ job.batchName || job.fileName || (isSource(job.sourceId) ? t(`kcs.source.${job.sourceId}`) : job.sourceId === 'file-drop' ? t('kcs.ingest.fileImport') : t('kcs.ingest.fetchTitle')) }}</span>
+                    <SourceBadge v-if="isSource(job.sourceId)" :source="job.sourceId" :mode="job.sourceMode" class="h-5" />
                   </div>
                   <div class="truncate text-[11px] tabular-nums text-muted-foreground" :title="job.id">
-                    <template v-if="job.updated_at">{{ formatDate(job.updated_at) }}</template>
+                    <template v-if="job.updatedAt">{{ formatDate(job.updatedAt) }}</template>
                   </div>
-                  <p v-if="job.status === 'failed' && job.error_summary" class="mt-1 truncate text-xs text-destructive" :title="job.error_code || undefined">
-                    {{ job.error_summary }}
+                  <p v-if="job.status === 'failed'" class="mt-1 truncate text-xs text-destructive" :title="job.errorSummary || undefined">
+                    {{ reason(job.errorCode) }}
                   </p>
                 </div>
               </TableCell>
               <TableCell><StatusBadge :status="jobStatus(job)" /></TableCell>
-              <TableCell class="hidden text-right tabular-nums sm:table-cell">{{ formatNumber(job.written_count) }}</TableCell>
-              <TableCell class="hidden text-right tabular-nums md:table-cell" :class="Number(job.failed_count) ? 'text-destructive' : 'text-muted-foreground'">
-                {{ formatNumber(job.failed_count) }}
+              <TableCell class="hidden text-right tabular-nums sm:table-cell">{{ formatNumber(job.writtenCount) }}</TableCell>
+              <TableCell class="hidden text-right tabular-nums md:table-cell" :class="Number(job.failedCount) ? 'text-destructive' : 'text-muted-foreground'">
+                {{ formatNumber(job.failedCount) }}
               </TableCell>
               <TableCell v-if="canRetry" class="text-right">
                 <Button
@@ -128,7 +128,13 @@
 import { AlertTriangle, Database, ListChecks, Loader2, Plug, RefreshCw, RotateCcw } from 'lucide-vue-next'
 import { SOURCE_IDS, can } from '@kcs/contract'
 
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
+
+/** 失败原因用人话；原始报错留在悬浮提示里给排查用。 */
+function reason(code: string | null | undefined): string {
+  const key = `kcs.ingest.reason.${code || 'UNKNOWN'}`
+  return te(key) ? t(key) : t('kcs.ingest.reason.UNKNOWN')
+}
 const { request } = useApi()
 const { user } = useSession()
 const { formatNumber } = useFormat()
@@ -144,8 +150,8 @@ const canRetry = computed(() => Boolean(user.value && can(user.value.role, 'dev.
 /** 写成功但有失败行：API 状态仍是 ok，界面上标成「部分完成」。 */
 const isSource = (id: unknown) => typeof id === 'string' && (SOURCE_IDS as readonly string[]).includes(id)
 
-function jobStatus(job: { status: string; failed_count?: number | string | null }) {
-  return job.status === 'ok' && Number(job.failed_count ?? 0) > 0 ? 'partial' : job.status
+function jobStatus(job: { status: string; failedCount?: number | string | null }) {
+  return job.status === 'ok' && Number(job.failedCount ?? 0) > 0 ? 'partial' : job.status
 }
 
 const ORDER = ['ok', 'running', 'queued', 'partial', 'failed']
