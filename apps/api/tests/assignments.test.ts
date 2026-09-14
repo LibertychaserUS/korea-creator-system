@@ -68,7 +68,9 @@ describe('project assignment', () => {
     const boardBody = await board.json()
     expect(boardBody.assignments).toHaveLength(1)
     expect(boardBody.assignments[0].price?.amountMin).toBe(3500)
-    expect(boardBody.assignments[0].rank).toBeGreaterThan(0)
+    expect(boardBody.assignments[0].metrics).toBeTruthy()
+    expect(boardBody.assignments[0].tier).toBeTruthy()
+    expect(boardBody.assignments[0]).not.toHaveProperty('rank')
     const remove = await ctx.app.request(
       `/api/select/projects/${projectId}/assignments/${creatorId}`,
       { method: 'DELETE', headers: { authorization: `Bearer ${sel.token}` } },

@@ -1,47 +1,37 @@
-import { describe, expect, it, beforeAll, afterAll } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestApp, type TestCtx } from './helpers'
 
-describe('select pool filter and sort', () => {
+describe('select pool metric filters and sort', () => {
   let ctx: TestCtx
   let token: string
 
   beforeAll(async () => {
     ctx = await createTestApp()
     const ops = await ctx.loginJson('ops@kcs.local')
-    const people = [
-      {
-        displayName: '高粉合作',
-        followers: 200000,
-        rating: 4.9,
-        categories: ['collaborated'],
-        collaborations: [{ brand: '兰芝' }],
-        price: { amountMin: 9000, currency: 'CNY' },
-        regions: ['上海'],
-      },
-      {
-        displayName: '低粉未合作',
-        followers: 3000,
-        rating: 3.1,
-        categories: ['never_collaborated'],
-        price: { amountMin: 2000, currency: 'CNY' },
-        regions: ['北京'],
-      },
-      {
-        displayName: '中粉无评分',
-        followers: 50000,
-        categories: ['intending', 'never_collaborated'],
-        price: { amountMin: 5000, currency: 'CNY' },
-        regions: ['杭州'],
-      },
-    ]
-    for (const person of people) {
+    for (const person of [
+      { displayName: '指标甲', followers: 200_000, cpe: 4.2, health: 'normal', source: 'pugongying' },
+      { displayName: '指标乙', followers: 30_000, cpe: 1.8, health: 'excellent', source: 'qiangua' },
+      { displayName: '指标丙', followers: 3_000, cpe: 2.7, health: 'excellent', source: 'xinhong' },
+    ]) {
       const created = await ctx.app.request('/api/ops/creators', {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${ops.token}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(person),
+        headers: { authorization: `Bearer ${ops.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          displayName: person.displayName,
+          followers: person.followers,
+          source: person.source,
+          regions: ['测试指标区'],
+          verticals: ['metric-test'],
+          categories: ['never_collaborated'],
+          metrics: {
+            window: 30,
+            followers: person.followers,
+            cpe: person.cpe,
+            health: person.health,
+            readMedian: person.followers / 4,
+            interactionMedian: person.followers / 50,
+          },
+        }),
       })
       const { id } = await created.json()
       await ctx.app.request(`/api/ops/creators/${id}/publish`, {
@@ -52,77 +42,44 @@ describe('select pool filter and sort', () => {
     token = (await ctx.loginJson('selector@kcs.local')).token
   })
 
-  afterAll(async () => {
-    await ctx.close()
+  afterAll(() => ctx.close())
+
+  async function rows(query = '') {
+    const res = await ctx.app.request(`/api/select/pool?region=测试指标区${query}`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.status).toBe(200)
+    return (await res.json()).items
+  }
+
+  it('defaults to cpe ascending with no score fields', async () => {
+    const result = await rows()
+    expect(result.map((row: { displayName: string }) => row.displayName)).toEqual(['指标乙', '指标丙', '指标甲'])
+    expect(result[0]).not.toHaveProperty('grade')
+    expect(result[0]).not.toHaveProperty('final')
+    expect(result[0]).toMatchObject({ source: 'qiangua', tier: 'junior', health: 'excellent' })
   })
 
-  it('defaults to computed score desc instead of the raw rating column', async () => {
-    const res = await ctx.app.request('/api/select/pool', {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    const body = await res.json()
-    const wanted = new Set(['高粉合作', '低粉未合作', '中粉无评分'])
-    const rows = body.items.filter((row: { displayName: string }) => wanted.has(row.displayName))
-    expect(rows.map((row: { displayName: string }) => row.displayName)).toEqual([
-      '高粉合作',
-      '中粉无评分',
-      '低粉未合作',
-    ])
-    expect(rows.map((row: { final: number }) => row.final)).toEqual(
-      [...rows].map((row: { final: number }) => row.final).sort((a: number, b: number) => b - a),
-    )
+  it('sorts any numeric metric and supports order', async () => {
+    const result = await rows('&sort=followers&order=desc')
+    expect(result.map((row: { displayName: string }) => row.displayName)).toEqual(['指标甲', '指标乙', '指标丙'])
   })
 
-  it('keeps order=asc semantics for computed score', async () => {
-    const res = await ctx.app.request('/api/select/pool?sort=rating&order=asc', {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    const body = await res.json()
-    const wanted = new Set(['高粉合作', '低粉未合作', '中粉无评分'])
-    const rows = body.items.filter((row: { displayName: string }) => wanted.has(row.displayName))
-    expect(rows.map((row: { displayName: string }) => row.displayName)).toEqual([
-      '低粉未合作',
-      '中粉无评分',
-      '高粉合作',
-    ])
+  it('filters tier, health, source and metric bounds with AND semantics', async () => {
+    const result = await rows('&tier=junior&health=excellent&source=qiangua&cpeMax=2')
+    expect(result.map((row: { displayName: string }) => row.displayName)).toEqual(['指标乙'])
   })
 
-  it('filters by follower range, collaboration, and overlapping price', async () => {
-    const res = await ctx.app.request(
-      '/api/select/pool?followersMin=10000&hasCollaborated=true&priceMin=8000&priceMax=10000&currency=CNY',
-      { headers: { authorization: `Bearer ${token}` } },
-    )
-    const body = await res.json()
-    expect(body.items.map((row: { displayName: string }) => row.displayName)).toEqual(['高粉合作'])
+  it('keeps category and brand filters', async () => {
+    const result = await rows('&category=metric-test')
+    expect(result).toHaveLength(3)
+    const none = await rows('&brand=不存在品牌')
+    expect(none).toEqual([])
   })
 
-  it('sorts by price min ascending and sinks missing prices last', async () => {
-    const res = await ctx.app.request('/api/select/pool?sort=price&order=asc', {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    const body = await res.json()
-    expect(body.items[0].displayName).toBe('低粉未合作')
-  })
-
-  it('filters by rule grade and collab brand', async () => {
-    const all = await ctx.app.request('/api/select/pool', {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    const high = (await all.json()).items.find((row: { displayName: string }) => row.displayName === '高粉合作')
-    expect(high.grade).toMatch(/^[SABC]$/)
-
-    const byGrade = await ctx.app.request(`/api/select/pool?grade=${high.grade}`, {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    expect((await byGrade.json()).items.map((row: { displayName: string }) => row.displayName)).toContain(
-      '高粉合作',
-    )
-
-    const byBrand = await ctx.app.request('/api/select/pool?brand=兰芝', {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    expect((await byBrand.json()).items.map((row: { displayName: string }) => row.displayName)).toEqual([
-      '高粉合作',
-    ])
+  it('returns derived metrics and tier-cohort percentiles', async () => {
+    const result = await rows()
+    expect(result.every((row: { metrics: { engagementRate: number } }) => row.metrics.engagementRate > 0)).toBe(true)
+    expect(result.every((row: { percentiles: object }) => typeof row.percentiles === 'object')).toBe(true)
   })
 })

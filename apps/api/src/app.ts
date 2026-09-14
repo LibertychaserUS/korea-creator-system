@@ -2,14 +2,30 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import {
+  applySavedQuery,
   can,
-  creatorToScoreInput,
-  rankInCohort,
-  scoreCreator,
+  cohortPercentiles,
+  CREATOR_TIERS,
+  DEFAULT_QUERY_COLUMNS,
+  defaultSavedQuery,
+  deriveMetrics,
+  emptyMetrics,
+  METRIC_FIELDS,
+  METRIC_KEYS,
+  SOURCE_IDS,
+  SOURCE_ROUTE,
+  tierOf,
+  validateSavedQuery,
+  type CreatorMetrics,
+  type NumericMetricKey,
   type Permission,
   type Role,
+  type SavedQuery,
+  type SourceId,
+  type SourceQuery,
 } from '@kcs/contract'
 import { creatorKeyFromRow, parseXlsx, type SheetRow } from './xlsx-sheet'
+import { adapterDescriptions, getAdapter } from './adapters'
 import type { Db } from './db'
 import { hashPassword, verifyPassword } from './password'
 import type { ObjectStore } from './store'
@@ -118,10 +134,26 @@ export function createApp(env: AppEnv) {
         '/api/auth/login': { post: { summary: '登录' } },
         '/api/ops/creators': { get: {}, post: {} },
         '/api/select/pool': { get: {} },
+        '/api/select/creators/{id}': { get: {} },
+        '/api/select/queries': { get: {}, post: {} },
+        '/api/select/queries/{id}': { get: {}, patch: {}, delete: {} },
+        '/api/select/queries/run': { post: {} },
         '/api/select/projects': { get: {}, post: {} },
+        '/api/metrics/fields': { get: {} },
         '/api/dev/health': { get: {} },
+        '/api/ingest/adapters': { get: {} },
+        '/api/ingest/fetch': { post: {} },
+        '/api/ingest/raw/{creatorId}': { get: {} },
         '/api/ingest/jobs': { get: {}, post: {} },
       },
+    }),
+  )
+
+  app.get('/api/metrics/fields', (c) =>
+    c.json({
+      fields: METRIC_FIELDS,
+      tiers: CREATOR_TIERS,
+      sources: SOURCE_IDS.map((id) => ({ id, route: SOURCE_ROUTE[id] })),
     }),
   )
 
@@ -228,15 +260,22 @@ export function createApp(env: AppEnv) {
     if (mutexCoop(body.categories)) return jsonError(c, 400, 'VALIDATION', 'coop_history_mutex')
     const id = randomUUID()
     const key = body.creatorKey || `ck_${id.slice(0, 8)}`
+    const metrics = deriveMetrics({
+      ...emptyMetrics(body.metrics?.window === 90 ? 90 : 30),
+      ...(body.metrics && typeof body.metrics === 'object' ? body.metrics : {}),
+      followers: body.metrics?.followers ?? body.followers ?? null,
+      priceImage: body.metrics?.priceImage ?? body.price?.amountMin ?? null,
+    })
     await env.db.query(
       `INSERT INTO creators
-        (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, note, avatar_key, xhs_id)
-       VALUES ($1,$2,$3,'draft',false,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals,
+         rating, note, avatar_key, xhs_id, metrics, metrics_window, source, external_id, metrics_fetched_at)
+       VALUES ($1,$2,$3,'draft',false,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         id,
         key,
         body.displayName,
-        body.followers ?? null,
+        body.followers ?? metrics.followers,
         Boolean(body.followersUnknown),
         body.regions ?? [],
         body.verticals ?? [],
@@ -244,6 +283,11 @@ export function createApp(env: AppEnv) {
         body.note ?? null,
         body.avatarKey ?? null,
         body.xhsId ?? null,
+        JSON.stringify(metrics),
+        metrics.window,
+        body.source ?? null,
+        body.externalId ?? null,
+        body.metrics ? env.now().toISOString() : null,
       ],
     )
     await saveRelations(env.db, id, body)
@@ -264,6 +308,9 @@ export function createApp(env: AppEnv) {
     if (denied) return denied
     const id = c.req.param('id')
     const body = await c.req.json()
+    const metrics = body.metrics && typeof body.metrics === 'object'
+      ? deriveMetrics({ ...emptyMetrics(body.metrics.window === 90 ? 90 : 30), ...body.metrics })
+      : null
     await env.db.query(
       `UPDATE creators SET
         display_name = COALESCE($2, display_name),
@@ -276,12 +323,15 @@ export function createApp(env: AppEnv) {
         qc_notes = COALESCE($9, qc_notes),
         label = COALESCE($10, label),
         needs_review = COALESCE($11, needs_review),
+        metrics = COALESCE($12, metrics),
+        metrics_window = COALESCE($13, metrics_window),
+        metrics_fetched_at = CASE WHEN $12::jsonb IS NULL THEN metrics_fetched_at ELSE now() END,
         updated_at = now()
        WHERE id = $1`,
       [
         id,
         body.displayName ?? null,
-        body.followers ?? null,
+        body.followers ?? metrics?.followers ?? null,
         body.followersUnknown ?? null,
         body.regions ?? null,
         body.verticals ?? null,
@@ -290,6 +340,8 @@ export function createApp(env: AppEnv) {
         body.qcNotes ?? null,
         body.label ?? null,
         body.needsReview ?? null,
+        metrics ? JSON.stringify(metrics) : null,
+        metrics?.window ?? null,
       ],
     )
     if (mutexCoop(body.categories)) return jsonError(c, 400, 'VALIDATION', 'coop_history_mutex')
@@ -310,7 +362,12 @@ export function createApp(env: AppEnv) {
     if (!item.displayName) return jsonError(c, 400, 'VALIDATION', 'incomplete')
     if (!(item.regions?.length || item.verticals?.length)) return jsonError(c, 400, 'VALIDATION', 'incomplete')
     if (item.followers == null && !item.followersUnknown) return jsonError(c, 400, 'VALIDATION', 'incomplete')
-    await env.db.query(`UPDATE creators SET status = 'released', updated_at = now() WHERE id = $1`, [id])
+    await env.db.query(
+      `UPDATE creators
+       SET status = 'released', metrics_locked = metrics, updated_at = now()
+       WHERE id = $1`,
+      [id],
+    )
     await env.db.query(`UPDATE assignments SET pool_gone = false WHERE creator_id = $1`, [id])
     await audit(env.db, user!.id, 'creator.publish', 'creator', id, item.displayName)
     return c.json({ ok: true, status: 'released' })
@@ -437,7 +494,91 @@ export function createApp(env: AppEnv) {
     if (!item || item.status !== 'released' || item.categories.includes('blacklist')) {
       return jsonError(c, 404, 'NOT-FOUND', 'not_found')
     }
-    return c.json(publicPoolRow(item))
+    const cohort = await queryPool(env.db, {})
+    const enriched = enrichPoolItems([item], cohort.map((row) => row.metrics))[0]
+    const raw = await env.db.query('SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1', [item.id])
+    return c.json({ ...publicPoolRow(enriched), rawAvailable: Boolean(raw.rowCount) })
+  })
+
+  app.get('/api/select/queries', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.read')
+    if (denied) return denied
+    const { rows } = await env.db.query(
+      `SELECT * FROM saved_queries WHERE org_id IS NULL OR org_id = $1 ORDER BY updated_at DESC`,
+      [user!.orgId],
+    )
+    return c.json({ items: rows.map(savedQueryFromRow) })
+  })
+
+  app.post('/api/select/queries/run', async (c) => {
+    const { denied } = await requireAuth(c, 'select.read')
+    if (denied) return denied
+    const body = await c.req.json().catch(() => null)
+    const spec = coerceSavedQuery(body)
+    const errors = validateSavedQuery(spec)
+    if (errors.length) return c.json({ error: 'invalid', errors }, 400)
+    const pool = await queryPool(env.db, {})
+    const rows = applySavedQuery(pool.map(queryRow), spec)
+    return c.json({ items: rows.map(publicQueryResultRow), total: rows.length })
+  })
+
+  app.post('/api/select/queries', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.write')
+    if (denied) return denied
+    const body = await c.req.json().catch(() => null)
+    const id = randomUUID()
+    const spec = coerceSavedQuery(body, id, 1)
+    const errors = validateSavedQuery(spec)
+    if (errors.length) return c.json({ error: 'invalid', errors }, 400)
+    const { rows } = await env.db.query(
+      `INSERT INTO saved_queries (id, org_id, name, version, spec, created_by)
+       VALUES ($1,$2,$3,1,$4,$5) RETURNING *`,
+      [id, user!.orgId, spec.name, JSON.stringify(spec), user!.id],
+    )
+    return c.json(savedQueryFromRow(rows[0]), 201)
+  })
+
+  app.get('/api/select/queries/:id', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.read')
+    if (denied) return denied
+    const { rows } = await env.db.query(
+      `SELECT * FROM saved_queries WHERE id = $1 AND (org_id IS NULL OR org_id = $2)`,
+      [c.req.param('id'), user!.orgId],
+    )
+    if (!rows[0]) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
+    return c.json(savedQueryFromRow(rows[0]))
+  })
+
+  app.patch('/api/select/queries/:id', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.write')
+    if (denied) return denied
+    const found = await env.db.query(
+      `SELECT * FROM saved_queries WHERE id = $1 AND org_id = $2`,
+      [c.req.param('id'), user!.orgId],
+    )
+    if (!found.rows[0]) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
+    const current = savedQueryFromRow(found.rows[0])
+    const patch = await c.req.json().catch(() => ({}))
+    const spec = coerceSavedQuery({ ...current, ...patch }, current.id, current.version + 1)
+    const errors = validateSavedQuery(spec)
+    if (errors.length) return c.json({ error: 'invalid', errors }, 400)
+    const { rows } = await env.db.query(
+      `UPDATE saved_queries SET name = $3, version = $4, spec = $5, updated_at = now()
+       WHERE id = $1 AND org_id = $2 RETURNING *`,
+      [current.id, user!.orgId, spec.name, spec.version, JSON.stringify(spec)],
+    )
+    return c.json(savedQueryFromRow(rows[0]))
+  })
+
+  app.delete('/api/select/queries/:id', async (c) => {
+    const { user, denied } = await requireAuth(c, 'select.write')
+    if (denied) return denied
+    const result = await env.db.query('DELETE FROM saved_queries WHERE id = $1 AND org_id = $2', [
+      c.req.param('id'),
+      user!.orgId,
+    ])
+    if (!result.rowCount) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
+    return c.json({ ok: true })
   })
 
   app.get('/api/select/projects', async (c) => {
@@ -475,8 +616,9 @@ export function createApp(env: AppEnv) {
     if (!rows[0]) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
     const assigned = await env.db.query(
       `SELECT a.id, a.creator_id, a.status, a.pool_gone, a.assigned_at,
-              c.display_name, c.followers, c.rating, c.creator_key, c.status AS creator_status,
-              c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key
+              c.display_name, c.followers, c.creator_key, c.status AS creator_status,
+              c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
+              c.metrics, c.metrics_locked, c.source, c.external_id, c.metrics_fetched_at
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1 ORDER BY a.assigned_at DESC`,
       [c.req.param('id')],
@@ -488,35 +630,32 @@ export function createApp(env: AppEnv) {
         creator_key: r.creator_key,
         display_name: r.display_name,
         followers: r.followers,
-        rating: r.rating,
         status: r.creator_status,
         regions: r.regions,
         verticals: r.verticals,
         needs_review: r.needs_review,
         followers_unknown: r.followers_unknown,
         avatar_key: r.avatar_key,
+        metrics: r.metrics,
+        metrics_locked: r.metrics_locked,
+        source: r.source,
+        external_id: r.external_id,
+        metrics_fetched_at: r.metrics_fetched_at,
       })),
       false,
     )
-    const poolFinals = (await queryPool(env.db, {})).map((row) => scoreOf(row).final)
+    const pool = await queryPool(env.db, {})
+    const enriched = enrichPoolItems(meta, pool.map((row) => row.metrics))
     return c.json({
       ...rows[0],
-      assignments: meta.map((item, index) => {
-        const score = scoreOf(item)
+      assignments: enriched.map((item, index) => {
         const raw = assigned.rows[index]
         return {
+          ...publicPoolRow(item),
           id: raw.id,
           creatorId: item.id,
-          creatorKey: item.creatorKey,
           status: raw.status,
-          displayName: item.displayName,
           poolGone: raw.pool_gone,
-          followers: item.followers,
-          rating: item.rating,
-          price: item.price,
-          grade: score.grade,
-          final: score.final,
-          rank: rankInCohort(score.final, poolFinals),
         }
       }),
     })
@@ -573,8 +712,9 @@ export function createApp(env: AppEnv) {
     const { user, denied } = await requireAuth(c, 'select.read')
     if (denied) return denied
     const { rows } = await env.db.query(
-      `SELECT s.org_id, s.creator_id, s.added_at, c.display_name, c.followers, c.rating, c.creator_key,
-              c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key
+      `SELECT s.org_id, s.creator_id, s.added_at, c.display_name, c.followers, c.creator_key,
+              c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
+              c.metrics, c.metrics_locked, c.source, c.external_id, c.metrics_fetched_at
        FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
        WHERE s.org_id = $1 ORDER BY s.added_at DESC`,
       [user!.orgId],
@@ -586,32 +726,32 @@ export function createApp(env: AppEnv) {
         creator_key: r.creator_key,
         display_name: r.display_name,
         followers: r.followers,
-        rating: r.rating,
         status: r.status,
         regions: r.regions,
         verticals: r.verticals,
         needs_review: r.needs_review,
         followers_unknown: r.followers_unknown,
         avatar_key: r.avatar_key,
+        metrics: r.metrics,
+        metrics_locked: r.metrics_locked,
+        source: r.source,
+        external_id: r.external_id,
+        metrics_fetched_at: r.metrics_fetched_at,
       })),
       false,
     )
+    const pool = await queryPool(env.db, {})
+    const enriched = enrichPoolItems(meta, pool.map((row) => row.metrics))
     return c.json({
-      items: meta.map((item, index) => {
-        const score = scoreOf(item)
+      items: enriched.map((item, index) => {
         return {
+          ...publicPoolRow(item),
           org_id: rows[index].org_id,
           creator_id: item.id,
           creatorId: item.id,
           display_name: item.displayName,
-          displayName: item.displayName,
           added_at: rows[index].added_at,
           addedAt: rows[index].added_at,
-          followers: item.followers,
-          rating: item.rating,
-          price: item.price,
-          grade: score.grade,
-          final: score.final,
         }
       }),
     })
@@ -632,13 +772,17 @@ export function createApp(env: AppEnv) {
     const { user, denied } = await requireAuth(c, 'select.read')
     if (denied) return denied
     const { rows } = await env.db.query(
-      `SELECT c.display_name, c.followers, c.rating, a.status
+      `SELECT c.display_name, c.metrics, c.followers, a.status
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1`,
       [c.req.param('id')],
     )
-    const header = 'display_name,followers,rating,status\n'
-    const csv = header + rows.map((r) => `${r.display_name},${r.followers ?? ''},${r.rating ?? ''},${r.status}`).join('\n')
+    const columns = DEFAULT_QUERY_COLUMNS
+    const header = ['display_name', ...columns, 'status'].join(',') + '\n'
+    const csv = header + rows.map((r) => {
+      const metrics = metricsFromRow(r)
+      return [csvCell(r.display_name), ...columns.map((key) => metrics[key] ?? ''), csvCell(r.status)].join(',')
+    }).join('\n')
     return c.body(csv, 200, { 'content-type': 'text/csv; charset=utf-8' })
   })
 
@@ -728,6 +872,43 @@ export function createApp(env: AppEnv) {
         rateLimit: r.rate_limit,
         quota: r.quota,
       })),
+    })
+  })
+
+  app.get('/api/ingest/adapters', async (c) => {
+    const { denied } = await requireAuth(c, 'ingest.read')
+    if (denied) return denied
+    return c.json({ items: adapterDescriptions() })
+  })
+
+  app.post('/api/ingest/fetch', async (c) => {
+    const { user, denied } = await requireAuth(c, 'ingest.write')
+    if (denied) return denied
+    const query = await c.req.json().catch(() => null) as SourceQuery | null
+    if (!query || !SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
+      return jsonError(c, 400, 'SOURCE-INVALID', 'invalid_source_query')
+    }
+    const job = await runAdapterIngest(env, query, user!.id)
+    return c.json(job, 201)
+  })
+
+  app.get('/api/ingest/raw/:creatorId', async (c) => {
+    const { denied } = await requireAuth(c, 'ingest.read')
+    if (denied) return denied
+    const { rows } = await env.db.query(
+      `SELECT id, creator_id, source, external_id, fetched_at, payload
+       FROM creator_raw WHERE creator_id = $1 ORDER BY fetched_at DESC LIMIT 1`,
+      [c.req.param('creatorId')],
+    )
+    if (!rows[0]) return jsonError(c, 404, 'NOT-FOUND', 'not_found')
+    const row = rows[0]
+    return c.json({
+      id: row.id,
+      creatorId: row.creator_id,
+      source: row.source,
+      externalId: row.external_id,
+      fetchedAt: row.fetched_at,
+      payload: row.payload,
     })
   })
 
@@ -890,12 +1071,7 @@ function mutexCoop(categories: unknown): boolean {
   return categories.includes('collaborated') && categories.includes('never_collaborated')
 }
 
-function scoreOf(item: Record<string, any>) {
-  return scoreCreator(creatorToScoreInput(item))
-}
-
 function publicPoolRow(item: Record<string, any>) {
-  const score = scoreOf(item)
   return {
     id: item.id,
     creatorKey: item.creatorKey,
@@ -904,15 +1080,19 @@ function publicPoolRow(item: Record<string, any>) {
     followersUnknown: item.followersUnknown,
     regions: item.regions,
     verticals: item.verticals,
-    rating: item.rating,
     categories: item.categories,
     hasCollaborated: item.hasCollaborated,
     collabCount: item.collabCount,
     collabBrands: item.collabBrands,
     price: item.price,
-    grade: score.grade,
-    final: score.final,
-    label: item.label ?? null,
+    source: item.source,
+    externalId: item.externalId,
+    metricsFetchedAt: item.metricsFetchedAt,
+    tier: item.tier,
+    metrics: item.metrics,
+    percentiles: item.percentiles,
+    health: item.metrics.health,
+    metricsLocked: item.metricsLocked,
   }
 }
 
@@ -932,6 +1112,8 @@ function camelJobs(rows: Array<Record<string, unknown>>) {
     fileName: r.file_name ?? null,
     batchName: r.batch_name ?? null,
     sourceRows: r.source_rows == null ? null : Number(r.source_rows),
+    query: r.query ?? null,
+    sourceMode: r.source_mode ?? null,
   }))
 }
 
@@ -989,32 +1171,25 @@ async function persistSheetRow(env: AppEnv, jobId: string, row: SheetRow): Promi
   const price = row.price ? Number(String(row.price).replace(/[^\d.]/g, '')) : null
   const regions = row.region ? [row.region] : []
   const verticals = [row.vertical, row.keywords, row.persona].filter(Boolean) as string[]
-  const score = scoreCreator(
-    creatorToScoreInput({
-      followers,
-      regions,
-      verticals,
-      displayName,
-      note: row.persona,
-      price: price != null ? { amountMin: price } : null,
-    }),
-  )
+  const metrics = deriveMetrics({ ...emptyMetrics(), followers, priceImage: price })
   const found = await env.db.query('SELECT id FROM creators WHERE creator_key = $1', [key])
   if (found.rows[0]) {
     await env.db.query(
       `UPDATE creators SET
         display_name = $2, followers = COALESCE($3, followers), regions = $4, verticals = $5,
-        rating = $6, xhs_id = COALESCE($7, xhs_id), last_ingest_job_id = $8, needs_review = true, updated_at = now()
+        metrics = $6, metrics_window = 30, metrics_fetched_at = now(),
+        xhs_id = COALESCE($7, xhs_id), last_ingest_job_id = $8, needs_review = true, updated_at = now()
        WHERE creator_key = $1`,
-      [key, displayName, Number.isFinite(followers) ? followers : null, regions, verticals, score.final, row.xhsId || null, jobId],
+      [key, displayName, Number.isFinite(followers) ? followers : null, regions, verticals, JSON.stringify(metrics), row.xhsId || null, jobId],
     )
     return 'skipped'
   }
   const creatorId = randomUUID()
   await env.db.query(
     `INSERT INTO creators
-      (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals, rating, xhs_id, last_ingest_job_id, note)
-     VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals,
+       metrics, metrics_window, metrics_fetched_at, xhs_id, last_ingest_job_id, note)
+     VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,30,now(),$9,$10,$11)`,
     [
       creatorId,
       key,
@@ -1023,7 +1198,7 @@ async function persistSheetRow(env: AppEnv, jobId: string, row: SheetRow): Promi
       followers == null,
       regions,
       verticals,
-      score.final,
+      JSON.stringify(metrics),
       row.xhsId || null,
       jobId,
       row.persona || null,
@@ -1081,7 +1256,11 @@ async function saveRelations(db: Db, creatorId: string, body: Record<string, unk
   }
 }
 
-async function attachCreatorMeta(db: Db, rows: Array<Record<string, unknown>>, full: boolean) {
+async function attachCreatorMeta(
+  db: Db,
+  rows: Array<Record<string, unknown>>,
+  full: boolean,
+): Promise<Array<Record<string, any>>> {
   const ids = rows.map((r) => r.id)
   if (!ids.length) return []
   const cats = await db.query(
@@ -1094,6 +1273,7 @@ async function attachCreatorMeta(db: Db, rows: Array<Record<string, unknown>>, f
     const categories = cats.rows.filter((x) => x.creator_id === r.id).map((x) => x.category_slug)
     const collaborations = cols.rows.filter((x) => x.creator_id === r.id)
     const price = prices.rows.find((x) => x.creator_id === r.id)
+    const metrics = metricsFromRow({ ...r, price })
     return {
       id: r.id,
       creatorKey: r.creator_key,
@@ -1104,7 +1284,6 @@ async function attachCreatorMeta(db: Db, rows: Array<Record<string, unknown>>, f
       followersUnknown: r.followers_unknown,
       regions: r.regions,
       verticals: r.verticals,
-      rating: r.rating === null ? null : Number(r.rating),
       avatarKey: r.avatar_key ?? null,
       xhsId: r.xhs_id ?? null,
       qcNotes: r.qc_notes ?? null,
@@ -1114,6 +1293,11 @@ async function attachCreatorMeta(db: Db, rows: Array<Record<string, unknown>>, f
       hasCollaborated: collaborations.length > 0,
       collabCount: collaborations.length,
       collabBrands: collaborations.map((x) => x.brand),
+      source: r.source ?? null,
+      externalId: r.external_id ?? null,
+      metrics,
+      metricsLocked: parseMetrics(r.metrics_locked),
+      metricsFetchedAt: r.metrics_fetched_at ?? null,
       collaborations: full ? collaborations : undefined,
       price: price
         ? {
@@ -1134,12 +1318,101 @@ async function loadCreator(db: Db, id: string, full: boolean) {
   return item
 }
 
+function parseMetrics(value: unknown): CreatorMetrics | null {
+  if (!value) return null
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value
+    if (!parsed || typeof parsed !== 'object') return null
+    return deriveMetrics({ ...emptyMetrics((parsed as CreatorMetrics).window === 90 ? 90 : 30), ...(parsed as CreatorMetrics) })
+  } catch {
+    return null
+  }
+}
+
+function metricsFromRow(row: Record<string, any>): CreatorMetrics {
+  const metrics = parseMetrics(row.metrics) ?? emptyMetrics()
+  if (metrics.followers == null && row.followers != null) metrics.followers = Number(row.followers)
+  if (metrics.priceImage == null && row.price?.amount_min != null) metrics.priceImage = Number(row.price.amount_min)
+  return deriveMetrics(metrics)
+}
+
+function enrichPoolItems(
+  items: Array<Record<string, any>>,
+  cohortMetrics?: CreatorMetrics[],
+): Array<Record<string, any>> {
+  const allMetrics = cohortMetrics ?? items.map((item) => item.metrics as CreatorMetrics)
+  const byTier = new Map<string, CreatorMetrics[]>()
+  for (const metrics of allMetrics) {
+    const tier = tierOf(metrics.followers)
+    byTier.set(tier, [...(byTier.get(tier) ?? []), metrics])
+  }
+  return items.map((item) => {
+    const metrics = item.metrics as CreatorMetrics
+    const tier = tierOf(metrics.followers)
+    return {
+      ...item,
+      followers: metrics.followers,
+      tier,
+      metrics,
+      percentiles: cohortPercentiles(metrics, byTier.get(tier) ?? []),
+    }
+  })
+}
+
+function coerceSavedQuery(value: unknown, id?: string, version?: number): SavedQuery {
+  const input = value && typeof value === 'object' ? value as Partial<SavedQuery> : {}
+  return defaultSavedQuery({
+    ...input,
+    id: id ?? input.id ?? '',
+    version: version ?? input.version ?? 1,
+    name: typeof input.name === 'string' ? input.name : '',
+  })
+}
+
+function coerceSourceQuery(value: unknown, source: SourceId): SourceQuery {
+  let parsed = value
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed)
+    } catch {
+      parsed = null
+    }
+  }
+  const input = parsed && typeof parsed === 'object' ? parsed as Partial<SourceQuery> : {}
+  return { ...input, source, window: input.window === 90 ? 90 : 30 }
+}
+
+function savedQueryFromRow(row: Record<string, any>): SavedQuery {
+  const spec = coerceSavedQuery(row.spec, String(row.id), Number(row.version))
+  spec.name = String(row.name)
+  return spec
+}
+
+function queryRow(item: Record<string, any>) {
+  return {
+    id: String(item.id),
+    creatorKey: String(item.creatorKey),
+    displayName: String(item.displayName),
+    source: item.source as SourceId,
+    regions: item.regions as string[],
+    coopBrands: [...new Set([...(item.metrics.coopBrands ?? []), ...(item.collabBrands ?? [])])] as string[],
+    metrics: item.metrics as CreatorMetrics,
+  }
+}
+
+function publicQueryResultRow(item: Record<string, any>) {
+  return { ...item, health: item.metrics.health }
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? '')
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
 async function queryPool(db: Db, q: Record<string, string>) {
   const { rows } = await db.query(`SELECT * FROM creators WHERE status = 'released'`)
-  let items = await attachCreatorMeta(db, rows, false)
-  items = items.filter((item) => !item.categories.includes('blacklist'))
-  if (q.followersMin) items = items.filter((i) => (i.followers ?? -1) >= Number(q.followersMin))
-  if (q.followersMax) items = items.filter((i) => (i.followers ?? Infinity) <= Number(q.followersMax))
+  const visible = (await attachCreatorMeta(db, rows, false)).filter((item) => !item.categories.includes('blacklist'))
+  let items = enrichPoolItems(visible)
   if (q.hasCollaborated === 'true') items = items.filter((i) => i.hasCollaborated)
   if (q.hasCollaborated === 'false') items = items.filter((i) => !i.hasCollaborated)
   if (q.priceMin || q.priceMax) {
@@ -1157,15 +1430,31 @@ async function queryPool(db: Db, q: Record<string, string>) {
     const wanted = q.categories.split(',')
     items = items.filter((i) => wanted.some((w) => i.categories.includes(w)))
   }
+  if (q.category) {
+    const wanted = q.category.split(',')
+    items = items.filter((i) => wanted.some((w) => i.categories.includes(w) || i.verticals.includes(w)))
+  }
   if (q.verticals) {
     const wanted = q.verticals.split(',')
     items = items.filter((i) => wanted.some((w) => (i.verticals as string[]).includes(w)))
   }
   if (q.collabCountMin) items = items.filter((i) => i.collabCount >= Number(q.collabCountMin))
   if (q.collabCountMax) items = items.filter((i) => i.collabCount <= Number(q.collabCountMax))
-  if (q.grade) {
-    const wanted = q.grade.split(',').filter(Boolean)
-    items = items.filter((i) => wanted.includes(scoreOf(i).grade))
+  if (q.tier) {
+    const wanted = q.tier.split(',')
+    items = items.filter((i) => wanted.includes(i.tier))
+  }
+  if (q.health) {
+    const wanted = q.health.split(',')
+    items = items.filter((i) => i.metrics.health != null && wanted.includes(i.metrics.health))
+  }
+  if (q.source) {
+    const wanted = q.source.split(',')
+    items = items.filter((i) => i.source != null && wanted.includes(i.source))
+  }
+  if (q.region) {
+    const wanted = q.region.split(',').map((x) => x.toLowerCase())
+    items = items.filter((i) => i.regions.some((region: string) => wanted.some((x) => region.toLowerCase().includes(x))))
   }
   if (q.brand) {
     const wanted = q.brand.split(',').map((w) => w.toLowerCase()).filter(Boolean)
@@ -1181,25 +1470,32 @@ async function queryPool(db: Db, q: Record<string, string>) {
       return wanted.some((w) => blob.includes(w))
     })
   }
-  const sort = q.sort || 'rating'
-  const order = q.order === 'asc' ? 1 : -1
+  if (q.q) {
+    const needle = q.q.toLowerCase()
+    items = items.filter((i) =>
+      [i.displayName, i.creatorKey, ...i.regions, ...i.verticals, ...i.collabBrands]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle),
+    )
+  }
+  for (const key of METRIC_KEYS) {
+    const min = q[`${key}Min`]
+    const max = q[`${key}Max`]
+    if (min != null && min !== '') items = items.filter((i) => i.metrics[key] != null && i.metrics[key]! >= Number(min))
+    if (max != null && max !== '') items = items.filter((i) => i.metrics[key] != null && i.metrics[key]! <= Number(max))
+  }
+  const sort = q.sort === 'followers' || METRIC_KEYS.includes(q.sort as NumericMetricKey)
+    ? q.sort as NumericMetricKey
+    : 'cpe'
+  const order = (q.order ?? (sort === 'cpe' ? 'asc' : 'desc')) === 'asc' ? 1 : -1
   items.sort((a, b) => {
-    if (sort === 'collab_count') return (a.collabCount - b.collabCount) * order
-    if (sort === 'price') {
-      const ap = a.price?.amountMin
-      const bp = b.price?.amountMin
-      if (ap == null && bp == null) return 0
-      if (ap == null) return 1
-      if (bp == null) return -1
-      return (ap - bp) * (q.order === 'desc' ? -1 : 1)
-    }
-    if (sort === 'followers') return ((a.followers ?? -1) - (b.followers ?? -1)) * order
-    const aFinal = scoreOf(a).final
-    const bFinal = scoreOf(b).final
-    if (aFinal == null && bFinal == null) return compareFollowersDesc(a, b)
-    if (aFinal == null) return 1
-    if (bFinal == null) return -1
-    if (aFinal !== bFinal) return (aFinal - bFinal) * order
+    const av = a.metrics[sort]
+    const bv = b.metrics[sort]
+    if (av == null && bv == null) return compareFollowersDesc(a, b)
+    if (av == null) return 1
+    if (bv == null) return -1
+    if (av !== bv) return (av - bv) * order
     return compareFollowersDesc(a, b)
   })
   return items
@@ -1212,6 +1508,122 @@ function compareFollowersDesc(a: Record<string, any>, b: Record<string, any>) {
   return b.followers - a.followers
 }
 
+async function runAdapterIngest(
+  env: AppEnv,
+  query: SourceQuery,
+  openedBy: string,
+  existing?: Record<string, unknown>,
+) {
+  const adapter = getAdapter(query.source)
+  if (!adapter) throw new Error(`unsupported adapter: ${query.source}`)
+  await env.db.query(
+    `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, owner)
+     VALUES ($1,$2,$1,true,60,1000,'ops') ON CONFLICT (id) DO NOTHING`,
+    [query.source, query.source === 'pugongying' ? '蒲公英 OpenAPI' : query.source === 'qiangua' ? '千瓜' : '新红'],
+  )
+  const id = existing ? String(existing.id) : randomUUID()
+  const attempt = existing ? Number(existing.attempt) + 1 : 0
+  if (existing) {
+    await env.db.query(
+      `UPDATE ingest_jobs SET status = 'running', attempt = $2, query = $3, started_at = now(),
+       ended_at = NULL, error_code = NULL, error_summary = NULL, updated_at = now() WHERE id = $1`,
+      [id, attempt, JSON.stringify(query)],
+    )
+  } else {
+    await env.db.query(
+      `INSERT INTO ingest_jobs
+       (id, source_id, schedule, status, attempt, sample_rate, opened_by, query, started_at)
+       VALUES ($1,$2,'once','running',$3,1,$4,$5,now())`,
+      [id, query.source, attempt, openedBy, JSON.stringify(query)],
+    )
+  }
+
+  let written = 0
+  let skipped = 0
+  let failed = 0
+  let sourceMode: 'live' | 'fixture' = 'live'
+  try {
+    const page = await adapter.fetch(query)
+    sourceMode = (page as { sourceMode?: 'live' | 'fixture' }).sourceMode ?? 'live'
+    for (const raw of page.records) {
+      const normalized = adapter.normalize(raw)
+      if (!normalized.ok) {
+        failed += 1
+        continue
+      }
+      try {
+        const creator = normalized.creator
+        const found = await env.db.query('SELECT id FROM creators WHERE creator_key = $1', [creator.creatorKey])
+        const creatorId = found.rows[0]?.id ?? randomUUID()
+        await env.db.query(
+          `INSERT INTO creators (
+             id, creator_key, display_name, status, needs_review, followers, followers_unknown,
+             regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
+             metrics_fetched_at, last_ingest_job_id
+           ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (creator_key) DO UPDATE SET
+             display_name = EXCLUDED.display_name,
+             needs_review = true,
+             followers = EXCLUDED.followers,
+             followers_unknown = EXCLUDED.followers_unknown,
+             regions = EXCLUDED.regions,
+             verticals = EXCLUDED.verticals,
+             xhs_id = EXCLUDED.xhs_id,
+             metrics = EXCLUDED.metrics,
+             metrics_window = EXCLUDED.metrics_window,
+             source = EXCLUDED.source,
+             external_id = EXCLUDED.external_id,
+             metrics_fetched_at = EXCLUDED.metrics_fetched_at,
+             last_ingest_job_id = EXCLUDED.last_ingest_job_id,
+             updated_at = now()
+           RETURNING id`,
+          [
+            creatorId,
+            creator.creatorKey,
+            creator.displayName,
+            creator.metrics.followers,
+            creator.metrics.followers == null,
+            creator.regions,
+            creator.verticals,
+            creator.xhsId,
+            JSON.stringify(creator.metrics),
+            creator.metrics.window,
+            query.source,
+            creator.externalId,
+            raw.fetchedAt,
+            id,
+          ],
+        )
+        const persistedId = found.rows[0]?.id ?? creatorId
+        await env.db.query(
+          `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [randomUUID(), persistedId, query.source, raw.externalId, raw.fetchedAt, JSON.stringify(raw.payload)],
+        )
+        if (found.rows[0]) skipped += 1
+        else written += 1
+      } catch {
+        failed += 1
+      }
+    }
+    await env.db.query(
+      `UPDATE ingest_jobs SET status = 'ok', written_count = $2, skipped_dupes = $3,
+       failed_count = $4, source_mode = $5, ended_at = now(), updated_at = now() WHERE id = $1`,
+      [id, written, skipped, failed, sourceMode],
+    )
+  } catch (error) {
+    failed += 1
+    await env.db.query(
+      `UPDATE ingest_jobs SET status = 'failed', failed_count = $2, source_mode = $3,
+       error_code = 'SOURCE_UNAVAILABLE', error_summary = $4, ended_at = now(), updated_at = now()
+       WHERE id = $1`,
+      [id, failed, sourceMode, error instanceof Error ? error.message.slice(0, 240) : 'source unavailable'],
+    )
+  }
+  const { rows } = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [id])
+  return camelJobs(rows)[0]
+}
+
 async function runIngest(
   env: AppEnv,
   sourceId: string,
@@ -1220,6 +1632,13 @@ async function runIngest(
   openedBy: string,
   existing?: Record<string, unknown>,
 ) {
+  const source = await env.db.query('SELECT adapter_type FROM ingest_sources WHERE id = $1', [sourceId])
+  const adapter = getAdapter(String(source.rows[0]?.adapter_type ?? sourceId))
+  if (adapter) {
+    const storedQuery = existing?.query
+    const query = coerceSourceQuery(storedQuery, adapter.id)
+    return runAdapterIngest(env, query, openedBy, existing)
+  }
   const id = existing ? String(existing.id) : randomUUID()
   const attempt = existing ? Number(existing.attempt) + 1 : 0
   if (!existing) {

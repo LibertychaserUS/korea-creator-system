@@ -34,7 +34,7 @@ describe('usable demo seed', () => {
     }
   })
 
-  it('seeds 24+ talents with coop mix, multi-currency prices, grades, and unpublished rows', async () => {
+  it('seeds 24 fixture-normalized talents with all sources, health grades, locks, and drafts', async () => {
     const ops = await ctx.loginJson('ops@kcs.local')
     const res = await ctx.app.request('/api/ops/creators', {
       headers: { authorization: `Bearer ${ops.token}` },
@@ -47,7 +47,9 @@ describe('usable demo seed', () => {
       hasCollaborated: boolean
       collabBrands: string[]
       price: { currency: string; amountMin: number | null } | null
-      label: string | null
+      source: string
+      metrics: { health: string | null; cpe: number | null }
+      metricsLocked: object | null
     }>
     expect(items.length).toBeGreaterThanOrEqual(24)
     expect(items.some((row) => row.categories.includes('collaborated'))).toBe(true)
@@ -55,12 +57,12 @@ describe('usable demo seed', () => {
     expect(items.some((row) => row.status !== 'released')).toBe(true)
     expect(items.some((row) => (row.followers ?? 0) > 0)).toBe(true)
     expect(items.some((row) => row.hasCollaborated && row.collabBrands.length > 0)).toBe(true)
-    const currencies = new Set(items.map((row) => row.price?.currency).filter(Boolean))
-    expect(currencies.has('CNY')).toBe(true)
-    expect(currencies.has('USD')).toBe(true)
-    expect(currencies.has('KRW')).toBe(true)
-    const grades = new Set(items.map((row) => row.label).filter((g) => g && /[SABC]/.test(g)))
-    expect(grades.size).toBeGreaterThanOrEqual(3)
+    expect(new Set(items.map((row) => row.source))).toEqual(new Set(['pugongying', 'qiangua', 'xinhong']))
+    expect(items.some((row) => row.metrics.health === 'excellent')).toBe(true)
+    expect(items.some((row) => row.metrics.health === 'normal')).toBe(true)
+    expect(items.some((row) => row.metrics.health === 'abnormal')).toBe(true)
+    expect(items.some((row) => row.status === 'released' && row.metricsLocked != null)).toBe(true)
+    expect(items.every((row) => row.metrics.cpe != null)).toBe(true)
   })
 
   it('seeds 4+ projects that already have assignments', async () => {

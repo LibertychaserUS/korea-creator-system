@@ -128,7 +128,7 @@ describe('ops batch upload', () => {
     const form = new FormData()
     form.append(
       'file',
-      new File([xlsx], 'jeju-beauty.xlsx', {
+      new File([Uint8Array.from(xlsx)], 'jeju-beauty.xlsx', {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       }),
     )

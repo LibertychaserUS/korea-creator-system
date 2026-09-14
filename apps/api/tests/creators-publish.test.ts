@@ -104,4 +104,37 @@ describe('creator publish and visibility', () => {
     const body = await pool.json()
     expect(body.items.some((row: { id: string }) => row.id === id)).toBe(false)
   })
+
+  it('locks the metrics snapshot at publish and never mutates it on PATCH', async () => {
+    const ops = await ctx.loginJson('ops@kcs.local')
+    const created = await ctx.app.request('/api/ops/creators', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ops.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        displayName: '指标快照达人',
+        source: 'pugongying',
+        regions: ['서울'],
+        verticals: ['beauty'],
+        metrics: { window: 30, followers: 88_000, cpe: 2.5, health: 'excellent' },
+      }),
+    })
+    const { id } = await created.json()
+    await ctx.app.request(`/api/ops/creators/${id}/publish`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ops.token}` },
+    })
+    await ctx.app.request(`/api/ops/creators/${id}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${ops.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ metrics: { window: 30, followers: 90_000, cpe: 4.5, health: 'normal' } }),
+    })
+    const selector = await ctx.loginJson('selector@kcs.local')
+    const detail = await ctx.app.request(`/api/select/creators/${id}`, {
+      headers: { authorization: `Bearer ${selector.token}` },
+    })
+    const body = await detail.json()
+    expect(body.metrics.cpe).toBe(4.5)
+    expect(body.metricsLocked.cpe).toBe(2.5)
+    expect(body.metricsLocked.health).toBe('excellent')
+  })
 })

@@ -28,11 +28,11 @@ export async function createTestApp(): Promise<TestCtx> {
       await db.end()
     },
     login: (email, password = 'Kcs!demo2026') =>
-      app.request('/api/auth/login', {
+      Promise.resolve(app.request('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email, password }),
-      }),
+      })),
     loginJson: async (email, password = 'Kcs!demo2026') => {
       const res = await app.request('/api/auth/login', {
         method: 'POST',
