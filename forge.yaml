@@ -13,7 +13,16 @@ deny_paths:
   - archive/**
 branches:
   main:
-    required_checks: []
+    # Job names in .github/workflows/kcs.yml, exactly as the PR page shows them.
+    required_checks:
+      - contract
+      - api
+      - apps (select)
+      - apps (ops)
+      - apps (dev)
+      - apps (marketing)
+      - blackbox
+      - api-image
     approvals: 1
     code_owners: false
 docs_sync: []
