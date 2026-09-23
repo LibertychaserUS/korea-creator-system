@@ -6,7 +6,7 @@
  * and "how good" is always expressed as a percentile inside the same follower
  * tier (see percentile.ts). Null means the source did not provide it.
  */
-import { percentileRank } from './percentile'
+import { percentileTenths } from './percentile'
 
 export type Platform = 'xhs'
 
@@ -249,15 +249,40 @@ export function cohortPercentiles(
 ): MetricPercentiles {
   const out: MetricPercentiles = {}
   for (const key of keys) {
-    const field = metricField(key)
-    if (!field.better) continue
     const value = target[key]
     if (value == null) continue
     const values = cohort.map((c) => c[key]).filter((v): v is number => v != null)
-    if (values.length < 2) continue
-    let pct = percentileRank(value, values)
-    if (field.better === 'low') pct = Number((100 - pct).toFixed(1))
-    out[key] = { percentile: pct, band: bandOf(pct) }
+    const below = values.filter((v) => v < value).length
+    const equal = values.filter((v) => v === value).length
+    const entry = percentileFromCounts(key, below, equal, values.length)
+    if (entry) out[key] = entry
   }
   return out
+}
+
+/** Only metrics with a "better" direction are ranked. */
+export const RANKED_METRIC_KEYS = METRIC_FIELDS.filter((f) => f.better).map((f) => f.key) as readonly NumericMetricKey[]
+
+/**
+ * Directed percentile from cohort counts (see `percentileTenths`), in tenths:
+ * `better: 'low'` is inverted so higher is always better. `null` when the key
+ * is not ranked or the cohort has fewer than two values.
+ */
+export function directedPercentileTenths(key: NumericMetricKey, below: number, equal: number, n: number): number | null {
+  const field = metricField(key)
+  if (!field.better || n < 2) return null
+  const tenths = percentileTenths(below, equal, n)
+  return field.better === 'low' ? 1000 - tenths : tenths
+}
+
+export function percentileFromCounts(
+  key: NumericMetricKey,
+  below: number,
+  equal: number,
+  n: number,
+): { percentile: number; band: PercentileBand } | undefined {
+  const tenths = directedPercentileTenths(key, below, equal, n)
+  if (tenths == null) return undefined
+  const percentile = tenths / 10
+  return { percentile, band: bandOf(percentile) }
 }

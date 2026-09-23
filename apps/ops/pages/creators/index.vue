@@ -119,12 +119,12 @@
             </TableRow>
           </TableBody>
         </Table>
-        <EmptyState v-if="!loading && !filtered.length" :title="emptyTitle" :body="emptyBody" :icon="Users" />
+        <EmptyState v-if="!loading && !items.length" :title="emptyTitle" :body="emptyBody" :icon="Users" />
         <template v-if="pages > 1" #footer>
           <ListPager
             v-model:page="page"
             :pages="pages"
-            :info="t('kcs.opsCreators.pageInfo', { page, pages, total: filtered.length })"
+            :info="t('kcs.opsCreators.pageInfo', { page, pages, total })"
             :prev-label="t('kcs.opsCreators.prev')"
             :next-label="t('kcs.opsCreators.next')"
             :testid="TESTID.opsCreatorsPager"
@@ -169,12 +169,12 @@
           </div>
         </div>
       </NuxtLink>
-      <EmptyState v-if="!loading && !filtered.length" :title="emptyTitle" :body="emptyBody" :icon="Users" />
+      <EmptyState v-if="!loading && !items.length" :title="emptyTitle" :body="emptyBody" :icon="Users" />
       <ListPager
         v-if="pages > 1"
         v-model:page="page"
         :pages="pages"
-        :info="t('kcs.opsCreators.pageInfo', { page, pages, total: filtered.length })"
+        :info="t('kcs.opsCreators.pageInfo', { page, pages, total })"
         :prev-label="t('kcs.opsCreators.prev')"
         :next-label="t('kcs.opsCreators.next')"
         :testid="TESTID.opsCreatorsPager"
@@ -187,7 +187,8 @@
 
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, Search, UserPlus, Users } from 'lucide-vue-next'
-import { SOURCE_IDS, TESTID, tierOf, type CreatorStage } from '@kcs/contract'
+import { useDebounceFn } from '@vueuse/core'
+import { SOURCE_IDS, TESTID, pageCount, tierOf, type CreatorStage } from '@kcs/contract'
 
 type Row = {
   id: string
@@ -219,6 +220,8 @@ const tabs = [
 const isStage = (v: unknown): v is CreatorStage => v === 'review' || v === 'released' || v === 'withdrawn'
 
 const items = ref<Row[]>([])
+const total = ref(0)
+const counts = ref<Record<CreatorStage, number>>({ review: 0, released: 0, withdrawn: 0 })
 const loading = ref(true)
 const error = ref('')
 const stage = ref<CreatorStage>(isStage(route.query.tab) ? route.query.tab : 'review')
@@ -226,35 +229,46 @@ const q = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const source = ref(typeof route.query.source === 'string' ? route.query.source : '')
 const page = ref(Math.max(1, Number(route.query.page) || 1))
 
-const counts = computed(() => {
-  const out: Record<CreatorStage, number> = { review: 0, released: 0, withdrawn: 0 }
-  for (const c of matching.value) out[c.stage] += 1
-  return out
-})
-
-/** 搜索和来源先筛，标签页再分：标签上的数字跟着搜索变。 */
-const matching = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return items.value.filter((c) => {
-    if (source.value === 'manual' ? c.source : source.value && c.source !== source.value) return false
-    if (!needle) return true
-    return [c.displayName, c.xhsId].some((v) => v && v.toLowerCase().includes(needle))
-  })
-})
-const filtered = computed(() => matching.value.filter((c) => c.stage === stage.value))
-const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
-const pageItems = computed(() => filtered.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
+/** 搜索和来源先筛，标签页再分（服务端做）：标签上的数字跟着搜索变。 */
+const pages = computed(() => pageCount(total.value, PAGE_SIZE))
+const pageItems = computed(() => items.value)
 
 const filtering = computed(() => Boolean(q.value.trim() || source.value))
 const emptyTitle = computed(() => (filtering.value ? t('kcs.opsCreators.emptyFilter') : t(`kcs.opsCreators.empty.${stage.value}`)))
 const emptyBody = computed(() => (filtering.value ? undefined : stage.value === 'review' ? t('kcs.opsCreators.emptyHint') : undefined))
 
-watch([q, source], () => {
-  page.value = 1
+let loadSeq = 0
+async function load() {
+  const mine = ++loadSeq
+  loading.value = true
+  try {
+    const params = new URLSearchParams({ stage: stage.value, page: String(page.value), pageSize: String(PAGE_SIZE) })
+    if (q.value.trim()) params.set('q', q.value.trim())
+    if (source.value) params.set('source', source.value)
+    const res = await request<{ items: Row[]; total: number; counts: Record<CreatorStage, number> }>(`/api/ops/creators?${params}`)
+    if (mine !== loadSeq) return
+    items.value = res.items ?? []
+    total.value = res.total ?? 0
+    counts.value = res.counts ?? counts.value
+    error.value = ''
+    if (page.value > pages.value) page.value = pages.value
+  } catch {
+    if (mine === loadSeq) error.value = t('kcs.panel.error')
+  } finally {
+    if (mine === loadSeq) loading.value = false
+  }
+}
+const debouncedLoad = useDebounceFn(load, 250)
+
+watch(q, () => {
+  if (page.value !== 1) page.value = 1
+  else debouncedLoad()
 })
-watch(pages, (n) => {
-  if (page.value > n) page.value = n
+watch(source, () => {
+  if (page.value !== 1) page.value = 1
+  else load()
 })
+watch([stage, page], () => load())
 watch([stage, q, source, page], () => {
   const query: Record<string, string> = { tab: stage.value }
   if (q.value.trim()) query.q = q.value.trim()
@@ -291,14 +305,5 @@ function formatDate(iso: string | null) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(d)
 }
 
-onMounted(async () => {
-  try {
-    const res = await request<{ items: Row[] }>('/api/ops/creators')
-    items.value = res.items ?? []
-  } catch {
-    error.value = t('kcs.panel.error')
-  } finally {
-    loading.value = false
-  }
-})
+onMounted(load)
 </script>

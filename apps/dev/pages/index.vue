@@ -273,11 +273,11 @@ async function loadAll() {
   try {
     const [h, j, d] = await Promise.all([
       request<any>('/api/dev/health'),
-      request<any>('/api/dev/jobs').catch(() => ({ items: [] })),
+      request<any>('/api/dev/jobs?pageSize=12').catch(() => ({ items: [] })),
       request<any>('/api/dev/dead-letters').catch(() => ({ items: [] })),
     ])
     health.value = h
-    jobs.value = (j.items || []).slice(0, 12)
+    jobs.value = j.items || []
     parked.value = (d.items || []).slice(0, 20)
   } catch {
     health.value = { ...health.value, ok: false }

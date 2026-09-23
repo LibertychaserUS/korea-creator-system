@@ -2,7 +2,7 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**205 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**206 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
 The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
@@ -101,6 +101,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | sort followers desc / asc | PRD §6.1 | `?sort=followers&order=` |
 | sort collab_count desc | PRD §6.1 | `?sort=collab_count&order=desc` |
 | sort price by `amount_min`; missing price last | DOMAIN Price | `?sort=price&order=asc` |
+| server paging: `page` / `pageSize`, `total` counted before paging, `dir` = `order`, `pageSize` capped at 100 | 05 §分页 | `?page&pageSize&sort=followers&dir=desc` |
 | contradictory AND → empty list, not 5xx | DOMAIN 边界; UX 空态 | `?hasCollaborated=false&categories=collaborated` |
 
 ## 5. Project assign / remove — `05-projects.test.ts`

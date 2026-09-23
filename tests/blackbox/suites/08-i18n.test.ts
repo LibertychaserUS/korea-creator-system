@@ -72,7 +72,7 @@ describe('i18n — stable codes, ids, and metrics', () => {
       const res = await request('GET', PATHS.pool, {
         token: selector.token,
         acceptLanguage: lang,
-        query: { locale: lang },
+        query: { locale: lang, q: creatorKey },
       })
       expect(res.status).toBe(200)
       const hit = itemsOf(res.json).find((row) => row.id === id || row.creatorKey === creatorKey)

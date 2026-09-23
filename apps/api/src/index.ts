@@ -6,6 +6,7 @@ import { createS3Store } from './s3'
 import { seed } from './seed'
 import { MemoryObjectStore } from './store'
 import { startIngestWorker } from './ingest/worker'
+import { ensurePublishedSnapshots } from './http/pool'
 
 const port = Number(process.env.PORT || 7100)
 
@@ -22,6 +23,7 @@ async function main() {
     const counts = await seed(db)
     console.log('demo data loaded', JSON.stringify(counts))
   }
+  await ensurePublishedSnapshots(db, { full: true })
   const store =
     process.env.S3_ENDPOINT && process.env.S3_ACCESS_KEY
       ? createS3Store({

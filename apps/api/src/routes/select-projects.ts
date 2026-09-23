@@ -1,15 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { exportLocale, projectSheet } from '@kcs/contract'
+import { exportLocale, projectSheet, RANKED_METRIC_KEYS } from '@kcs/contract'
 import { audit } from '../http/audit'
 import {
   asPublished,
   attachCreatorMeta,
-  enrichPoolItems,
   loadCreator,
   metricsFromRow,
   publicPoolRow,
-  queryPool,
 } from '../http/creators'
+import { ensurePublishedSnapshots, withPercentiles } from '../http/pool'
 import type { Context } from 'hono'
 import { assignmentsBody, kcsAssignmentBody, projectCreateBody, readJson, validationError } from '../http/body'
 import { jsonError } from '../http/responses'
@@ -80,8 +79,11 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       })),
       false,
     )
-    const pool = await queryPool(env.db, {})
-    const enriched = enrichPoolItems(meta.map(asPublished), pool)
+    await ensurePublishedSnapshots(env.db)
+    const enriched = await withPercentiles(env.db, meta.map(asPublished), {
+      nullSourceCohort: false,
+      keys: RANKED_METRIC_KEYS,
+    })
     return context.json({
       ...rows[0],
       assignments: enriched.map((item, index) => {

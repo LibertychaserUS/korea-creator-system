@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises'
 import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
+import { ensurePublishedSnapshots } from './http/pool'
 
 const BASE_DATA_SQL = new URL('./migrations/0008_base_reference_data.sql', import.meta.url)
 
@@ -280,6 +281,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     )
   }
   const canonicalIds = await seedCreators(db)
+  await ensurePublishedSnapshots(db, { full: true })
   await seedProjects(db, orgId, canonicalIds)
   for (const spec of SAVED_QUERIES) {
     await db.query(

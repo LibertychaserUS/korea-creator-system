@@ -1,12 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { applySavedQuery, validateSavedQuery } from '@kcs/contract'
-import {
-  coerceSavedQuery,
-  publicQueryResultRow,
-  queryPool,
-  queryRow,
-  savedQueryFromRow,
-} from '../http/creators'
+import { validateSavedQuery } from '@kcs/contract'
+import { coerceSavedQuery, savedQueryFromRow } from '../http/creators'
+import { savedQueryPage } from '../http/pool'
 import type { Context } from 'hono'
 import { z } from 'zod'
 import { readJson } from '../http/body'
@@ -45,9 +40,7 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
     const spec = coerceSavedQuery(raw)
     const errors = validateSavedQuery(spec)
     if (errors.length) return invalidQuery(context, errors)
-    const pool = await queryPool(env.db, {})
-    const rows = applySavedQuery(pool.map(queryRow), spec)
-    return context.json({ items: rows.map(publicQueryResultRow), total: rows.length })
+    return context.json(await savedQueryPage(env.db, spec, context.req.query()))
   })
 
   app.post('/api/select/queries', async (context) => {

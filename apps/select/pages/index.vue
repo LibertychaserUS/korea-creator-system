@@ -285,7 +285,7 @@
     <!-- 达人表：列由方案决定 -->
     <TableCard :title="t('kcs.panel.pool')" dense>
       <template #meta>
-        <span class="tabular-nums" data-testid="pool-count">{{ t('kcs.query.matched', { n: formatNumber(visible.length) }) }}</span>
+        <span class="tabular-nums" data-testid="pool-count">{{ t('kcs.query.matched', { n: formatNumber(total) }) }}</span>
       </template>
       <template v-if="spec.highlights.length" #actions>
         <!-- 高亮图例：方案里的阈值 → 颜色，新同事不用猜 -->
@@ -436,6 +436,17 @@
         <Button variant="outline" size="sm" @click="resetSpec">{{ t('kcs.query.reset') }}</Button>
       </EmptyState>
 
+      <div v-if="pages > 1" class="border-t border-border/60 px-4 py-3 sm:px-5">
+        <ListPager
+          v-model:page="page"
+          :pages="pages"
+          :info="t('kcs.query.pageInfo', { page, pages, total: formatNumber(total) })"
+          :prev-label="t('kcs.query.prev')"
+          :next-label="t('kcs.query.next')"
+          testid="pool-pager"
+        />
+      </div>
+
       <template v-if="canAssign" #footer>
         <div class="flex flex-wrap items-center gap-3">
           <template v-if="projectId">
@@ -484,7 +495,9 @@ import { useDebounceFn } from '@vueuse/core'
 import {
   CREATOR_TIERS,
   METRIC_KEYS,
+  PAGE_SIZE_DEFAULT,
   can,
+  pageCount,
   defaultSavedQuery,
   metricField,
   validateSavedQuery,
@@ -521,6 +534,8 @@ const notice = ref('')
 const saving = ref(false)
 
 const items = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
 const search = ref('')
 const picked = ref<string[]>([])
 const confirming = ref(false)
@@ -540,11 +555,9 @@ const mobileColumns = computed<NumericMetricKey[]>(() => {
   return [...new Set([...first, ...spec.columns])].slice(0, 3)
 })
 
-const visible = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  if (!q) return items.value
-  return items.value.filter((r) => `${r.displayName ?? ''} ${r.creatorKey ?? ''} ${r.xhsId ?? ''}`.toLowerCase().includes(q))
-})
+/** 搜索、筛选、排序、分页都在服务端：这里就是当前这一页。已勾选的人跨页保留。 */
+const visible = computed(() => items.value)
+const pages = computed(() => pageCount(total.value, PAGE_SIZE_DEFAULT))
 
 function applySpec(next: SavedQuery) {
   Object.assign(spec, JSON.parse(JSON.stringify(next)))
@@ -616,9 +629,13 @@ async function run() {
   try {
     // 新建还没起名的方案也要能先看结果；名字只在保存时必填。
     const body = { ...spec, name: spec.name.trim() || t('kcs.query.unsaved') }
-    const res = await request<any>('/api/select/queries/run', { method: 'POST', body: JSON.stringify(body) })
+    const params = new URLSearchParams({ page: String(page.value), pageSize: String(PAGE_SIZE_DEFAULT) })
+    if (search.value.trim()) params.set('q', search.value.trim())
+    const res = await request<any>(`/api/select/queries/run?${params}`, { method: 'POST', body: JSON.stringify(body) })
     if (mine !== loadSeq) return
-    items.value = res.items ?? res.rows ?? []
+    items.value = res.items ?? []
+    total.value = res.total ?? items.value.length
+    if (page.value > pages.value) page.value = pages.value
   } finally {
     if (mine === loadSeq) loading.value = false
   }
@@ -706,7 +723,14 @@ onMounted(async () => {
   loadProject()
 })
 const debouncedRun = useDebounceFn(run, 300)
-watch(specJson, () => debouncedRun())
+// 条件一变回到第一页；page 本身的变化（翻页）立即取数。
+function rerun() {
+  if (page.value !== 1) page.value = 1
+  else debouncedRun()
+}
+watch(specJson, rerun)
+watch(search, rerun)
+watch(page, () => run())
 watch(picked, () => {
   if (!picked.value.length) confirming.value = false
 })

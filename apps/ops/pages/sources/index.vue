@@ -315,9 +315,9 @@ const hasActive = computed(() => jobs.value.some((j) => j.status === 'queued' ||
 
 async function loadJobs() {
   try {
-    const res = await request<any>('/api/ingest/jobs')
-    const list = res.items ?? res.jobs ?? res ?? []
-    jobs.value = list.filter((j: any) => SOURCE_IDS.includes(j.sourceId)).slice(0, 20)
+    const params = new URLSearchParams({ source: SOURCE_IDS.join(','), pageSize: '20' })
+    const res = await request<any>(`/api/ingest/jobs?${params}`)
+    jobs.value = res.items ?? []
   } finally {
     loadingJobs.value = false
     schedulePoll()

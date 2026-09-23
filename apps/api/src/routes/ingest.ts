@@ -1,4 +1,4 @@
-import { SOURCE_IDS, type SourceQuery } from '@kcs/contract'
+import { parsePaging, SOURCE_IDS, type SourceQuery } from '@kcs/contract'
 import { adapterDescriptions } from '../adapters'
 import { retryJob } from '../ingest/jobs'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
@@ -6,6 +6,7 @@ import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { z } from 'zod'
 import { readJson } from '../http/body'
+import { csv, pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -77,8 +78,27 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
   app.get('/api/ingest/jobs', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ingest.read')
     if (denied) return denied
-    const { rows } = await env.db.query('SELECT * FROM ingest_jobs ORDER BY created_at DESC')
-    return context.json({ items: camelJobs(rows) })
+    const query = context.req.query()
+    const params: unknown[] = []
+    const where: string[] = []
+    for (const [param, column] of [['source', 'source_id'], ['status', 'status']] as const) {
+      const wanted = csv(query[param])
+      if (!wanted.length) continue
+      params.push(wanted)
+      where.push(`${column} = ANY($${params.length}::text[])`)
+    }
+    const paging = parsePaging(query)
+    const { rows, total } = await pageRows(
+      env.db,
+      {
+        columns: '*',
+        from: `FROM ingest_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`,
+        order: 'created_at DESC, id COLLATE "C"',
+      },
+      params,
+      paging,
+    )
+    return context.json({ items: camelJobs(rows), total, page: paging.page, pageSize: paging.pageSize })
   })
 
   // Gone: it ran a job inline, outside the queue's quota and rate limit, and

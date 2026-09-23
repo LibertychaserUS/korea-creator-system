@@ -2,11 +2,13 @@ import {
   DEAD_LETTER_KINDS,
   DEAD_LETTER_MAX_REPLAYS,
   DEAD_LETTER_STATES,
+  parsePaging,
   type DeadLetterState,
   type SourceQuery,
 } from '@kcs/contract'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
+import { pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import { camelDeadLetters, scrub } from '../ingest/dead-letters'
@@ -72,8 +74,14 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.get('/api/dev/jobs', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'dev.read')
     if (denied) return denied
-    const { rows } = await env.db.query('SELECT * FROM ingest_jobs ORDER BY updated_at DESC')
-    return context.json({ items: camelJobs(rows) })
+    const paging = parsePaging(context.req.query())
+    const { rows, total } = await pageRows(
+      env.db,
+      { columns: '*', from: 'FROM ingest_jobs', order: 'updated_at DESC, id COLLATE "C"' },
+      [],
+      paging,
+    )
+    return context.json({ items: camelJobs(rows), total, page: paging.page, pageSize: paging.pageSize })
   })
 
   app.get('/api/dev/jobs/:id', async (context) => {

@@ -1,0 +1,21 @@
+import { describe, expect, it } from 'vitest'
+import { PAGE_SIZE_DEFAULT, PAGE_SIZE_MAX, pageCount, parsePaging } from '../src/paging'
+
+describe('paging', () => {
+  it('defaults, caps and offsets', () => {
+    expect(parsePaging({})).toEqual({ page: 1, pageSize: PAGE_SIZE_DEFAULT, offset: 0 })
+    expect(parsePaging({ page: '3', pageSize: '20' })).toEqual({ page: 3, pageSize: 20, offset: 40 })
+    expect(parsePaging({ pageSize: '5000' }).pageSize).toBe(PAGE_SIZE_MAX)
+  })
+
+  it('ignores junk instead of failing', () => {
+    expect(parsePaging({ page: 'x', pageSize: '-4' })).toEqual({ page: 1, pageSize: PAGE_SIZE_DEFAULT, offset: 0 })
+    expect(parsePaging({ page: '0', pageSize: '0' })).toEqual({ page: 1, pageSize: PAGE_SIZE_DEFAULT, offset: 0 })
+    expect(parsePaging({ page: 2.7, pageSize: 10.2 })).toEqual({ page: 2, pageSize: 10, offset: 10 })
+  })
+
+  it('page count is at least one', () => {
+    expect(pageCount(0, 50)).toBe(1)
+    expect(pageCount(101, 50)).toBe(3)
+  })
+})

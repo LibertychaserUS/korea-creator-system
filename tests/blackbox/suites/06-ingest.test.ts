@@ -52,14 +52,14 @@ describe('Ingest jobs', () => {
   })
 
   it('the old inline route is gone: POST /api/ingest/jobs → 410 GONE, no job, no made-up creator (05 数据源与抓取)', async () => {
-    const before = itemsOf((await request('GET', PATHS.ingestJobs, { token: ops.token })).json).length
+    const before = Number((await request('GET', PATHS.ingestJobs, { token: ops.token })).json.total)
     const res = await request('POST', PATHS.ingestJobs, {
       token: ops.token,
       body: { sourceId: 'file-drop', schedule: 'once', sampleRate: 0.1 },
     })
     expect(res.status).toBe(410)
     expect(errorCode(res.json)).toBe(ERROR.GONE)
-    const after = itemsOf((await request('GET', PATHS.ingestJobs, { token: ops.token })).json).length
+    const after = Number((await request('GET', PATHS.ingestJobs, { token: ops.token })).json.total)
     expect(after).toBe(before)
   })
 
@@ -85,7 +85,7 @@ describe('Ingest jobs', () => {
     })
     expect(res.status).toBe(400)
     expect(errorCode(res.json)).toBe(ERROR.SOURCE_INVALID)
-    const jobs = await request('GET', PATHS.ingestJobs, { token: ops.token })
+    const jobs = await request('GET', PATHS.ingestJobs, { token: ops.token, query: { pageSize: 100 } })
     const leaked = itemsOf(jobs.json).some((row) =>
       JSON.stringify(row).includes('example.invalid'),
     )
