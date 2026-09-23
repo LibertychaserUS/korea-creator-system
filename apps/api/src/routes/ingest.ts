@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { readJson } from '../http/body'
 import { csv, pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
+import { jobSampleView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
 export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
@@ -127,7 +128,7 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
       'SELECT id, display_name, needs_review FROM creators WHERE last_ingest_job_id = $1',
       [context.req.param('id')],
     )
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(jobSampleView) })
   })
 
   app.post('/api/ingest/jobs/:id/retry', async (context) => {

@@ -226,6 +226,8 @@
 <script setup lang="ts">
 import { ArrowLeft, Lock, Users } from 'lucide-vue-next'
 import {
+  API,
+  apiPath,
   TESTID,
   emptyMetrics,
   type CreatorMetrics,
@@ -270,7 +272,7 @@ const sourceLinks = computed<CreatorSourceLink[]>(() => {
 async function loadHistory() {
   loadingHistory.value = true
   try {
-    const res = await request<{ snapshots: MetricSnapshot[] }>(`/api/select/creators/${route.params.id}/history?window=${historyWindow.value}&limit=60`)
+    const res = await request<{ snapshots: MetricSnapshot[] }>(apiPath(API.poolCreatorHistory, { id: String(route.params.id) }, { window: historyWindow.value, limit: 60 }))
     snapshots.value = res.snapshots ?? []
   } catch {
     snapshots.value = []
@@ -289,7 +291,7 @@ function formatDate(iso: string) {
 
 onMounted(async () => {
   try {
-    creator.value = await request(`/api/select/creators/${route.params.id}`)
+    creator.value = await request(apiPath(API.poolCreator, { id: String(route.params.id) }))
   } catch {
     creator.value = null
   } finally {

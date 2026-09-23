@@ -12,6 +12,7 @@ import { ensurePublishedSnapshots, withPercentiles } from '../http/pool'
 import type { Context } from 'hono'
 import { assignmentsBody, kcsAssignmentBody, projectCreateBody, readJson, validationError } from '../http/body'
 import { jsonError } from '../http/responses'
+import { projectView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers, SessionUser } from '../http/types'
 
 export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
@@ -23,7 +24,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
        FROM projects p WHERE p.org_id = $1 AND p.status = 'open' ORDER BY p.updated_at DESC`,
       [user!.orgId],
     )
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(projectView) })
   })
 
   app.post('/api/select/projects', async (context) => {
@@ -85,7 +86,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       keys: RANKED_METRIC_KEYS,
     })
     return context.json({
-      ...rows[0],
+      ...projectView({ ...rows[0], member_count: assigned.rows.length }),
       assignments: enriched.map((item, index) => {
         const row = assigned.rows[index]
         return {

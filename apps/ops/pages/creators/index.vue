@@ -188,7 +188,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, Search, UserPlus, Users } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
-import { SOURCE_IDS, TESTID, pageCount, tierOf, type CreatorStage } from '@kcs/contract'
+import { API, apiPath, SOURCE_IDS, TESTID, pageCount, tierOf, type CreatorStage } from '@kcs/contract'
 
 type Row = {
   id: string
@@ -245,7 +245,7 @@ async function load() {
     const params = new URLSearchParams({ stage: stage.value, page: String(page.value), pageSize: String(PAGE_SIZE) })
     if (q.value.trim()) params.set('q', q.value.trim())
     if (source.value) params.set('source', source.value)
-    const res = await request<{ items: Row[]; total: number; counts: Record<CreatorStage, number> }>(`/api/ops/creators?${params}`)
+    const res = await request<{ items: Row[]; total: number; counts: Record<CreatorStage, number> }>(apiPath(API.opsCreators, {}, params))
     if (mine !== loadSeq) return
     items.value = res.items ?? []
     total.value = res.total ?? 0

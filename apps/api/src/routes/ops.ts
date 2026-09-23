@@ -21,6 +21,7 @@ import {
 import {
   assetPublicUrl,
   attachCreatorMeta,
+  camelJobs,
   creatorHistory,
   hasCollabSql,
   loadCreator,
@@ -30,6 +31,7 @@ import {
 } from '../http/creators'
 import { pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
+import { categoryView, overviewJobView, reviewView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import {
   IMAGE_MAX_BYTES,
@@ -87,7 +89,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       `SELECT id, status, written_count, failed_count, batch_name, file_name, created_at
        FROM ingest_jobs ORDER BY created_at DESC LIMIT 5`,
     )
-    return context.json({ counts: counts.rows[0], recentJobs: jobs.rows })
+    return context.json({ counts: counts.rows[0], recentJobs: jobs.rows.map(overviewJobView) })
   })
 
   /**
@@ -333,7 +335,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
     const { rows } = await env.db.query('SELECT * FROM categories ORDER BY builtin DESC, slug')
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(categoryView) })
   })
 
   app.patch('/api/ops/categories/:slug', async (context) => {
@@ -376,7 +378,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       `SELECT r.*, c.display_name FROM reviews r JOIN creators c ON c.id = r.creator_id
        WHERE r.status = 'pending' ORDER BY r.created_at DESC`,
     )
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(reviewView) })
   })
 
   app.post('/api/ops/review/:id/pass', async (context) => {
@@ -407,7 +409,8 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       [],
       paging,
     )
-    return context.json({ items: rows.map(({ total_count: _, ...row }) => row), total, page: paging.page, pageSize: paging.pageSize })
+    const items = camelJobs(rows).map((job, index) => ({ ...job, sourceName: rows[index].source_name }))
+    return context.json({ items, total, page: paging.page, pageSize: paging.pageSize })
   })
 
   app.post('/api/ops/batches', gate('ops.write'), uploadLimit(WORKBOOK_MAX_BYTES), async (context) => {

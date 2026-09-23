@@ -10,6 +10,7 @@ import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
+import { auditLogView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import { camelDeadLetters, scrub } from '../ingest/dead-letters'
 import { retryJob } from '../ingest/jobs'
@@ -263,7 +264,7 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { rows } = await env.db.query(
       'SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100',
     )
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(auditLogView) })
   })
 
   app.get('/api/dev/i18n-theme', async (context) => {

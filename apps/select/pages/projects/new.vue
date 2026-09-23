@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { API } from '@kcs/contract'
 import { AlertCircle, ArrowLeft, FolderKanban, Loader2, Plus } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -91,7 +92,7 @@ async function save() {
   saving.value = true
   error.value = false
   try {
-    const data = await request<{ id: string }>('/api/select/projects', {
+    const data = await request<{ id: string }>(API.projectCreate.path, {
       method: 'POST',
       body: JSON.stringify({ name: name.value.trim(), note: note.value.trim() }),
     })

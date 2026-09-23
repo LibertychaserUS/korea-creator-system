@@ -214,7 +214,7 @@
 
 <script setup lang="ts">
 import { ChevronDown, KeyRound, Play, Radar, RotateCcw, TriangleAlert, X } from 'lucide-vue-next'
-import { SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
+import { API, apiPath, SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
 
 type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
 
@@ -288,7 +288,7 @@ function range(min?: number | null, max?: number | null) {
 
 async function loadAdapters() {
   try {
-    const res = await request<any>('/api/ingest/adapters')
+    const res = await request<any>(API.ingestAdapters.path)
     adapters.value = res.items ?? res.adapters ?? res ?? []
     if (adapters.value.length && !adapters.value.some((a) => a.id === form.source)) form.source = adapters.value[0]!.id
   } finally {
@@ -316,7 +316,7 @@ const hasActive = computed(() => jobs.value.some((j) => j.status === 'queued' ||
 async function loadJobs() {
   try {
     const params = new URLSearchParams({ source: SOURCE_IDS.join(','), pageSize: '20' })
-    const res = await request<any>(`/api/ingest/jobs?${params}`)
+    const res = await request<any>(apiPath(API.ingestJobs, {}, params))
     jobs.value = res.items ?? []
   } finally {
     loadingJobs.value = false
@@ -336,7 +336,7 @@ async function act(job: any, action: 'retry' | 'cancel') {
   acting.value = job.id
   error.value = ''
   try {
-    await request(`/api/ingest/jobs/${job.id}/${action}`, { method: 'POST' })
+    await request(apiPath(action === 'retry' ? API.ingestJobRetry : API.ingestJobCancel, { id: job.id }), { method: 'POST' })
     await loadJobs()
   } catch (e: any) {
     error.value = e?.data?.error ?? e?.message ?? String(e)
@@ -356,7 +356,7 @@ async function runFetch() {
   }
   if (form.health.length && supports('health')) body.health = form.health
   try {
-    const res = await request<any>('/api/ingest/fetch', { method: 'POST', body: JSON.stringify(body) })
+    const res = await request<any>(API.ingestFetch.path, { method: 'POST', body: JSON.stringify(body) })
     // 202：任务已入队，worker 按配额执行；201（sync=1）：直接拿到结果
     result.value = res.job && res.writtenCount == null ? { queued: true, jobId: res.job.id ?? res.job } : res
     await loadJobs()

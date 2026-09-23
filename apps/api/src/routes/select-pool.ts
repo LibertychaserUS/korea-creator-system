@@ -94,11 +94,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     return context.json({
       items: enriched.map((item, index) => ({
         ...publicPoolRow(item),
-        org_id: rows[index].org_id,
-        creator_id: item.id,
         creatorId: item.id,
-        display_name: item.displayName,
-        added_at: rows[index].added_at,
         addedAt: rows[index].added_at,
       })),
     })

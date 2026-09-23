@@ -193,7 +193,7 @@
 <script setup lang="ts">
 import { ChevronDown, Clock, Loader2, Search, UserPlus, Users } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { ROLES, TESTID, type Role } from '@kcs/contract'
+import { API, apiPath, ROLES, TESTID, type Role } from '@kcs/contract'
 import { Button } from '#components'
 
 type Account = {
@@ -252,7 +252,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const res = await request<{ items: Account[] }>('/api/kcs-admin/users', {}, 'self')
+    const res = await request<{ items: Account[] }>(API.accountList.path, {}, 'self')
     items.value = res.items ?? []
   } catch {
     error.value = t('kcs.panel.error')
@@ -262,7 +262,7 @@ async function load() {
 }
 
 function patch(id: string, body: Record<string, unknown>) {
-  return request<Account>(`/api/kcs-admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }, 'self')
+  return request<Account>(apiPath(API.accountPatch, { id }), { method: 'PATCH', body: JSON.stringify(body) }, 'self')
 }
 
 async function changeRole(a: Account, next: Role) {
@@ -314,7 +314,7 @@ async function submitCreate() {
   creating.value = true
   try {
     const created = await request<{ email: string }>(
-      '/api/kcs-admin/users',
+      API.accountCreate.path,
       { method: 'POST', body: JSON.stringify({ ...form }) },
       'self',
     )

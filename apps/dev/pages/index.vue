@@ -204,7 +204,7 @@
 
 <script setup lang="ts">
 import { AlertTriangle, Database, Inbox, ListChecks, Loader2, Plug, RefreshCw, RotateCcw } from 'lucide-vue-next'
-import { DEAD_LETTER_MAX_REPLAYS, SOURCE_IDS, can } from '@kcs/contract'
+import { API, apiPath, DEAD_LETTER_MAX_REPLAYS, SOURCE_IDS, can } from '@kcs/contract'
 
 const MAX_REPLAYS = DEAD_LETTER_MAX_REPLAYS
 
@@ -272,9 +272,9 @@ async function loadAll() {
   loading.value = true
   try {
     const [h, j, d] = await Promise.all([
-      request<any>('/api/dev/health'),
-      request<any>('/api/dev/jobs?pageSize=12').catch(() => ({ items: [] })),
-      request<any>('/api/dev/dead-letters').catch(() => ({ items: [] })),
+      request<any>(API.devHealth.path),
+      request<any>(apiPath(API.devJobs, {}, { pageSize: 12 })).catch(() => ({ items: [] })),
+      request<any>(API.devDeadLetters.path).catch(() => ({ items: [] })),
     ])
     health.value = h
     jobs.value = j.items || []
@@ -289,7 +289,7 @@ async function loadAll() {
 async function retry(id: string) {
   retrying.value = id
   try {
-    await request(`/api/dev/jobs/${id}/retry`, { method: 'POST' })
+    await request(apiPath(API.devRetry, { id }), { method: 'POST' })
     await loadAll()
   } finally {
     retrying.value = ''
@@ -306,7 +306,7 @@ function parkedTone(state: string) {
 async function replay(id: string) {
   busy.value = id
   try {
-    await request(`/api/dev/dead-letters/${id}/replay`, { method: 'POST' })
+    await request(apiPath(API.devDeadLetterReplay, { id }), { method: 'POST' })
   } catch {
     // 还是不行就留在列表里，次数加一
   } finally {
@@ -318,7 +318,7 @@ async function replay(id: string) {
 async function dismiss(id: string) {
   busy.value = id
   try {
-    await request(`/api/dev/dead-letters/${id}/dismiss`, { method: 'POST' })
+    await request(apiPath(API.devDeadLetterDismiss, { id }), { method: 'POST' })
   } finally {
     busy.value = ''
     await loadAll()

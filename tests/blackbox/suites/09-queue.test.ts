@@ -257,11 +257,14 @@ describe('队列 — worker 自动处理', () => {
 
   it('跑完的任务能在「样例」里看到本次写入的博主，原始返回原样可查', async () => {
     const { job } = await fetchJob(ops, params('sample', { maxPages: 1 }), true)
-    const sample = await authed(ops, 'GET', `${PATHS.ingestJob(job.id)}/sample`)
+    const sample = await authed(ops, 'GET', PATHS.ingestSample(job.id))
     expect(sample.status).toBe(200)
-    const items = sample.json.items as Array<{ id: string; display_name: string; needs_review: boolean }>
+    const items = sample.json.items as Array<{ id: string; displayName: string; needsReview: boolean }>
     expect(items.length).toBe(job.writtenCount + job.skippedDupes)
-    for (const item of items) expect(item.needs_review).toBe(true)
+    for (const item of items) {
+      expect(item.needsReview).toBe(true)
+      expect(typeof item.displayName).toBe('string')
+    }
 
     const raw = await authed(ops, 'GET', PATHS.ingestRaw(items[0].id))
     expect(raw.status).toBe(200)
@@ -691,7 +694,7 @@ describe('队列 — 谁能做什么', () => {
     expect(retry.status).toBe(200)
     const audit = await authed(devops, 'GET', PATHS.devAudit)
     expect(audit.status).toBe(200)
-    const rows = (audit.json.items as Array<Record<string, unknown>>).filter((r) => r.entity_id === job.id)
+    const rows = (audit.json.items as Array<Record<string, unknown>>).filter((r) => r.entityId === job.id)
     const actions = rows.map((r) => String(r.action))
     expect(actions).toContain('ingest.cancel')
     expect(actions).toContain('ingest.retry')

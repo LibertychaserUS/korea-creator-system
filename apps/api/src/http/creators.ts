@@ -4,6 +4,7 @@ import {
   deriveMetrics,
   emptyMetrics,
   type CreatorMetrics,
+  type IngestJobView,
   type SavedQuery,
   type SourceId,
   type SourceQuery,
@@ -63,7 +64,7 @@ export function asPublished<T extends Record<string, any>>(item: T): T & { metri
   return { ...item, metrics: item.metricsLocked ?? item.metrics, metricsLatest: item.metrics }
 }
 
-export function camelJobs(rows: Array<Record<string, any>>) {
+export function camelJobs(rows: Array<Record<string, any>>): IngestJobView[] {
   return rows.map((row) => ({
     id: row.id,
     sourceId: row.source_id,
@@ -144,6 +145,13 @@ export async function saveRelations(db: Queryable, creatorId: string, body: Reco
       ],
     )
   }
+}
+
+/** A `date` column comes back as local midnight; send the calendar day, not a shifted instant. */
+function dateOnly(value: unknown): string | null {
+  if (!(value instanceof Date)) return (value as string | null) ?? null
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
 
 /** One record per day and source (the day's last fetch), oldest first. */
@@ -240,7 +248,14 @@ export async function attachCreatorMeta(
             ? item.last_seen_at.toISOString()
             : String(item.last_seen_at),
         })),
-      collaborations: full ? creatorCollaborations : undefined,
+      collaborations: full
+        ? creatorCollaborations.map((item) => ({
+            id: item.id,
+            brand: item.brand,
+            happenedAt: dateOnly(item.happened_at),
+            note: item.note ?? null,
+          }))
+        : undefined,
       price: price
         ? {
             amountMin: price.amount_min == null ? null : Number(price.amount_min),

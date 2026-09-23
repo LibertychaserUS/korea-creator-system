@@ -341,7 +341,7 @@ describe('安全 — 坏请求给 4xx，写不存在的对象不留痕', () => {
 
   const auditFor = async (entityId: string): Promise<Json[]> => {
     const res = await request('GET', PATHS.devAudit, { token: devops.token })
-    return itemsOf(res.json).filter((row) => row.entity_id === entityId || row.entityId === entityId)
+    return itemsOf(res.json).filter((row) => row.entityId === entityId)
   }
 
   it('非法 JSON → 400 VALIDATION（不是 500）', async () => {

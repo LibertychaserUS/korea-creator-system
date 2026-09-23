@@ -149,7 +149,7 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | case | spec | HTTP |
 |------|------|------|
 | queued → ok within a tick; startedAt / endedAt / pagesDone / dupes recorded | 04 队列图 | `GET /api/ingest/jobs/:id` (poll) |
-| sample lists this run's creators (needs_review), raw payload readable, one history snapshot per record | 04 队列图 creator_raw / creator_metrics_history | `GET /api/ingest/jobs/:id/sample` `GET /api/ingest/raw/:creatorId` (+ `SELECT count(*) creator_metrics_history`) |
+| sample lists this run's creators (`needsReview`, camelCase keys), raw payload readable, one history snapshot per record | 04 队列图 creator_raw / creator_metrics_history | `GET /api/ingest/jobs/:id/sample` `GET /api/ingest/raw/:creatorId` (+ `SELECT count(*) creator_metrics_history`) |
 | re-ingesting the same creators counts as dupes, history still grows | 04 §身份归并 | `POST /api/ingest/fetch?sync=1` ×2 |
 | demo data does not consume quota (`quotaUsed` 0, daily usage unchanged) — *demo mode only* | 04 §fixture 模式「不计配额」 | `POST /api/ingest/fetch?sync=1` |
 

@@ -493,6 +493,8 @@ import {
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
 import {
+  API,
+  apiPath,
   CREATOR_TIERS,
   METRIC_KEYS,
   PAGE_SIZE_DEFAULT,
@@ -631,7 +633,7 @@ async function run() {
     const body = { ...spec, name: spec.name.trim() || t('kcs.query.unsaved') }
     const params = new URLSearchParams({ page: String(page.value), pageSize: String(PAGE_SIZE_DEFAULT) })
     if (search.value.trim()) params.set('q', search.value.trim())
-    const res = await request<any>(`/api/select/queries/run?${params}`, { method: 'POST', body: JSON.stringify(body) })
+    const res = await request<any>(apiPath(API.queryRun, {}, params), { method: 'POST', body: JSON.stringify(body) })
     if (mine !== loadSeq) return
     items.value = res.items ?? []
     total.value = res.total ?? items.value.length
@@ -643,7 +645,7 @@ async function run() {
 
 async function loadQueries() {
   try {
-    const res = await request<any>('/api/select/queries')
+    const res = await request<any>(API.queries.path)
     savedQueries.value = (res.items ?? res ?? []).map((q: any) => ({ id: q.id, name: q.name, version: q.version ?? 1, spec: q.spec ?? q }))
   } catch {
     savedQueries.value = []
@@ -667,8 +669,8 @@ async function save(asNew: boolean) {
     const payload = { name: spec.name, spec: { ...spec, id: undefined } }
     const res =
       activeId.value && !asNew
-        ? await request<any>(`/api/select/queries/${activeId.value}`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : await request<any>('/api/select/queries', { method: 'POST', body: JSON.stringify(payload) })
+        ? await request<any>(apiPath(API.queryPatch, { id: activeId.value }), { method: 'PATCH', body: JSON.stringify(payload) })
+        : await request<any>(API.queryCreate.path, { method: 'POST', body: JSON.stringify(payload) })
     await loadQueries()
     const saved = savedQueries.value.find((q) => q.id === (res.id ?? activeId.value))
     if (saved) selectQuery(saved)
@@ -682,7 +684,7 @@ async function save(asNew: boolean) {
 
 async function remove() {
   if (!activeId.value || !confirm(t('kcs.query.confirmDelete'))) return
-  await request(`/api/select/queries/${activeId.value}`, { method: 'DELETE' })
+  await request(apiPath(API.queryDelete, { id: activeId.value }), { method: 'DELETE' })
   activeId.value = ''
   await loadQueries()
   notice.value = t('kcs.query.deleted')
@@ -691,7 +693,7 @@ async function remove() {
 async function loadProject() {
   if (!projectId.value) return
   try {
-    const project = await request<any>(`/api/select/projects/${projectId.value}`)
+    const project = await request<any>(apiPath(API.projectGet, { id: projectId.value }))
     projectName.value = project?.name ?? ''
   } catch {
     projectName.value = ''
@@ -706,7 +708,7 @@ async function assign() {
   if (!projectId.value || !picked.value.length) return
   assigning.value = true
   try {
-    await request(`/api/select/projects/${projectId.value}/assignments`, {
+    await request(apiPath(API.assign, { id: projectId.value }), {
       method: 'POST',
       body: JSON.stringify({ creatorIds: picked.value }),
     })
