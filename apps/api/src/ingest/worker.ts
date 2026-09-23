@@ -16,6 +16,8 @@ import type { AppEnv } from '../http/types'
 import { deadLetterJob, failureOf } from './dead-letters'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
+import { retentionConfig, runRetention, type RetentionConfig } from './retention'
+import { logEvent } from '../log'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
 const WORKER_ID = `${hostname()}:${process.pid}`
@@ -251,17 +253,38 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
  * - it takes one due job per tick and finishes it before looking again. Vendor
  *   calls are billed per request and capped per minute, so concurrency would
  *   only raise the bill and the 429 rate;
+ * - the same holder runs the retention sweep once per `retention.intervalMs`
+ *   (first time right after it wins the lock), so exactly one process deletes;
  * - `INGEST_WORKER=0` opts a process out entirely (e.g. a replica that should
  *   only serve HTTP).
  */
-export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } = {}) {
+export function startIngestWorker(
+  env: AppEnv,
+  options: { intervalMs?: number; retention?: RetentionConfig } = {},
+) {
   const intervalMs = options.intervalMs ?? 2_000
+  const retention = options.retention ?? retentionConfig()
   if (process.env.INGEST_WORKER === '0') {
     return () => undefined
   }
   let stopped = false
   let timer: NodeJS.Timeout | undefined
   let holder: PoolClient | null = null
+  let sweptAt = 0
+
+  const sweep = async () => {
+    if (retention.intervalMs <= 0 || Date.now() - sweptAt < retention.intervalMs) return
+    sweptAt = Date.now()
+    try {
+      const deleted = await runRetention(env.db, retention, env.now())
+      logEvent('info', 'retention.sweep', { worker: WORKER_ID, ...deleted })
+    } catch (error) {
+      logEvent('error', 'retention.failed', {
+        worker: WORKER_ID,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   const acquire = async () => {
     if (holder) return true
@@ -285,6 +308,8 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
     if (stopped) return
     try {
       if (!(await acquire())) return
+      await sweep()
+      if (stopped) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
          WHERE (status = 'queued' AND (next_run_at IS NULL OR next_run_at <= now()))

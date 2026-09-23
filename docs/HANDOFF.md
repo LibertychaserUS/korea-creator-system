@@ -50,6 +50,10 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `SESSION_CACHE_MS` | API 侧会话正缓存，默认 10000；也是退出后旧 token 最长存活时间 |
 | `INGEST_WORKER` | `0` 时该进程不参与抽水，只服务 HTTP（多副本时给额外副本用；抽水本身已由顾问锁保证全局只有一条） |
 | `INGEST_LEASE_MS` | 抓取任务租约，默认 60000；超过这个时间没续约的任务会被别的进程接手续跑 |
+| `RETENTION_RAW_PER_SOURCE` | 每个（博主，来源）保留最新几条平台原始 JSON，默认 10；`0` 全留 |
+| `RETENTION_DEAD_LETTER_DAYS` | 已处理的搁置记录保留天数，默认 90；待处理的永远不删；`0` 全留 |
+| `RETENTION_AUDIT_DAYS` | 审计日志保留天数，默认 365；`0` 全留 |
+| `RETENTION_INTERVAL_HOURS` | 清理间隔，默认 24；`0` 关闭。只有抽水进程执行，历史快照永不删（见 `docs/04` §保留期限） |
 | `PGY_ACCESS_TOKEN` | 蒲公英；网关 token（TikHub / JustOneAPI）或官方 access token |
 | `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official` |
 | `PGY_BASE_URL` `PGY_BRAND_USER_ID` `PGY_ENRICH` | 可选：自定义网关地址、官方品牌账号、搜索结果是否逐个补全详情 |
