@@ -60,6 +60,15 @@
         </div>
       </Card>
 
+      <MetricCompare
+        :locked="creator.metrics"
+        :latest="creator.metricsLatest ?? creator.metrics"
+        :locked-at="creator.metricsLockedAt"
+        :latest-at="creator.metricsFetchedAt"
+        :lead="t('kcs.compare.leadSelect')"
+        :testid="TESTID.metricCompare"
+      />
+
       <!-- 趋势：每次抓取一条快照 -->
       <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="creator-trend">
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-3">
@@ -217,6 +226,7 @@
 <script setup lang="ts">
 import { ArrowLeft, Lock, Users } from 'lucide-vue-next'
 import {
+  TESTID,
   emptyMetrics,
   type CreatorMetrics,
   type CreatorSourceLink,
