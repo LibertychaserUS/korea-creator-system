@@ -11,6 +11,6 @@ export default defineEventHandler(async (event) => {
   for (const cookie of response.headers.getSetCookie()) {
     appendResponseHeader(event, 'set-cookie', cookie)
   }
-  deleteCookie(event, 'kcs_session', { path: '/' })
+  deleteCookie(event, 'kcs_session', { path: '/', sameSite: 'lax', secure: process.env.NODE_ENV === 'production' })
   return { ok: response.ok }
 })
