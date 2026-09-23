@@ -2,7 +2,7 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**181 cases** across 12 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**203 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
 The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
