@@ -614,7 +614,9 @@ async function run() {
   const mine = ++loadSeq
   loading.value = true
   try {
-    const res = await request<any>('/api/select/queries/run', { method: 'POST', body: JSON.stringify(spec) })
+    // 新建还没起名的方案也要能先看结果；名字只在保存时必填。
+    const body = { ...spec, name: spec.name.trim() || t('kcs.query.unsaved') }
+    const res = await request<any>('/api/select/queries/run', { method: 'POST', body: JSON.stringify(body) })
     if (mine !== loadSeq) return
     items.value = res.items ?? res.rows ?? []
   } finally {

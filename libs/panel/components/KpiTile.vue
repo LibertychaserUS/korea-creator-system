@@ -1,33 +1,42 @@
 <template>
-  <Card
-    class="relative gap-0 overflow-hidden border-border/60 py-0 shadow-xs transition-shadow hover:shadow-sm"
-    :data-testid="testid"
+  <component
+    :is="to ? NuxtLink : 'div'"
+    :to="to"
+    :class="to ? 'group/tile block rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50' : 'contents'"
+    :data-testid="to ? testid : undefined"
   >
-    <span class="absolute inset-y-0 left-0 w-1" :class="accentClass" aria-hidden="true" />
-    <div class="flex items-start justify-between gap-3 p-4 pl-5 sm:p-5 sm:pl-6">
-      <div class="min-w-0">
-        <p class="truncate text-xs font-medium text-muted-foreground">{{ label }}</p>
-        <p class="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground md:text-3xl">
-          <slot>{{ value }}</slot>
-        </p>
-        <p v-if="hint" class="mt-1 truncate text-xs text-muted-foreground/80">{{ hint }}</p>
+    <Card
+      class="relative h-full gap-0 overflow-hidden border-border/60 py-0 shadow-xs transition-shadow hover:shadow-sm"
+      :class="to ? 'group-hover/tile:border-primary/30' : ''"
+      :data-testid="to ? undefined : testid"
+    >
+      <span class="absolute inset-y-0 left-0 w-1" :class="accentClass" aria-hidden="true" />
+      <div class="flex items-start justify-between gap-3 p-4 pl-5 sm:p-5 sm:pl-6">
+        <div class="min-w-0">
+          <p class="truncate text-xs font-medium text-muted-foreground">{{ label }}</p>
+          <p class="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground md:text-3xl">
+            <slot>{{ value }}</slot>
+          </p>
+          <p v-if="hint" class="mt-1 truncate text-xs text-muted-foreground/80">{{ hint }}</p>
+        </div>
+        <span
+          v-if="icon"
+          class="flex size-9 shrink-0 items-center justify-center rounded-lg"
+          :class="iconWrapClass"
+          aria-hidden="true"
+        >
+          <component :is="icon" class="size-4" />
+        </span>
       </div>
-      <span
-        v-if="icon"
-        class="flex size-9 shrink-0 items-center justify-center rounded-lg"
-        :class="iconWrapClass"
-        aria-hidden="true"
-      >
-        <component :is="icon" class="size-4" />
-      </span>
-    </div>
-  </Card>
+    </Card>
+  </component>
 </template>
 
 <script setup lang="ts">
 import type { Component } from 'vue'
+import { NuxtLink } from '#components'
 
-/** KPI 瓦片：左侧一道色条标记语义，右上角图标，数字用等宽数字对齐。 */
+/** KPI 瓦片：左侧一道色条标记语义，右上角图标，数字用等宽数字对齐；给了 to 就整块可点。 */
 const props = withDefaults(
   defineProps<{
     label: string
@@ -36,6 +45,7 @@ const props = withDefaults(
     icon?: Component
     tone?: 'sea' | 'sand' | 'moss' | 'ink' | 'coral'
     testid?: string
+    to?: string
   }>(),
   { tone: 'sea' },
 )

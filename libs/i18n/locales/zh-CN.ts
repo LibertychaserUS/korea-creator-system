@@ -2218,7 +2218,8 @@ export const zhCN: Locale = {
       ops: "运营端",
       select: "选人端",
       monitor: "运维端",
-      ingest: "抓取任务"
+      ingest: "抓取任务",
+      accounts: "账号"
     },
     actions: {
       login: "登录",
@@ -2481,6 +2482,154 @@ export const zhCN: Locale = {
       pending: "待定/调研中",
       reviewed: "已复核",
       none: "未标记"
+    },
+    opsCreators: {
+      title: "博主",
+      lead: "抓取来的和手动录入的博主都在这里。审核通过后发布到选人端；下架后可以再次发布。",
+      tabs: { review: "待审核", released: "已发布", withdrawn: "已下架" },
+      stage: { review: "待审核", released: "已发布", withdrawn: "已下架" },
+      search: "按昵称或小红书号搜索",
+      sourceAll: "全部来源",
+      manual: "手动录入",
+      cols: { creator: "博主", source: "来源", followers: "粉丝", tier: "量级", updated: "更新时间", status: "状态" },
+      needsReview: "有新数据",
+      empty: {
+        review: "没有待审核的博主",
+        released: "还没有已发布的博主",
+        withdrawn: "没有已下架的博主"
+      },
+      emptyHint: "去「数据源」抓一批，或者手动录入一位。",
+      emptyFilter: "没有符合条件的博主，换个关键词或来源试试。",
+      pageInfo: "第 {page} / {pages} 页 · 共 {total} 位",
+      prev: "上一页",
+      next: "下一页",
+      open: "查看详情"
+    },
+    opsCreator: {
+      back: "博主列表",
+      approve: "通过并发布",
+      unpublish: "下架",
+      republish: "重新发布",
+      raw: "平台原始信息",
+      publishedAt: "发布于 {date}",
+      updatedAt: "{date} 更新",
+      notFound: "找不到这位博主，可能已被删除。",
+      newNumbers: "抓到了新数字，对照下方「发布时与最新」看看差多少。",
+      confirm: {
+        approveTitle: "通过并发布这位博主？",
+        approveBody: "发布后选人端就能看到 TA，并按现在这组数字筛选和排序；之后抓到的新数字不会自动替换。",
+        unpublishTitle: "下架这位博主？",
+        unpublishBody: "下架后选人端不再显示 TA，已经分派进项目的记录会标成已下架。之后随时可以重新发布。",
+        republishTitle: "重新发布这位博主？",
+        republishBody: "重新发布会把选人端的数字换成最新一次抓取的结果。",
+        cancel: "取消",
+        ok: "确认"
+      },
+      toast: {
+        published: "已发布到选人端",
+        republished: "已重新发布，选人端换成了最新数字",
+        unchanged: "已经在选人端了，数字保持不变",
+        unpublished: "已下架，选人端不再显示",
+        saved: "资料已保存",
+        incomplete: "还差信息：需要昵称、地域或内容方向，以及粉丝数（或勾选粉丝未知）",
+        failed: "没有成功，请稍后再试",
+        created: "已保存草稿，审核通过后就能发布"
+      },
+      edit: {
+        title: "资料",
+        lead: "这里改的是最新资料；已发布的数字要重新发布才会更新。",
+        regions: "地域",
+        verticals: "内容方向",
+        listHint: "多个用逗号分开",
+        categories: "分类",
+        note: "备注",
+        readOnly: "你的账号只能查看，不能修改。"
+      },
+      rawSheet: {
+        lead: "每次从平台取回的原始内容都留着，按时间倒序排列。",
+        empty: "这位博主是手动录入的，没有平台原始信息。",
+        count: "共 {n} 条",
+        expand: "展开原始内容",
+        fields: "主要字段"
+      }
+    },
+    compare: {
+      title: "发布时与最新",
+      lead: "选人端按「发布时」的数字筛选和排序；之后每次抓取只更新「最新」。想让选人端用上最新数字，先下架再重新发布。",
+      leadSelect: "名单按「发布时」的数字筛选和排序；「最新」是之后抓到的数字，仅供对照。",
+      notPublished: "还没发布过；发布时会把「最新」这一列原样定下来。",
+      metric: "指标",
+      locked: "发布时",
+      latest: "最新",
+      change: "变化",
+      same: "持平"
+    },
+    projectBoard: {
+      export: "导出表格",
+      exporting: "正在导出…",
+      exported: "表格已开始下载",
+      exportHint: "数字用博主发布时的那一组，和博主库里看到的一致。",
+      remove: "移出项目",
+      removeTitle: "把「{name}」移出这个项目？",
+      removeBody: "只是从这个项目的候选名单里拿掉，博主本身和其他项目不受影响；之后还可以再从博主库加回来。",
+      removed: "已移出项目",
+      cancel: "取消",
+      confirm: "移出",
+      failed: "没有成功，请稍后再试",
+      actions: "操作"
+    },
+    accounts: {
+      title: "账号",
+      lead: "给同事开账号、分配角色，停用离职的人。这一页只有平台管理员能看到。",
+      create: "新建账号",
+      createTitle: "新建账号",
+      createLead: "设好初始密码后告诉对方，对方登录后会按角色进入自己的工作台。",
+      email: "邮箱",
+      name: "名字",
+      namePlaceholder: "不填就用邮箱 {'@'} 前面的部分",
+      password: "初始密码",
+      passwordHint: "至少 8 位",
+      role: "角色",
+      search: "搜索邮箱或名字",
+      cols: {
+        account: "账号",
+        role: "角色",
+        lastLogin: "最近登录",
+        status: "状态",
+        actions: "操作"
+      },
+      status: {
+        active: "正常",
+        disabled: "已停用"
+      },
+      noRole: "未分配角色",
+      you: "你自己",
+      never: "还没登录过",
+      lastLoginHint: "主动退出的那次登录不再计入",
+      delayNote: "改角色、停用最多 10 秒后生效；对方已打开的页面刷新后按新角色显示。",
+      disable: "停用",
+      enable: "恢复",
+      disableTitle: "停用 {name}？",
+      disableBody: "停用后对方马上不能再登录，已经打开的页面最多 10 秒内会被退出。之后随时可以恢复。",
+      enableTitle: "恢复 {name}？",
+      enableBody: "恢复后对方可以用原来的密码重新登录。",
+      cancel: "取消",
+      submit: "新建",
+      confirm: "确定",
+      created: "已新建账号 {email}",
+      roleChanged: "已把 {name} 改为「{role}」，最多 10 秒后生效",
+      disabled: "已停用 {name}",
+      enabled: "已恢复 {name}",
+      empty: "没有符合条件的账号",
+      errors: {
+        invalid_email: "邮箱格式不对",
+        weak_password: "初始密码至少 8 位",
+        invalid_role: "请选一个角色",
+        email_taken: "这个邮箱已经有账号了",
+        self: "不能改自己的角色，也不能停用自己",
+        not_found: "这个账号已经不在了，请刷新",
+        failed: "没保存成功，请稍后再试"
+      }
     },
     exempt: {
       note: "昵称、小红书号、原始关键词和手写备注保持原文，不做翻译。"

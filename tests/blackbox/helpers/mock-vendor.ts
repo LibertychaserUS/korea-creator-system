@@ -16,6 +16,7 @@ import { createServer, type Server } from 'node:http'
  *   `bb-reject`       always HTTP 403 (permanent — retrying changes nothing)
  *   `bb-shape`        HTTP 200 with a body that has no record list at all
  *   `bb-badrecord`    1 page where the first creator has no name (unreadable)
+ *   `bb-grow`         1 page of the same 2 creators, 40 000 more followers on every call
  *   anything else     1 page of 2 creators
  * Every keyword is namespaced by the caller so creators never collide across runs.
  *
@@ -30,14 +31,15 @@ export const VENDOR_URL = `http://127.0.0.1:${VENDOR_PORT}`
 
 const calls: VendorCall[] = []
 const flakyCounters = new Map<string, number>()
+const growCounters = new Map<string, number>()
 
-function record(keyword: string, page: number, index: number) {
+function record(keyword: string, page: number, index: number, extraFollowers = 0) {
   const id = `${keyword}-p${page}-${index}`
   return {
     author_id: id,
     nickname: `队列博主 ${page}-${index}`,
     小红书号: `xhs_${id}`,
-    粉丝数: 12_000 + page * 1_000 + index,
+    粉丝数: 12_000 + page * 1_000 + index + extraFollowers,
     近30天涨粉: 300 + index,
     阅读中位数: 2_400 + page * 10,
     互动中位数: 180,
@@ -77,6 +79,7 @@ export function startMockVendor(port = VENDOR_PORT): Promise<Server> {
     if (url.pathname === '/__reset') {
       calls.length = 0
       flakyCounters.clear()
+      growCounters.clear()
       res.end('{}')
       return
     }
@@ -123,6 +126,13 @@ export function startMockVendor(port = VENDOR_PORT): Promise<Server> {
       const seen = (flakyCounters.get(keyword) ?? 0) + 1
       flakyCounters.set(keyword, seen)
       if (seen <= Number(flaky[1])) return reply(500, { error: 'vendor hiccup' })
+    }
+
+    if (keyword.includes('bb-grow')) {
+      const seen = (growCounters.get(keyword) ?? 0) + 1
+      growCounters.set(keyword, seen)
+      const extra = (seen - 1) * 40_000
+      return reply(200, { data: [record(keyword, 1, 1, extra), record(keyword, 1, 2, extra)], next_cursor: null })
     }
 
     let pages = 1

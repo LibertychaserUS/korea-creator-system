@@ -21,7 +21,8 @@ test.describe('Selector assign journey', () => {
     const projectName = `E2E 选人项目 ${Date.now()}`;
 
     await loginViaUi(page, 'selector');
-    await page.goto(PAGES.select, { timeout: TIMEOUTS.navigation });
+    // Wait for hydration: a click before it does a full load, and the next page's hydration wipes what was typed.
+    await page.goto(PAGES.select, { timeout: TIMEOUTS.navigation, waitUntil: 'networkidle' });
     await expect(page.getByTestId(tid.tableProjects)).toBeVisible();
 
     await page.getByTestId(tid.btnCreateProject).click();

@@ -16,6 +16,7 @@ export function registerPublicRoutes(app: KcsApp, _env: AppEnv, _helpers: RouteH
       paths: {
         '/api/auth/me': { get: { summary: '当前身份' } },
         '/api/ops/creators': { get: {}, post: {} },
+        '/api/ops/creators/{id}/history': { get: {} },
         '/api/select/pool': { get: {} },
         '/api/select/creators/{id}': { get: {} },
         '/api/select/creators/{id}/history': { get: {} },

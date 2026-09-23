@@ -2211,7 +2211,8 @@ export const en: Locale = {
       ops: "Ops Desk",
       select: "Select Desk",
       monitor: "Dev Desk",
-      ingest: "Collection tasks"
+      ingest: "Collection tasks",
+      accounts: "Accounts"
     },
     actions: {
       login: "Sign in",
@@ -2474,6 +2475,154 @@ export const en: Locale = {
       pending: "Pending inquiry",
       reviewed: "Reviewed",
       none: "Untagged"
+    },
+    opsCreators: {
+      title: "Creators",
+      lead: "Every creator you fetched or added by hand lands here. Approve one to publish it to the selection workspace; a withdrawn creator can be published again.",
+      tabs: { review: "To review", released: "Published", withdrawn: "Withdrawn" },
+      stage: { review: "To review", released: "Published", withdrawn: "Withdrawn" },
+      search: "Search by nickname or Xiaohongshu account",
+      sourceAll: "All sources",
+      manual: "Added by hand",
+      cols: { creator: "Creator", source: "Source", followers: "Followers", tier: "Tier", updated: "Updated", status: "Status" },
+      needsReview: "New numbers",
+      empty: {
+        review: "Nothing waiting for review",
+        released: "No published creators yet",
+        withdrawn: "No withdrawn creators"
+      },
+      emptyHint: "Fetch a batch under Data sources, or add one by hand.",
+      emptyFilter: "No creator matches. Try another keyword or source.",
+      pageInfo: "Page {page} of {pages} · {total} creators",
+      prev: "Previous",
+      next: "Next",
+      open: "View details"
+    },
+    opsCreator: {
+      back: "Creators",
+      approve: "Approve and publish",
+      unpublish: "Withdraw",
+      republish: "Publish again",
+      raw: "Original platform data",
+      publishedAt: "Published {date}",
+      updatedAt: "Updated {date}",
+      notFound: "This creator could not be found. It may have been deleted.",
+      newNumbers: "New numbers came in. Compare them under “At publish vs latest”.",
+      confirm: {
+        approveTitle: "Approve and publish this creator?",
+        approveBody: "The selection workspace will see this creator and filter and sort on today’s numbers. Numbers fetched later will not replace them automatically.",
+        unpublishTitle: "Withdraw this creator?",
+        unpublishBody: "The selection workspace will stop showing this creator, and project assignments will be marked as withdrawn. You can publish again at any time.",
+        republishTitle: "Publish this creator again?",
+        republishBody: "Publishing again switches the selection workspace to the most recently fetched numbers.",
+        cancel: "Cancel",
+        ok: "Confirm"
+      },
+      toast: {
+        published: "Published to the selection workspace",
+        republished: "Published again with the latest numbers",
+        unchanged: "Already published. The numbers stay as they were.",
+        unpublished: "Withdrawn from the selection workspace",
+        saved: "Profile saved",
+        incomplete: "Missing details: a nickname, a region or content focus, and a follower count (or tick “Followers unknown”)",
+        failed: "That did not work. Please try again later.",
+        created: "Draft saved. Publish it once it passes review."
+      },
+      edit: {
+        title: "Profile",
+        lead: "Edits change the latest profile. Published numbers only change when you publish again.",
+        regions: "Regions",
+        verticals: "Content focus",
+        listHint: "Separate several with commas",
+        categories: "Categories",
+        note: "Note",
+        readOnly: "Your account can view but not edit."
+      },
+      rawSheet: {
+        lead: "Everything each platform sent back is kept, newest first.",
+        empty: "This creator was added by hand, so there is no original platform data.",
+        count: "{n} records",
+        expand: "Show original content",
+        fields: "Main fields"
+      }
+    },
+    compare: {
+      title: "At publish vs latest",
+      lead: "The selection workspace filters and sorts on the numbers “At publish”. Each later fetch only updates “Latest”. To move the selection workspace onto the latest numbers, withdraw and publish again.",
+      leadSelect: "The list filters and sorts on the numbers “At publish”. “Latest” shows what was fetched since, for comparison only.",
+      notPublished: "Not published yet. Publishing freezes the “Latest” column as it is.",
+      metric: "Metric",
+      locked: "At publish",
+      latest: "Latest",
+      change: "Change",
+      same: "No change"
+    },
+    projectBoard: {
+      export: "Export sheet",
+      exporting: "Exporting…",
+      exported: "Your sheet is downloading",
+      exportHint: "Numbers are the ones frozen when each creator was published, same as in the creator pool.",
+      remove: "Remove from project",
+      removeTitle: "Remove “{name}” from this project?",
+      removeBody: "This only takes them off this project’s shortlist. The creator and other projects stay as they are, and you can add them back from the creator pool later.",
+      removed: "Removed from the project",
+      cancel: "Cancel",
+      confirm: "Remove",
+      failed: "That did not work. Please try again later.",
+      actions: "Actions"
+    },
+    accounts: {
+      title: "Accounts",
+      lead: "Open accounts for teammates, give them a role, and switch off people who have left. Only platform admins see this page.",
+      create: "New account",
+      createTitle: "New account",
+      createLead: "Share the starting password with them. After signing in they land on the desk for their role.",
+      email: "Email",
+      name: "Name",
+      namePlaceholder: "Leave empty to use the part before {'@'}",
+      password: "Starting password",
+      passwordHint: "At least 8 characters",
+      role: "Role",
+      search: "Search email or name",
+      cols: {
+        account: "Account",
+        role: "Role",
+        lastLogin: "Last sign-in",
+        status: "Status",
+        actions: "Actions"
+      },
+      status: {
+        active: "Active",
+        disabled: "Disabled"
+      },
+      noRole: "No role yet",
+      you: "You",
+      never: "Never signed in",
+      lastLoginHint: "Sign-ins they ended by signing out are not counted",
+      delayNote: "Role changes and disabling take effect within 10 seconds; open pages show the new role after a refresh.",
+      disable: "Disable",
+      enable: "Restore",
+      disableTitle: "Disable {name}?",
+      disableBody: "They can no longer sign in, and any open page signs them out within 10 seconds. You can restore the account at any time.",
+      enableTitle: "Restore {name}?",
+      enableBody: "They can sign in again with their existing password.",
+      cancel: "Cancel",
+      submit: "Create",
+      confirm: "Confirm",
+      created: "Account {email} created",
+      roleChanged: "{name} is now “{role}”, effective within 10 seconds",
+      disabled: "{name} disabled",
+      enabled: "{name} restored",
+      empty: "No matching accounts",
+      errors: {
+        invalid_email: "That email doesn't look right",
+        weak_password: "The starting password needs at least 8 characters",
+        invalid_role: "Pick a role",
+        email_taken: "This email already has an account",
+        self: "You can't change your own role or disable yourself",
+        not_found: "This account is gone — please refresh",
+        failed: "Couldn't save. Please try again shortly"
+      }
     },
     exempt: {
       note: "Nickname, Xiaohongshu account, raw keywords, and handwritten notes stay in the source language."

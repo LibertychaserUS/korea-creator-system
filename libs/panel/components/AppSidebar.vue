@@ -64,9 +64,10 @@
 </template>
 
 <script setup lang="ts">
-import { Activity, ClipboardList, DatabaseZap, FolderKanban, LayoutDashboard, LogOut, UserPlus, Users } from 'lucide-vue-next'
+import { Activity, ClipboardList, DatabaseZap, FolderKanban, LayoutDashboard, LogOut, UserCog, UserPlus, Users } from 'lucide-vue-next'
+import { can, type Permission } from '@kcs/contract'
 
-type KcsNavItem = { to: string; labelKey: string }
+type KcsNavItem = { to: string; labelKey: string; perm?: Permission }
 type KcsAppConfig = {
   key?: string
   labelKey?: string
@@ -85,15 +86,22 @@ const { request } = useApi()
 
 const kcs = useAppConfig().kcs as KcsAppConfig | undefined
 const labelKey = computed(() => kcs?.labelKey || 'kcs.brand.title')
-const items = computed<KcsNavItem[]>(() => kcs?.nav ?? [])
+// 带 perm 的条目只给有这项权限的人看（例如运维端的「账号」只给平台管理员）。
+const items = computed<KcsNavItem[]>(() =>
+  (kcs?.nav ?? []).filter((item) => !item.perm || (user.value ? can(user.value.role, item.perm) : false)),
+)
 
 const barePath = computed(() => route.path.replace(/^\/(zh-CN|en|ko)/, '') || '/')
 
-const isRouteActive = (path: string) => {
+const matches = (path: string) => {
   const bare = barePath.value
   if (path === '/') return bare === '/'
   return bare === path || bare.startsWith(`${path}/`)
 }
+
+// `/creators/new` should light up 录入博主, not 博主 as well.
+const isRouteActive = (path: string) =>
+  matches(path) && !items.value.some((item) => item.to.length > path.length && item.to.startsWith(path) && matches(item.to))
 
 const testidOf = (path: string) => `nav-${path === '/' ? 'home' : path.replaceAll('/', '-')}`
 
@@ -101,7 +109,9 @@ const iconOf = (path: string) => {
   const key = `${kcs?.key ?? ''}${path}`
   if (key === 'select/projects') return FolderKanban
   if (key === 'ops/creators/new') return UserPlus
+  if (key === 'ops/creators') return Users
   if (key === 'ops/sources') return DatabaseZap
+  if (key === 'dev/accounts') return UserCog
   if (key.startsWith('select')) return Users
   if (key.startsWith('ops')) return ClipboardList
   if (key.startsWith('dev')) return Activity

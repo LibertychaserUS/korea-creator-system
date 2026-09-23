@@ -9,7 +9,10 @@ export default defineNuxtConfig({
       key: 'dev',
       labelKey: 'kcs.nav.monitor',
       perm: 'dev.read',
-      nav: [{ to: '/', labelKey: 'kcs.panel.health' }],
+      nav: [
+        { to: '/', labelKey: 'kcs.panel.health' },
+        { to: '/accounts', labelKey: 'kcs.nav.accounts', perm: 'admin.users' },
+      ],
     },
   },
 })

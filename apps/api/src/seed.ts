@@ -113,8 +113,8 @@ async function seedCreators(db: Db) {
         `INSERT INTO creators (
            id, creator_key, display_name, status, needs_review, followers, followers_unknown,
            regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-           metrics_fetched_at, metrics_locked, note
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,30,$12,$13,$14,$15,$16)
+           metrics_fetched_at, metrics_locked, note, metrics_locked_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,30,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (id) DO UPDATE SET
            creator_key = EXCLUDED.creator_key, display_name = EXCLUDED.display_name,
            status = EXCLUDED.status, needs_review = EXCLUDED.needs_review,
@@ -123,7 +123,8 @@ async function seedCreators(db: Db) {
            metrics = EXCLUDED.metrics, metrics_window = EXCLUDED.metrics_window,
            source = EXCLUDED.source, external_id = EXCLUDED.external_id,
            metrics_fetched_at = EXCLUDED.metrics_fetched_at,
-           metrics_locked = EXCLUDED.metrics_locked, note = EXCLUDED.note, updated_at = now()`,
+           metrics_locked = EXCLUDED.metrics_locked, metrics_locked_at = EXCLUDED.metrics_locked_at,
+           note = EXCLUDED.note, updated_at = now()`,
         [
           id,
           creator.creatorKey,
@@ -140,7 +141,8 @@ async function seedCreators(db: Db) {
           creator.externalId,
           raw.fetchedAt,
           released ? JSON.stringify(creator.metrics) : null,
-          `${adapter.id} fixture`,
+          `演示数据（${DEMO_SOURCE_NAME[adapter.id] ?? adapter.id}）`,
+          released ? raw.fetchedAt : null,
         ],
       )
       await db.query(
@@ -216,12 +218,14 @@ async function seedCreators(db: Db) {
   return canonicalIds
 }
 
+const DEMO_SOURCE_NAME: Record<string, string> = { pugongying: '蒲公英', qiangua: '千瓜', xinhong: '新红' }
+
 async function seedProjects(db: Db, orgId: string, canonicalIds: Map<string, string>) {
   for (const [id, name, members] of PROJECTS) {
     await db.query(
       `INSERT INTO projects (id, org_id, name, note, status) VALUES ($1,$2,$3,$4,'open')
        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, note = EXCLUDED.note, status = 'open'`,
-      [id, orgId, name, 'fixture 指标项目'],
+      [id, orgId, name, '演示项目'],
     )
     await db.query('DELETE FROM assignments WHERE project_id = $1', [id])
     for (const creatorId of new Set(members.map((member) => canonicalIds.get(member) ?? member))) {
@@ -271,7 +275,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
         status === 'ok' ? 1 : 0,
         status === 'failed' ? 1 : 0,
         status === 'failed' ? 'SOURCE_UNAVAILABLE' : null,
-        status === 'failed' ? 'fixture job failure' : null,
+        status === 'failed' ? '演示：平台暂时没有响应' : null,
         index + 1,
       ],
     )

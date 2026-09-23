@@ -1,5 +1,7 @@
 import {
+  asPublished,
   attachCreatorMeta,
+  creatorHistory,
   enrichPoolItems,
   loadCreator,
   parseMetrics,
@@ -26,13 +28,15 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
     const pool = await queryPool(env.db, {})
-    const enriched = enrichPoolItems([item], pool)[0]
+    const published = asPublished(item)
+    const enriched = enrichPoolItems([published], pool)[0]
     const raw = await env.db.query(
       'SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1',
       [item.id],
     )
     return context.json({
       ...publicPoolRow(enriched),
+      metricsLatest: published.metricsLatest,
       rawAvailable: Boolean(raw.rowCount),
     })
   })
@@ -45,33 +49,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     if (!creator || creator.status !== 'released' || creator.categories.includes('blacklist')) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
-    const window = context.req.query('window') === '90' ? 90 : 30
-    const limit = Math.max(1, Math.min(200, Number(context.req.query('limit') || 60)))
-    const { rows } = await env.db.query(
-      `SELECT * FROM (
-         SELECT DISTINCT ON ((fetched_at AT TIME ZONE 'UTC')::date, source)
-           id, creator_id, source, "window", fetched_at, job_id, metrics
-         FROM creator_metrics_history
-         WHERE creator_id = $1 AND "window" = $2
-         ORDER BY (fetched_at AT TIME ZONE 'UTC')::date, source, fetched_at DESC
-       ) snapshots
-       ORDER BY fetched_at DESC
-       LIMIT $3`,
-      [creatorId, window, limit],
-    )
-    return context.json({
-      snapshots: rows.reverse().map((row) => ({
-        id: row.id,
-        creatorId: row.creator_id,
-        source: row.source,
-        window: Number(row.window),
-        fetchedAt: row.fetched_at instanceof Date
-          ? row.fetched_at.toISOString()
-          : String(row.fetched_at),
-        jobId: row.job_id ?? null,
-        metrics: parseMetrics(row.metrics),
-      })),
-    })
+    return context.json({ snapshots: await creatorHistory(env.db, creatorId, context.req.query()) })
   })
 
   app.get('/api/select/shortlist', async (context) => {
@@ -80,7 +58,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     const { rows } = await env.db.query(
       `SELECT s.org_id, s.creator_id, s.added_at, c.display_name, c.followers, c.creator_key,
               c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
-              c.metrics, c.metrics_locked, c.source, c.external_id, c.metrics_fetched_at
+              c.metrics, c.metrics_locked, c.metrics_locked_at, c.source, c.external_id, c.metrics_fetched_at
        FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
        WHERE s.org_id = $1 ORDER BY s.added_at DESC`,
       [user!.orgId],
@@ -100,6 +78,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
         avatar_key: row.avatar_key,
         metrics: row.metrics,
         metrics_locked: row.metrics_locked,
+        metrics_locked_at: row.metrics_locked_at,
         source: row.source,
         external_id: row.external_id,
         metrics_fetched_at: row.metrics_fetched_at,
@@ -107,7 +86,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
       false,
     )
     const pool = await queryPool(env.db, {})
-    const enriched = enrichPoolItems(meta, pool)
+    const enriched = enrichPoolItems(meta.map(asPublished), pool)
     return context.json({
       items: enriched.map((item, index) => ({
         ...publicPoolRow(item),

@@ -2,7 +2,7 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**181 cases** across 12 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**203 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
 The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
@@ -298,3 +298,45 @@ images); set `BLACKBOX_WORKSPACE_DEV=1` when pointing at `nuxt dev`.
 | bad fields → 400 `VALIDATION` with `error.fields[].path` (e.g. `followers`) | 05 §错误码 | `POST /api/ops/creators` |
 | PATCH / unpublish a creator that does not exist → 404 `NOT-FOUND`, no audit row | 05 §错误码「不写审计」 | `PATCH /api/ops/creators/:id` `POST …/unpublish` `GET /api/dev/audit` |
 | assign into a missing project, remove a missing assignment → 404, no audit row | 05 §错误码 | `POST /api/select/projects/:id/assignments` `DELETE …/assignments/:creatorId` |
+
+## 12. 运营审核与发布快照 — `12-ops-review.test.ts`
+
+Specs: `docs/02_数据字典.md` `metrics_locked` / `metrics_locked_at`; `docs/03_指标口径与数据源.md` §发布快照与审计; `docs/05_接口说明.md` 运营端.
+The re-ingest group needs the stand-in vendor (`bb-grow`: the same two creators, 40 000 more followers per call); without it those 4 cases skip.
+
+| case | spec | HTTP |
+|------|------|------|
+| a freshly fetched creator is `stage: review`, no snapshot, not in the pool | 02 `creatorStage` | `POST /api/ingest/fetch?sync=1` `GET /api/ingest/jobs/:id/sample` `GET /api/ops/creators/:id` `GET /api/select/pool` |
+| publish → `refreshed: true`, pool followers = the numbers at publish, `metricsLockedAt` set, stage `released` | 03 §发布快照 | `POST /api/ops/creators/:id/publish` |
+| re-fetch → ops latest followers grow, `metricsLocked` unchanged; pool followers / tier / `followersMin` filter unchanged; select detail `metrics` = publish-time, `metricsLatest` = latest | 03 §发布快照「抓取永远不写它」 | `POST /api/ingest/fetch` `GET /api/select/pool` `GET /api/select/creators/:id` |
+| publish while released → `refreshed: false`; take down → `withdrawn`, off the pool; publish again → pool on the latest numbers (tier moves to `mid`) | 03 §发布快照「下架、再发布」 | `POST …/publish` `POST …/unpublish` |
+| manual PATCH of metrics after publish leaves the pool alone; detail shows both; re-publish moves the pool | 02 `metrics` / `metrics_locked` | `PATCH /api/ops/creators/:id` |
+| ops list rows carry `stage`; overview has `pending` / `withdrawn` counts | 05 运营端 | `GET /api/ops/creators` `GET /api/ops/overview` |
+
+## 13. 项目导出与移出 — `13-project-board.test.ts`
+
+Specs: `docs/05_接口说明.md` 选人端 · 项目导出 / 移出分派; `docs/03_指标口径与数据源.md` §发布快照（导出用发布时的数字）.
+
+| case | spec | HTTP |
+|------|------|------|
+| export is `text/csv` attachment, bytes start with the UTF-8 BOM, Chinese headers, followers = publish-time (not the later PATCH), `=` in the nickname is defused, status 已分派 | 05 项目导出 | `GET /api/select/projects/:id/export` |
+| `?locale=en` / `ko` headers; unknown locale falls back to Chinese | 05 项目导出 | `GET …/export?locale=` |
+| viewer (select.read) can export; ops 403; anonymous `AUTH-LOGIN` | 01 RBAC | `GET …/export` |
+| viewer cannot remove an assignment (403) | 01 RBAC `select.assign` | `DELETE /api/select/projects/:id/assignments/:creatorId` |
+| selector removes → board empty, export no longer lists the creator, second delete 404 | 05 移出分派 | `DELETE …/assignments/:creatorId` `GET /api/select/projects/:id` |
+| ops reads a creator's history; selector 403 | 05 运营端 | `GET /api/ops/creators/:id/history` |
+
+## 14. 账号管理 — `14-accounts.test.ts`
+
+Specs: `docs/05_接口说明.md` 账号管理（工作端源站 `/api/kcs-admin/*`，`admin.users` 只给 platform_admin）; `docs/07_测试与验收清单.md` §账号.
+These routes live on the workspace origin (`BLACKBOX_AUTH_URL`), next to sign-in, not on the API. Role changes and disabling reach the API within its 10 s session cache; the cases wait up to 15 s.
+
+| case | spec | HTTP |
+|------|------|------|
+| anonymous → 401, no list | 01 AuthN | `GET /api/kcs-admin/users` |
+| ops / devops / selector / selector_viewer → 403 on list, create (even asking for platform_admin) and patch; nothing gets created (`it.each` ×4) | 01 RBAC `admin.users` | `GET` `POST /api/kcs-admin/users` `PATCH …/:id` |
+| admin lists every account with role, disabled flag, last sign-in; own row is `self` | 05 账号管理 | `GET /api/kcs-admin/users` |
+| bad email / short password / unknown role → 400 with code; taken email → 409; admin cannot demote or disable self (409 `self`); unknown id 404 | 05 账号管理 | `POST` `PATCH` |
+| admin creates an ops account → it signs in with the starting password, API role `ops`, ops list 200 / pool 403, form sign-in hands off to the ops origin, list shows last sign-in | 05 账号管理 · 00 登录分流 | `POST /api/kcs-admin/users` `POST /api/auth/sign-in/email` `POST /__login` `GET /api/auth/me` |
+| role → selector: API reports `selector` within the cache window, pool 200, ops list 403 | 05 账号管理（10 秒生效） | `PATCH …/:id {role}` `GET /api/auth/me` |
+| disable: old session gone at once on the workspace origin, API 401 within the cache window, sign-in 403; restore → signs in again as selector | 05 账号管理（停用） | `PATCH …/:id {disabled}` `GET /api/auth/get-session` `POST /api/auth/sign-in/email` |

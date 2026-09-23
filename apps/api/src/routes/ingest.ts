@@ -53,21 +53,23 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
   app.get('/api/ingest/raw/:creatorId', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ingest.read')
     if (denied) return denied
+    const limit = Math.max(1, Math.min(100, Number(context.req.query('limit') || 30)))
     const { rows } = await env.db.query(
       `SELECT id, creator_id, source, external_id, fetched_at, payload
-       FROM creator_raw WHERE creator_id = $1 ORDER BY fetched_at DESC LIMIT 1`,
-      [context.req.param('creatorId')],
+       FROM creator_raw WHERE creator_id = $1 ORDER BY fetched_at DESC, id DESC LIMIT $2`,
+      [context.req.param('creatorId'), limit],
     )
     if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    const row = rows[0]
-    return context.json({
+    const items = rows.map((row) => ({
       id: row.id,
       creatorId: row.creator_id,
       source: row.source,
       externalId: row.external_id,
-      fetchedAt: row.fetched_at,
+      fetchedAt: row.fetched_at instanceof Date ? row.fetched_at.toISOString() : row.fetched_at,
       payload: row.payload,
-    })
+    }))
+    // Top-level fields stay the newest record, as before; `items` is every record, newest first.
+    return context.json({ ...items[0], items })
   })
 
   app.get('/api/ingest/jobs', async (context) => {

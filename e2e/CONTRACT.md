@@ -49,6 +49,19 @@ ops `/` and `/creators/new`; select `/`, `/projects`, and `/projects/:id`; dev `
 | `btn-assign-confirm` `row-project-assignment` | confirm + board row |
 | `dev-job-count` `dev-sql-ok` | health integer = `COUNT(*) FROM ingest_job` |
 
+## Extra testids (journeys 7–8)
+
+Journey 7 (`07-ops-review-chain`) and 8 (`08-accounts`) use ids from `TESTID` (`screen-a-creators`, `row-ops-creator` with `data-creator-id`, `ops-creator-tab-*`, `screen-a-creator`, `metric-compare`, `btn-raw` / `sheet-raw` / `raw-record`, `creator-status` with `data-stage`, `btn-publish-confirm`, `btn-unpublish`, `btn-export-project`, `screen-b-accounts`, `btn-create-account`, `form-create-account`, `btn-create-account-submit`, `row-account` with `data-account-email`, `account-role`, `account-status` with `data-status`, `nav--accounts`) plus:
+
+| id | where |
+|----|-------|
+| `fetch-source` `fetch-run` | ops `/sources` fetch form |
+| `fetch-result` | `data-job-id` of the job just opened |
+| `row-fetch-job` | `data-job-id`, `data-status` (`queued` / `running` / `ok` / `partial` / `failed`) |
+| `query-new` | select pool: blank plan (the first saved plan filters the pool) |
+
+The review chain needs a demo creator still waiting for review from `E2E_REVIEW_SOURCE` (default `xinhong`). The API restores the demo creators on every start; repeated runs on one database use them up.
+
 ## Persistence
 
 Postgres tables: `creator`, `assignment`, `ingest_job` (DOMAIN.md).  
