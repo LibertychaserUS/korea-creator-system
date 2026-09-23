@@ -15,7 +15,8 @@ test.describe('Ops publish journey', () => {
     const displayName = `E2E 运营达人 ${Date.now()}`;
 
     await loginViaUi(page, 'ops');
-    await page.goto(PAGES.ops, { timeout: TIMEOUTS.navigation });
+    // Wait for hydration: a click before it does a full load, and the next page's hydration wipes what was typed.
+    await page.goto(PAGES.ops, { timeout: TIMEOUTS.navigation, waitUntil: 'networkidle' });
     await expect(page.getByTestId(tid.screen['A-home'])).toBeVisible();
 
     await page.getByTestId(tid.btnCreateCreator).click();

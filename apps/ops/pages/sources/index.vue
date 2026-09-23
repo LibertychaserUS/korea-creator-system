@@ -121,7 +121,7 @@
               <Play class="size-4" />
               {{ running ? t('kcs.ingest.running') : t('kcs.ingest.run') }}
             </Button>
-            <p v-if="result" class="text-sm text-muted-foreground" data-testid="fetch-result">
+            <p v-if="result" class="text-sm text-muted-foreground" data-testid="fetch-result" :data-job-id="result.jobId ?? result.id ?? undefined">
               <template v-if="result.queued">{{ t('kcs.ingest.queued') }}</template>
               <template v-else>
                 {{ t('kcs.ingest.done', { written: result.writtenCount ?? 0, skipped: result.skippedDupes ?? 0, failed: result.failedCount ?? 0 }) }}
@@ -157,7 +157,7 @@
                 <TableCell />
               </TableRow>
             </template>
-            <TableRow v-for="job in jobs" :key="job.id" data-testid="row-fetch-job">
+            <TableRow v-for="job in jobs" :key="job.id" data-testid="row-fetch-job" :data-job-id="job.id" :data-status="job.status">
               <TableCell>
                 <div class="flex flex-col gap-1">
                   <SourceBadge :source="job.sourceId" :mode="job.sourceMode" />
