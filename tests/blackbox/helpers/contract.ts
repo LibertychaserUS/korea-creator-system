@@ -61,6 +61,7 @@ export const PATHS = {
   ingestJobs: '/api/ingest/jobs',
   ingestJob: (id: string) => `/api/ingest/jobs/${id}`,
   ingestJobCancel: (id: string) => `/api/ingest/jobs/${id}/cancel`,
+  ingestSample: (id: string) => `/api/ingest/jobs/${id}/sample`,
   ingestRetry: (id: string) => `/api/ingest/jobs/${id}/retry`,
   devHealth: '/api/dev/health',
   devJobs: '/api/dev/jobs',

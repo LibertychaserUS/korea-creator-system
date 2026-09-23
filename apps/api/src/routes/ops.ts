@@ -66,7 +66,9 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         count(*) FILTER (WHERE status = 'draft')::int AS draft,
         count(*) FILTER (WHERE needs_review)::int AS review,
         count(*) FILTER (WHERE status = 'ready')::int AS ready,
-        count(*) FILTER (WHERE status = 'released')::int AS released
+        count(*) FILTER (WHERE status = 'released')::int AS released,
+        count(*) FILTER (WHERE status <> 'released' AND metrics_locked_at IS NULL)::int AS pending,
+        count(*) FILTER (WHERE status <> 'released' AND metrics_locked_at IS NOT NULL)::int AS withdrawn
       FROM creators
     `)
     const jobs = await env.db.query(
@@ -154,7 +156,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const updated = await env.db.query(
       `UPDATE creators SET
         display_name = COALESCE($2, display_name),
-        followers = COALESCE($3, followers),
+        followers = COALESCE($3::integer, followers),
         followers_unknown = COALESCE($4, followers_unknown),
         regions = COALESCE($5, regions),
         verticals = COALESCE($6, verticals),
@@ -163,7 +165,11 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         qc_notes = COALESCE($9, qc_notes),
         label = COALESCE($10, label),
         needs_review = COALESCE($11, needs_review),
-        metrics = COALESCE($12, metrics),
+        metrics = CASE
+          WHEN $12::jsonb IS NOT NULL THEN $12::jsonb
+          WHEN $3::integer IS NOT NULL AND metrics IS NOT NULL
+            THEN jsonb_set(metrics, '{followers}', to_jsonb($3::integer))
+          ELSE metrics END,
         metrics_window = COALESCE($13, metrics_window),
         metrics_fetched_at = CASE WHEN $12::jsonb IS NULL THEN metrics_fetched_at ELSE now() END,
         updated_at = now()
@@ -204,14 +210,45 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (item.followers == null && !item.followersUnknown) {
       return jsonError(context, 400, 'VALIDATION', 'incomplete')
     }
+    // Already in the pool: the snapshot stays as it was. Only a take-down and a
+    // fresh publish move the pool onto newer numbers.
+    if (item.status === 'released') {
+      return context.json({
+        ok: true,
+        status: 'released',
+        refreshed: false,
+        metricsLockedAt: item.metricsLockedAt,
+      })
+    }
+    // `item.metrics` is the latest record with followers / price folded in, so
+    // the snapshot stands on its own even if those columns change later.
+    const { rows } = await env.db.query(
+      `UPDATE creators SET status = 'released', needs_review = false,
+         metrics_locked = $2, metrics_locked_at = now(), updated_at = now()
+       WHERE id = $1 RETURNING metrics_locked_at`,
+      [id, JSON.stringify(item.metrics)],
+    )
     await env.db.query(
-      `UPDATE creators SET status = 'released', metrics_locked = metrics,
-       updated_at = now() WHERE id = $1`,
+      "UPDATE reviews SET status = 'passed' WHERE creator_id = $1 AND status = 'pending'",
       [id],
     )
     await env.db.query('UPDATE assignments SET pool_gone = false WHERE creator_id = $1', [id])
-    await audit(env.db, user!.id, 'creator.publish', 'creator', id, item.displayName)
-    return context.json({ ok: true, status: 'released' })
+    await audit(
+      env.db,
+      user!.id,
+      item.stage === 'withdrawn' ? 'creator.republish' : 'creator.publish',
+      'creator',
+      id,
+      item.displayName,
+    )
+    return context.json({
+      ok: true,
+      status: 'released',
+      refreshed: true,
+      metricsLockedAt: rows[0].metrics_locked_at instanceof Date
+        ? rows[0].metrics_locked_at.toISOString()
+        : rows[0].metrics_locked_at,
+    })
   })
 
   app.post('/api/ops/creators/:id/unpublish', async (context) => {

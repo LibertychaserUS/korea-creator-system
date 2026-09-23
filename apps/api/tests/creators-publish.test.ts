@@ -133,8 +133,10 @@ describe('creator publish and visibility', () => {
       headers: { authorization: `Bearer ${selector.token}` },
     })
     const body = await detail.json()
-    expect(body.metrics.cpe).toBe(4.5)
+    expect(body.metrics.cpe).toBe(2.5)
     expect(body.metricsLocked.cpe).toBe(2.5)
     expect(body.metricsLocked.health).toBe('excellent')
+    expect(body.metricsLatest.cpe).toBe(4.5)
+    expect(body.metricsLatest.health).toBe('normal')
   })
 })

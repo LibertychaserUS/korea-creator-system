@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { DEFAULT_QUERY_COLUMNS } from '@kcs/contract'
 import { audit } from '../http/audit'
 import {
+  asPublished,
   attachCreatorMeta,
   csvCell,
   enrichPoolItems,
@@ -53,7 +54,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       `SELECT a.id, a.creator_id, a.status, a.pool_gone, a.assigned_at,
               c.display_name, c.followers, c.creator_key, c.status AS creator_status,
               c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
-              c.metrics, c.metrics_locked, c.source, c.external_id, c.metrics_fetched_at
+              c.metrics, c.metrics_locked, c.metrics_locked_at, c.source, c.external_id, c.metrics_fetched_at
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1 ORDER BY a.assigned_at DESC`,
       [context.req.param('id')],
@@ -73,6 +74,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
         avatar_key: row.avatar_key,
         metrics: row.metrics,
         metrics_locked: row.metrics_locked,
+        metrics_locked_at: row.metrics_locked_at,
         source: row.source,
         external_id: row.external_id,
         metrics_fetched_at: row.metrics_fetched_at,
@@ -80,7 +82,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       false,
     )
     const pool = await queryPool(env.db, {})
-    const enriched = enrichPoolItems(meta, pool)
+    const enriched = enrichPoolItems(meta.map(asPublished), pool)
     return context.json({
       ...rows[0],
       assignments: enriched.map((item, index) => {
@@ -202,7 +204,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
     const { rows } = await env.db.query(
-      `SELECT c.display_name, c.metrics, c.followers, a.status
+      `SELECT c.display_name, COALESCE(c.metrics_locked, c.metrics) AS metrics, c.followers, a.status
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1`,
       [context.req.param('id')],

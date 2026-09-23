@@ -113,8 +113,8 @@ async function seedCreators(db: Db) {
         `INSERT INTO creators (
            id, creator_key, display_name, status, needs_review, followers, followers_unknown,
            regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-           metrics_fetched_at, metrics_locked, note
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,30,$12,$13,$14,$15,$16)
+           metrics_fetched_at, metrics_locked, note, metrics_locked_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,30,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (id) DO UPDATE SET
            creator_key = EXCLUDED.creator_key, display_name = EXCLUDED.display_name,
            status = EXCLUDED.status, needs_review = EXCLUDED.needs_review,
@@ -123,7 +123,8 @@ async function seedCreators(db: Db) {
            metrics = EXCLUDED.metrics, metrics_window = EXCLUDED.metrics_window,
            source = EXCLUDED.source, external_id = EXCLUDED.external_id,
            metrics_fetched_at = EXCLUDED.metrics_fetched_at,
-           metrics_locked = EXCLUDED.metrics_locked, note = EXCLUDED.note, updated_at = now()`,
+           metrics_locked = EXCLUDED.metrics_locked, metrics_locked_at = EXCLUDED.metrics_locked_at,
+           note = EXCLUDED.note, updated_at = now()`,
         [
           id,
           creator.creatorKey,
@@ -141,6 +142,7 @@ async function seedCreators(db: Db) {
           raw.fetchedAt,
           released ? JSON.stringify(creator.metrics) : null,
           `${adapter.id} fixture`,
+          released ? raw.fetchedAt : null,
         ],
       )
       await db.query(

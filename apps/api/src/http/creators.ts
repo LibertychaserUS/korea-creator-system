@@ -1,6 +1,7 @@
 import {
   cohortKey,
   cohortPercentiles,
+  creatorStage,
   defaultSavedQuery,
   deriveMetrics,
   emptyMetrics,
@@ -53,7 +54,18 @@ export function publicPoolRow(item: Record<string, any>) {
     percentiles: item.percentiles,
     health: item.metrics.health,
     metricsLocked: item.metricsLocked,
+    metricsLockedAt: item.metricsLockedAt,
   }
+}
+
+/**
+ * The select side sees a creator as it was at publish: `metrics` becomes the
+ * snapshot, so every filter, sort and percentile runs on it; the latest ingest
+ * stays available as `metricsLatest` for side-by-side display. Rows released
+ * before snapshots existed fall back to their current numbers.
+ */
+export function asPublished<T extends Record<string, any>>(item: T): T & { metricsLatest: CreatorMetrics } {
+  return { ...item, metrics: item.metricsLocked ?? item.metrics, metricsLatest: item.metrics }
 }
 
 export function camelJobs(rows: Array<Record<string, any>>) {
@@ -186,7 +198,10 @@ export async function attachCreatorMeta(
       externalId: row.external_id ?? null,
       metrics,
       metricsLocked: parseMetrics(row.metrics_locked),
+      metricsLockedAt: isoOrNull(row.metrics_locked_at),
+      stage: creatorStage({ status: row.status, metricsLockedAt: row.metrics_locked_at }),
       metricsFetchedAt: row.metrics_fetched_at ?? null,
+      updatedAt: isoOrNull(row.updated_at),
       sources: sources.rows
         .filter((item) => item.creator_id === row.id)
         .map((item) => ({
@@ -216,6 +231,11 @@ export async function loadCreator(db: Db, id: string, full: boolean) {
   const { rows } = await db.query('SELECT * FROM creators WHERE id = $1', [id])
   if (!rows[0]) return null
   return (await attachCreatorMeta(db, rows, full))[0]
+}
+
+function isoOrNull(value: unknown): string | null {
+  if (value == null) return null
+  return value instanceof Date ? value.toISOString() : String(value)
 }
 
 export function parseMetrics(value: unknown): CreatorMetrics | null {
@@ -326,6 +346,7 @@ export async function queryPool(db: Db, query: Record<string, string>) {
   const { rows } = await db.query("SELECT * FROM creators WHERE status = 'released'")
   const visible = (await attachCreatorMeta(db, rows, false))
     .filter((item) => !item.categories.includes('blacklist'))
+    .map(asPublished)
   let items = enrichPoolItems(visible, visible)
   if (query.hasCollaborated === 'true') items = items.filter((item) => item.hasCollaborated)
   if (query.hasCollaborated === 'false') items = items.filter((item) => !item.hasCollaborated)

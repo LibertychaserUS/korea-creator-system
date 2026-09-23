@@ -298,3 +298,17 @@ images); set `BLACKBOX_WORKSPACE_DEV=1` when pointing at `nuxt dev`.
 | bad fields → 400 `VALIDATION` with `error.fields[].path` (e.g. `followers`) | 05 §错误码 | `POST /api/ops/creators` |
 | PATCH / unpublish a creator that does not exist → 404 `NOT-FOUND`, no audit row | 05 §错误码「不写审计」 | `PATCH /api/ops/creators/:id` `POST …/unpublish` `GET /api/dev/audit` |
 | assign into a missing project, remove a missing assignment → 404, no audit row | 05 §错误码 | `POST /api/select/projects/:id/assignments` `DELETE …/assignments/:creatorId` |
+
+## 12. 运营审核与发布快照 — `12-ops-review.test.ts`
+
+Specs: `docs/02_数据字典.md` `metrics_locked` / `metrics_locked_at`; `docs/03_指标口径与数据源.md` §发布快照与审计; `docs/05_接口说明.md` 运营端.
+The re-ingest group needs the stand-in vendor (`bb-grow`: the same two creators, 40 000 more followers per call); without it those 4 cases skip.
+
+| case | spec | HTTP |
+|------|------|------|
+| a freshly fetched creator is `stage: review`, no snapshot, not in the pool | 02 `creatorStage` | `POST /api/ingest/fetch?sync=1` `GET /api/ingest/jobs/:id/sample` `GET /api/ops/creators/:id` `GET /api/select/pool` |
+| publish → `refreshed: true`, pool followers = the numbers at publish, `metricsLockedAt` set, stage `released` | 03 §发布快照 | `POST /api/ops/creators/:id/publish` |
+| re-fetch → ops latest followers grow, `metricsLocked` unchanged; pool followers / tier / `followersMin` filter unchanged; select detail `metrics` = publish-time, `metricsLatest` = latest | 03 §发布快照「抓取永远不写它」 | `POST /api/ingest/fetch` `GET /api/select/pool` `GET /api/select/creators/:id` |
+| publish while released → `refreshed: false`; take down → `withdrawn`, off the pool; publish again → pool on the latest numbers (tier moves to `mid`) | 03 §发布快照「下架、再发布」 | `POST …/publish` `POST …/unpublish` |
+| manual PATCH of metrics after publish leaves the pool alone; detail shows both; re-publish moves the pool | 02 `metrics` / `metrics_locked` | `PATCH /api/ops/creators/:id` |
+| ops list rows carry `stage`; overview has `pending` / `withdrawn` counts | 05 运营端 | `GET /api/ops/creators` `GET /api/ops/overview` |
