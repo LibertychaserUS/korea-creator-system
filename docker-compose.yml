@@ -62,6 +62,8 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/kcs
+      # Local demo stack: load sample creators / projects / jobs on start. Never set in production.
+      KCS_SEED: demo
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
       S3_BUCKET: kcs-assets

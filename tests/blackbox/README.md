@@ -12,10 +12,10 @@ PostgreSQL is required. SQLite is rejected.
 # 1. Postgres (repo-root compose — user kcs / db kcs / port 5432)
 docker compose up -d postgres
 
-# 2. API process (default http://localhost:7100)
-#    when fullstack ships it:
-#    docker compose --profile full up -d
-#    or: pnpm --filter @kcs/api dev
+# 2. API process (default http://localhost:7100) with the demo data loaded —
+#    the suites assert against it; without KCS_SEED=demo the API starts empty:
+#    docker compose --profile full up -d        (compose already sets KCS_SEED=demo)
+#    or: KCS_SEED=demo pnpm --filter @kcs/api dev
 
 # 3. A workspace app serving TinyShip auth (default http://localhost:7004 = select)
 #    with the five demo accounts seeded: pnpm db:seed:auth
