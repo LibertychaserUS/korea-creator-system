@@ -325,3 +325,18 @@ Specs: `docs/05_接口说明.md` 选人端 · 项目导出 / 移出分派; `docs
 | viewer cannot remove an assignment (403) | 01 RBAC `select.assign` | `DELETE /api/select/projects/:id/assignments/:creatorId` |
 | selector removes → board empty, export no longer lists the creator, second delete 404 | 05 移出分派 | `DELETE …/assignments/:creatorId` `GET /api/select/projects/:id` |
 | ops reads a creator's history; selector 403 | 05 运营端 | `GET /api/ops/creators/:id/history` |
+
+## 14. 账号管理 — `14-accounts.test.ts`
+
+Specs: `docs/05_接口说明.md` 账号管理（工作端源站 `/api/kcs-admin/*`，`admin.users` 只给 platform_admin）; `docs/07_测试与验收清单.md` §账号.
+These routes live on the workspace origin (`BLACKBOX_AUTH_URL`), next to sign-in, not on the API. Role changes and disabling reach the API within its 10 s session cache; the cases wait up to 15 s.
+
+| case | spec | HTTP |
+|------|------|------|
+| anonymous → 401, no list | 01 AuthN | `GET /api/kcs-admin/users` |
+| ops / devops / selector / selector_viewer → 403 on list, create (even asking for platform_admin) and patch; nothing gets created (`it.each` ×4) | 01 RBAC `admin.users` | `GET` `POST /api/kcs-admin/users` `PATCH …/:id` |
+| admin lists every account with role, disabled flag, last sign-in; own row is `self` | 05 账号管理 | `GET /api/kcs-admin/users` |
+| bad email / short password / unknown role → 400 with code; taken email → 409; admin cannot demote or disable self (409 `self`); unknown id 404 | 05 账号管理 | `POST` `PATCH` |
+| admin creates an ops account → it signs in with the starting password, API role `ops`, ops list 200 / pool 403, form sign-in hands off to the ops origin, list shows last sign-in | 05 账号管理 · 00 登录分流 | `POST /api/kcs-admin/users` `POST /api/auth/sign-in/email` `POST /__login` `GET /api/auth/me` |
+| role → selector: API reports `selector` within the cache window, pool 200, ops list 403 | 05 账号管理（10 秒生效） | `PATCH …/:id {role}` `GET /api/auth/me` |
+| disable: old session gone at once on the workspace origin, API 401 within the cache window, sign-in 403; restore → signs in again as selector | 05 账号管理（停用） | `PATCH …/:id {disabled}` `GET /api/auth/get-session` `POST /api/auth/sign-in/email` |

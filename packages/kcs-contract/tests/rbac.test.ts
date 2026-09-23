@@ -19,6 +19,7 @@ const ALL: Permission[] = [
   'select.write',
   'select.assign',
   'admin.secrets',
+  'admin.users',
 ]
 
 function allowed(role: Role): Permission[] {
@@ -66,6 +67,12 @@ describe('RBAC matrix', () => {
 
   it('denies ops admin.secrets so they cannot change k8s/keys', () => {
     expect(can('ops', 'admin.secrets')).toBe(false)
+  })
+
+  it('keeps account management with platform_admin only', () => {
+    const roles: Role[] = ['ops', 'devops', 'selector', 'selector_viewer']
+    for (const role of roles) expect(can(role, 'admin.users')).toBe(false)
+    expect(can('platform_admin', 'admin.users')).toBe(true)
   })
 
   it('denies selector_viewer select.assign so hide-button-only UI is not enough', () => {

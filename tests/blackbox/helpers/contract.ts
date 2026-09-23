@@ -43,6 +43,8 @@ export const PATHS = {
   opsPublish: (id: string) => `/api/ops/creators/${id}/publish`,
   opsUnpublish: (id: string) => `/api/ops/creators/${id}/unpublish`,
   opsCreatorHistory: (id: string) => `/api/ops/creators/${id}/history`,
+  accounts: '/api/kcs-admin/users',
+  account: (id: string) => `/api/kcs-admin/users/${id}`,
   opsCategories: '/api/ops/categories',
   opsCategory: (slug: string) => `/api/ops/categories/${slug}`,
   pool: '/api/select/pool',

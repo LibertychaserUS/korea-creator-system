@@ -22,6 +22,7 @@ export const PERMISSIONS = [
   'select.write',
   'select.assign',
   'admin.secrets',
+  'admin.users',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

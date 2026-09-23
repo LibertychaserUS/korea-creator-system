@@ -3,6 +3,7 @@ import { can, type Permission } from '@kcs/contract'
 type KcsAppConfig = {
   key?: string
   perm?: Permission | null
+  nav?: { to: string; perm?: Permission }[]
 }
 
 /**
@@ -27,6 +28,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // an expired session would have cleared the cookie and belongs on /login.
   if (!user.value) return navigateTo(localePath(token.value ? '/denied' : '/login'))
   if (!can(user.value.role, perm)) return navigateTo(localePath('/denied'))
+  // 侧栏条目自带的权限（如 /accounts 要 admin.users）同样按路径把门，不能靠藏按钮。
+  const guarded = kcs?.nav?.find((item) => item.perm && item.to !== '/' && (bare === item.to || bare.startsWith(`${item.to}/`)))
+  if (guarded?.perm && !can(user.value.role, guarded.perm)) return navigateTo(localePath('/denied'))
 
   // Remember the workspace for cross-app login handoff (preference cookie, consent-gated).
   if (import.meta.client && kcs?.key) {

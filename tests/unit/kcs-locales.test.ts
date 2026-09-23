@@ -1,3 +1,4 @@
+import { baseCompile } from '@intlify/message-compiler'
 import { describe, expect, it } from 'vitest'
 import { EXPORT_LABELS, EXPORT_METRICS, type ExportLocale } from '../../packages/kcs-contract/src'
 import { en } from '../../libs/i18n/locales/en'
@@ -35,6 +36,18 @@ describe('KCS copy in three languages', () => {
         for (const [key, text] of Object.entries(flatten(messages.kcs[ns], `kcs.${ns}`))) {
           expect(text, `${name} ${key}`).not.toMatch(TECH_WORDS)
           expect(text.trim(), `${name} ${key} is empty`).not.toBe('')
+        }
+      }
+    }
+  })
+
+  it('every reviewed message compiles (a bare @ or | breaks the page at runtime)', () => {
+    for (const [name, messages] of Object.entries(LOCALES)) {
+      for (const ns of REVIEWED) {
+        for (const [key, text] of Object.entries(flatten(messages.kcs[ns], `kcs.${ns}`))) {
+          const errors: string[] = []
+          baseCompile(text, { onError: (error) => errors.push(error.message) })
+          expect(errors, `${name} ${key}`).toEqual([])
         }
       }
     }

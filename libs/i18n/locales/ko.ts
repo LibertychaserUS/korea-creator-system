@@ -344,7 +344,8 @@ export const ko: Locale = {
       ops: "운영 데스크",
       select: "선정 데스크",
       monitor: "인프라 데스크",
-      ingest: "수집 기록"
+      ingest: "수집 기록",
+      accounts: "계정"
     },
     actions: {
       login: "로그인",
@@ -702,6 +703,59 @@ export const ko: Locale = {
       confirm: "빼기",
       failed: "처리하지 못했습니다. 잠시 후 다시 시도하세요.",
       actions: "작업"
+    },
+    accounts: {
+      title: "계정",
+      lead: "동료에게 계정을 만들어 역할을 주고, 퇴사한 사람은 사용 중지합니다. 이 페이지는 플랫폼 관리자만 볼 수 있습니다.",
+      create: "새 계정",
+      createTitle: "새 계정",
+      createLead: "초기 비밀번호를 상대에게 알려 주세요. 로그인하면 역할에 맞는 데스크로 이동합니다.",
+      email: "이메일",
+      name: "이름",
+      namePlaceholder: "비워 두면 이메일 {'@'} 앞부분을 씁니다",
+      password: "초기 비밀번호",
+      passwordHint: "8자 이상",
+      role: "역할",
+      search: "이메일 또는 이름 검색",
+      cols: {
+        account: "계정",
+        role: "역할",
+        lastLogin: "최근 로그인",
+        status: "상태",
+        actions: "작업"
+      },
+      status: {
+        active: "정상",
+        disabled: "사용 중지"
+      },
+      noRole: "역할 미지정",
+      you: "본인",
+      never: "로그인 기록 없음",
+      lastLoginHint: "직접 로그아웃한 로그인은 세지 않습니다",
+      delayNote: "역할 변경과 사용 중지는 최대 10초 뒤 적용됩니다. 열려 있는 페이지는 새로고침하면 새 역할로 보입니다.",
+      disable: "사용 중지",
+      enable: "복구",
+      disableTitle: "{name} 계정을 사용 중지할까요?",
+      disableBody: "바로 로그인할 수 없게 되고, 열려 있는 페이지도 10초 안에 로그아웃됩니다. 언제든 복구할 수 있습니다.",
+      enableTitle: "{name} 계정을 복구할까요?",
+      enableBody: "기존 비밀번호로 다시 로그인할 수 있습니다.",
+      cancel: "취소",
+      submit: "만들기",
+      confirm: "확인",
+      created: "{email} 계정을 만들었습니다",
+      roleChanged: "{name}의 역할을 「{role}」(으)로 바꿨습니다. 최대 10초 뒤 적용됩니다",
+      disabled: "{name} 계정을 사용 중지했습니다",
+      enabled: "{name} 계정을 복구했습니다",
+      empty: "조건에 맞는 계정이 없습니다",
+      errors: {
+        invalid_email: "이메일 형식이 올바르지 않습니다",
+        weak_password: "초기 비밀번호는 8자 이상이어야 합니다",
+        invalid_role: "역할을 선택하세요",
+        email_taken: "이미 계정이 있는 이메일입니다",
+        self: "본인의 역할을 바꾸거나 사용 중지할 수 없습니다",
+        not_found: "이미 없는 계정입니다. 새로고침해 주세요",
+        failed: "저장하지 못했습니다. 잠시 후 다시 시도하세요"
+      }
     },
     exempt: {
       note: "닉네임, 샤오홍슈 계정, 원본 키워드, 손으로 쓴 메모는 번역하지 않는다.",

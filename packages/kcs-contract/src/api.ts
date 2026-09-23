@@ -11,6 +11,13 @@ export const API = {
    * token it receives and returns the KCS role.
    */
   me: { method: 'GET', path: '/api/auth/me', auth: true },
+  /**
+   * 账号管理同样在工作端源站（TinyShip 那边），不在 API 上；只有 platform_admin。
+   * 改角色 / 停用受 API 会话缓存影响，最多 10 秒后在 API 生效。
+   */
+  accountList: { method: 'GET', path: '/api/kcs-admin/users', perm: 'admin.users', origin: 'workspace' },
+  accountCreate: { method: 'POST', path: '/api/kcs-admin/users', perm: 'admin.users', origin: 'workspace' },
+  accountPatch: { method: 'PATCH', path: '/api/kcs-admin/users/:id', perm: 'admin.users', origin: 'workspace' },
   opsOverview: { method: 'GET', path: '/api/ops/overview', perm: 'ops.read' },
   opsCreators: { method: 'GET', path: '/api/ops/creators', perm: 'ops.read' },
   opsCreatorCreate: { method: 'POST', path: '/api/ops/creators', perm: 'ops.write' },

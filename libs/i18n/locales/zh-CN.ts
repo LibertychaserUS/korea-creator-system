@@ -2218,7 +2218,8 @@ export const zhCN: Locale = {
       ops: "运营端",
       select: "选人端",
       monitor: "运维端",
-      ingest: "抓取任务"
+      ingest: "抓取任务",
+      accounts: "账号"
     },
     actions: {
       login: "登录",
@@ -2576,6 +2577,59 @@ export const zhCN: Locale = {
       confirm: "移出",
       failed: "没有成功，请稍后再试",
       actions: "操作"
+    },
+    accounts: {
+      title: "账号",
+      lead: "给同事开账号、分配角色，停用离职的人。这一页只有平台管理员能看到。",
+      create: "新建账号",
+      createTitle: "新建账号",
+      createLead: "设好初始密码后告诉对方，对方登录后会按角色进入自己的工作台。",
+      email: "邮箱",
+      name: "名字",
+      namePlaceholder: "不填就用邮箱 {'@'} 前面的部分",
+      password: "初始密码",
+      passwordHint: "至少 8 位",
+      role: "角色",
+      search: "搜索邮箱或名字",
+      cols: {
+        account: "账号",
+        role: "角色",
+        lastLogin: "最近登录",
+        status: "状态",
+        actions: "操作"
+      },
+      status: {
+        active: "正常",
+        disabled: "已停用"
+      },
+      noRole: "未分配角色",
+      you: "你自己",
+      never: "还没登录过",
+      lastLoginHint: "主动退出的那次登录不再计入",
+      delayNote: "改角色、停用最多 10 秒后生效；对方已打开的页面刷新后按新角色显示。",
+      disable: "停用",
+      enable: "恢复",
+      disableTitle: "停用 {name}？",
+      disableBody: "停用后对方马上不能再登录，已经打开的页面最多 10 秒内会被退出。之后随时可以恢复。",
+      enableTitle: "恢复 {name}？",
+      enableBody: "恢复后对方可以用原来的密码重新登录。",
+      cancel: "取消",
+      submit: "新建",
+      confirm: "确定",
+      created: "已新建账号 {email}",
+      roleChanged: "已把 {name} 改为「{role}」，最多 10 秒后生效",
+      disabled: "已停用 {name}",
+      enabled: "已恢复 {name}",
+      empty: "没有符合条件的账号",
+      errors: {
+        invalid_email: "邮箱格式不对",
+        weak_password: "初始密码至少 8 位",
+        invalid_role: "请选一个角色",
+        email_taken: "这个邮箱已经有账号了",
+        self: "不能改自己的角色，也不能停用自己",
+        not_found: "这个账号已经不在了，请刷新",
+        failed: "没保存成功，请稍后再试"
+      }
     },
     exempt: {
       note: "昵称、小红书号、原始关键词和手写备注保持原文，不做翻译。"

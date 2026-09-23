@@ -1,3 +1,5 @@
+type ApiOrigin = 'api' | 'self'
+
 export function useApi() {
   const config = useRuntimeConfig()
   /**
@@ -7,12 +9,16 @@ export function useApi() {
   const token = useCookie<string | null>('kcs_session', { sameSite: 'lax', path: '/' })
   const localePath = useLocalePath()
 
-  async function send(path: string, opts: RequestInit = {}): Promise<Response> {
+  /**
+   * `origin: 'self'` 打本端源站（账号管理 `/api/kcs-admin/**` 就在 TinyShip 这边），
+   * 默认打 Hono API。
+   */
+  async function send(path: string, opts: RequestInit = {}, origin: ApiOrigin = 'api'): Promise<Response> {
     const headers = new Headers(opts.headers)
     const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
     if (!isForm && !headers.has('content-type')) headers.set('content-type', 'application/json')
     if (token.value) headers.set('authorization', `Bearer ${token.value}`)
-    const res = await fetch(`${config.public.apiBase}${path}`, {
+    const res = await fetch(`${origin === 'self' ? '' : config.public.apiBase}${path}`, {
       ...opts,
       headers,
       credentials: 'include',
@@ -29,11 +35,17 @@ export function useApi() {
     return res
   }
 
-  async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
-    const res = await send(path, opts)
+  async function request<T>(path: string, opts: RequestInit = {}, origin: ApiOrigin = 'api'): Promise<T> {
+    const res = await send(path, opts, origin)
     const text = await res.text()
     const data = text ? JSON.parse(text) : {}
-    if (!res.ok) throw Object.assign(new Error(data.error?.message || data.error || 'request_failed'), { status: res.status, data })
+    if (!res.ok) {
+      // Hono: `{ error: { message } }` / `{ error }`；Nitro createError: `{ error: true, data: { error } }`
+      const message = typeof data.data?.error === 'string'
+        ? data.data.error
+        : data.error?.message || (typeof data.error === 'string' ? data.error : '') || 'request_failed'
+      throw Object.assign(new Error(message), { status: res.status, data })
+    }
     return data as T
   }
 

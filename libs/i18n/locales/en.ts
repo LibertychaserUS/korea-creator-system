@@ -2211,7 +2211,8 @@ export const en: Locale = {
       ops: "Ops Desk",
       select: "Select Desk",
       monitor: "Dev Desk",
-      ingest: "Collection tasks"
+      ingest: "Collection tasks",
+      accounts: "Accounts"
     },
     actions: {
       login: "Sign in",
@@ -2569,6 +2570,59 @@ export const en: Locale = {
       confirm: "Remove",
       failed: "That did not work. Please try again later.",
       actions: "Actions"
+    },
+    accounts: {
+      title: "Accounts",
+      lead: "Open accounts for teammates, give them a role, and switch off people who have left. Only platform admins see this page.",
+      create: "New account",
+      createTitle: "New account",
+      createLead: "Share the starting password with them. After signing in they land on the desk for their role.",
+      email: "Email",
+      name: "Name",
+      namePlaceholder: "Leave empty to use the part before {'@'}",
+      password: "Starting password",
+      passwordHint: "At least 8 characters",
+      role: "Role",
+      search: "Search email or name",
+      cols: {
+        account: "Account",
+        role: "Role",
+        lastLogin: "Last sign-in",
+        status: "Status",
+        actions: "Actions"
+      },
+      status: {
+        active: "Active",
+        disabled: "Disabled"
+      },
+      noRole: "No role yet",
+      you: "You",
+      never: "Never signed in",
+      lastLoginHint: "Sign-ins they ended by signing out are not counted",
+      delayNote: "Role changes and disabling take effect within 10 seconds; open pages show the new role after a refresh.",
+      disable: "Disable",
+      enable: "Restore",
+      disableTitle: "Disable {name}?",
+      disableBody: "They can no longer sign in, and any open page signs them out within 10 seconds. You can restore the account at any time.",
+      enableTitle: "Restore {name}?",
+      enableBody: "They can sign in again with their existing password.",
+      cancel: "Cancel",
+      submit: "Create",
+      confirm: "Confirm",
+      created: "Account {email} created",
+      roleChanged: "{name} is now “{role}”, effective within 10 seconds",
+      disabled: "{name} disabled",
+      enabled: "{name} restored",
+      empty: "No matching accounts",
+      errors: {
+        invalid_email: "That email doesn't look right",
+        weak_password: "The starting password needs at least 8 characters",
+        invalid_role: "Pick a role",
+        email_taken: "This email already has an account",
+        self: "You can't change your own role or disable yourself",
+        not_found: "This account is gone — please refresh",
+        failed: "Couldn't save. Please try again shortly"
+      }
     },
     exempt: {
       note: "Nickname, Xiaohongshu account, raw keywords, and handwritten notes stay in the source language."
