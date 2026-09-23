@@ -1,15 +1,15 @@
 ## INV-01
 
-Invariant INV-score-immutable holds: Score.final / grade / rank stay rule-engine values.
+Invariant INV-metrics-null-not-zero holds: a metric the platform did not return stays `null`, never `0`.
 
 ### Functional
 
-Attaching an AI review to a seeded creator leaves `final`, `grade`, and `rank` unchanged.
+An empty metrics record is all `null`. Deriving ratios from a record that only has followers and a quote fills nothing that needs a missing input.
 
 ### Negative
 
-A human “reject” decision on rank 2 does not write a new score. The triplet stays the rule values.
+Blank, dash, `N/A` and other unparsable vendor cells parse to `null`. A zero denominator gives `null`, not `0` or `Infinity`.
 
 ### Edge
 
-Source-language nickname, Xiaohongshu ID, and raw keywords stay untranslated while the score JSON stays byte-equal after a no-op attach.
+A real `0` from the platform stays `0`. A `null` metric gets no cohort percentile, does not pass a `≤` filter, and sorts after known values.

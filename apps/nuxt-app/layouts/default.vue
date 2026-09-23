@@ -59,8 +59,6 @@ const { preference, setPreference } = useKcsTheme()
 
 const nav = [
   { to: '/', label: 'kcs.nav.overview' },
-  { to: '/creators', label: 'kcs.nav.creators' },
-  { to: '/reviews', label: 'kcs.nav.reviews' },
 ] as const
 
 const localeButtons = computed(() =>
