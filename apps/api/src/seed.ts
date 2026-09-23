@@ -1,4 +1,5 @@
 import {
+  SOURCE_DEFAULTS,
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
   SEED_USERS,
@@ -141,7 +142,7 @@ async function seedCreators(db: Db) {
           creator.externalId,
           raw.fetchedAt,
           released ? JSON.stringify(creator.metrics) : null,
-          `演示数据（${DEMO_SOURCE_NAME[adapter.id] ?? adapter.id}）`,
+          `演示数据（${SOURCE_DEFAULTS[adapter.id].shortName}）`,
           released ? raw.fetchedAt : null,
         ],
       )
@@ -217,8 +218,6 @@ async function seedCreators(db: Db) {
   }
   return canonicalIds
 }
-
-const DEMO_SOURCE_NAME: Record<string, string> = { pugongying: '蒲公英', qiangua: '千瓜', xinhong: '新红' }
 
 async function seedProjects(db: Db, orgId: string, canonicalIds: Map<string, string>) {
   for (const [id, name, members] of PROJECTS) {

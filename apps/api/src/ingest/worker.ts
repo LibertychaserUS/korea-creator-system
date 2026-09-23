@@ -14,6 +14,7 @@ import { getAdapter } from '../adapters'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
 import { deadLetterJob, failureOf } from './dead-letters'
+import { ensureSource } from './jobs'
 import { persistPage } from './persist'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
@@ -374,17 +375,6 @@ async function takeRateToken(bucket: TokenBucket, env: AppEnv) {
   while (!bucket.tryTake(env.now().getTime())) {
     await new Promise((resolve) => setTimeout(resolve, bucket.waitMs(env.now().getTime())))
   }
-}
-
-async function ensureSource(env: AppEnv, source: SourceId) {
-  await env.db.query(
-    `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, owner)
-     VALUES ($1,$2,$1,true,60,1000,'ops') ON CONFLICT (id) DO NOTHING`,
-    [
-      source,
-      source === 'pugongying' ? '蒲公英' : source === 'qiangua' ? '千瓜' : '新红',
-    ],
-  )
 }
 
 function resolveAdapter(env: AppEnv, source: string): SourceAdapter | undefined {

@@ -9,7 +9,8 @@ import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
-import { camelDeadLetters, closeJobDeadLetters, scrub } from '../ingest/dead-letters'
+import { camelDeadLetters, scrub } from '../ingest/dead-letters'
+import { retryJob } from '../ingest/jobs'
 import { enqueueIngestJob, replayRecord } from '../ingest/worker'
 
 async function resolveDeadLetter(
@@ -88,24 +89,11 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.post('/api/dev/jobs/:id/retry', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'dev.retry')
     if (denied) return denied
-    const { rows } = await env.db.query(
-      `UPDATE ingest_jobs SET status = 'queued', attempts = 0, next_run_at = now(),
-       error = NULL, error_code = NULL, error_summary = NULL, ended_at = NULL,
-       dead_lettered_at = NULL, locked_by = NULL, lease_expires_at = NULL, updated_at = now()
-       WHERE id = $1 AND status IN ('failed','partial') RETURNING *`,
-      [context.req.param('id')],
-    )
-    if (!rows[0]) {
-      const exists = await env.db.query('SELECT 1 FROM ingest_jobs WHERE id = $1', [
-        context.req.param('id'),
-      ])
-      return exists.rowCount
-        ? jsonError(context, 409, 'JOB-STATE', 'job_not_retryable')
-        : jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    }
-    await closeJobDeadLetters(env, rows[0].id, user!.id, rows[0].id)
-    await audit(env.db, user!.id, 'ingest.retry', 'ingest_job', rows[0].id, 'retry')
-    return context.json(camelJobs(rows)[0])
+    const result = await retryJob(env, context.req.param('id'), user!.id)
+    if (result.ok) return context.json(result.job)
+    return result.reason === 'not_found'
+      ? jsonError(context, 404, 'NOT-FOUND', 'not_found')
+      : jsonError(context, 409, 'JOB-STATE', 'job_not_retryable')
   })
 
   app.get('/api/dev/failures', async (context) => {

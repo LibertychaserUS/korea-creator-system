@@ -20,6 +20,17 @@ export const SOURCE_ROUTE: Record<SourceId, 'official' | 'vendor'> = {
   xinhong: 'vendor',
 }
 
+/**
+ * The `ingest_sources` row each source starts with. Migration 0008 writes the
+ * same values for a fresh install; the queue registers a missing one from here.
+ * Ops may rename or re-limit a source later — nothing overwrites that.
+ */
+export const SOURCE_DEFAULTS: Record<SourceId, { name: string; shortName: string; rateLimit: number; quota: number }> = {
+  pugongying: { name: '蒲公英 OpenAPI', shortName: '蒲公英', rateLimit: 60, quota: 1000 },
+  qiangua: { name: '千瓜', shortName: '千瓜', rateLimit: 60, quota: 1000 },
+  xinhong: { name: '新红', shortName: '新红', rateLimit: 60, quota: 1000 },
+}
+
 /** Parameters ops fill in on the ingest page; every adapter accepts the same shape. */
 export type SourceQuery = {
   source: SourceId
