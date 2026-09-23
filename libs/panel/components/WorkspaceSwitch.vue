@@ -1,7 +1,7 @@
 <template>
   <nav
     v-if="items.length"
-    class="flex items-center rounded-md border border-border bg-background p-0.5"
+    class="flex min-w-0 items-center overflow-x-auto rounded-md border border-border bg-background p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     :aria-label="t('kcs.nav.workspaces')"
   >
     <Button
@@ -11,7 +11,7 @@
       type="button"
       variant="ghost"
       size="sm"
-      class="h-7 px-2.5 text-xs"
+      class="h-7 shrink-0 px-2.5 text-xs"
       :class="item.key === currentKey ? 'bg-muted text-foreground' : 'text-muted-foreground'"
     >
       <a :href="item.href" :data-testid="item.testid">

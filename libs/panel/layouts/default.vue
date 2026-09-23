@@ -8,7 +8,7 @@
         <SidebarTrigger class="-ml-1 text-muted-foreground hover:text-foreground" />
         <Separator orientation="vertical" class="mr-1 hidden h-4 sm:block" />
         <WorkspaceSwitch />
-        <div class="ml-auto flex items-center gap-1 sm:gap-1.5">
+        <div class="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
           <!-- 币种 / 配色属于低频偏好，手机上收进更宽的断点，避免顶栏横向溢出 -->
           <div class="hidden items-center md:flex">
             <CurrencySelect />
