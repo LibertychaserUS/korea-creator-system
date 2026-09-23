@@ -41,7 +41,8 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | `/__login` locale follows the form (`/en/login?error=1`) | 06 登录页 | `POST /__login` |
 | marketing `/__login` hands each role to its workspace origin | 06 宣传页登录交接 | `POST {marketing}/__login` |
 | `kcs_last_ws` cookie wins for multi-workspace roles | 06 宣传页登录交接 | `POST {marketing}/__login` |
-| public sign-up gets a TinyShip session but **no** KCS role | 05 §认证 `roleFromIdentity` | `POST /api/auth/sign-up/email` |
+| public sign-up is refused (4xx, no token, no session cookie) and the email cannot sign in afterwards | 05 §认证 公开注册已关闭 | `POST /api/auth/sign-up/email` `POST /api/auth/sign-in/email` |
+| an admin-provisioned account with no KCS job signs in to TinyShip but holds **no** KCS role | 05 §认证 `roleFromIdentity` | `POST /api/auth/sign-in/email` `GET /api/auth/get-session` |
 | role-less account → 403 `AUTH-DENIED` on `/me`, pool, ops, ingest, projects; nothing leaked | 07 身份与权限 | `GET` those |
 | role-less account via `/__login` lands on `/zh-CN/denied` | 06 denied 页 | `POST /__login` |
 | 6 rapid wrong passwords hit 429 with a retry hint; none succeed | 05 §认证 限速 | `POST /api/auth/sign-in/email` |

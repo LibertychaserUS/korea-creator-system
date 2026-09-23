@@ -23,6 +23,8 @@ interface WeChatPluginOptions {
   appId: string;
   appSecret: string;
   callbackUrl?: string;
+  /** Only WeChat accounts already linked to a user may sign in; no new users. */
+  disableSignUp?: boolean;
 }
 
 export const wechatPlugin = (options: WeChatPluginOptions): BetterAuthPlugin => {
@@ -138,6 +140,10 @@ export const wechatPlugin = (options: WeChatPluginOptions): BetterAuthPlugin => 
                 message: "Associated user not found",
               });
             }
+          } else if (options.disableSignUp) {
+            throw new APIError("FORBIDDEN", {
+              message: "Sign up is disabled",
+            });
           } else {
             // 创建新用户
             // Generate unique virtual email, only used during user creation

@@ -15,7 +15,8 @@ pnpm install
 export DB_DIALECT=pg DATABASE_URL=postgres://kcs:kcs@localhost:5432/tinyship
 export BETTER_AUTH_SECRET=<32+ 字符> BETTER_AUTH_URL=http://localhost:7004
 pnpm db:push            # 建 user / session / account / verification
-pnpm db:seed:auth       # 五个种子账号 + KCS 角色（幂等）
+pnpm db:seed:auth       # 五个种子账号 + KCS 角色（幂等）；公开注册已关闭，账号只能这样或用 admin 插件开通
+# pnpm db:seed:auth --stranger   # 另建一个能登录但没有 KCS 角色的 stranger@kcs.local（黑盒要用）
 # 本机 Postgres 已建好 tinyship 库；旧的 sqlite（/tmp/kcs-local.sqlite）不再使用
 
 # 2. KCS API 库
