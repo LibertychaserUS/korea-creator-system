@@ -1,10 +1,9 @@
-name: CI
+name: TinyShip template (manual)
 
+# Upstream TinyShip template apps (next / nuxt / tanstack / docs) — not KCS code.
+# Manual only so it never shows up as a PR check; KCS checks live in kcs.yml.
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
 
 jobs:
   build:

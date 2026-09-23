@@ -1,0 +1,19 @@
+name: Setup KCS workspace
+description: pnpm (version from package.json packageManager) + Node 22 (engines) + pnpm store cache + frozen install.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        # engines.node >= 22; Nuxt 4's oxc-parser wants 22.20+, so track the latest 22.
+        node-version: '22.x'
+        cache: pnpm
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
