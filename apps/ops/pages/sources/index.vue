@@ -15,7 +15,7 @@
       >
         <div class="flex items-start justify-between gap-3 px-5 pt-4">
           <div>
-            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">{{ t('kcs.ingest.route') }} {{ a.route === 'official' ? 'A' : 'B' }} · {{ t(`kcs.source.${a.route}`) }}</p>
+            <p class="text-[11px] font-medium text-primary">{{ t(`kcs.source.${a.route}`) }}</p>
             <h3 class="mt-1 text-base font-semibold">{{ t(`kcs.source.${a.id}`) }}</h3>
           </div>
           <span
@@ -36,9 +36,8 @@
           </div>
           <div>
             <dt class="text-muted-foreground">{{ t('kcs.ingest.credentials') }}</dt>
-            <dd class="mt-1 font-mono text-[11px] text-muted-foreground">
-              <span class="text-foreground">{{ (a.envVars || []).join(' · ') }}</span>
-              <span v-if="(a.optionalEnvVars || []).length" class="block opacity-70">{{ (a.optionalEnvVars || []).join(' · ') }}</span>
+            <dd class="mt-1 text-foreground">
+              {{ a.configured ? t('kcs.source.configuredHint') : t('kcs.source.notConfiguredHint') }}
             </dd>
           </div>
         </dl>
@@ -123,8 +122,11 @@
               {{ running ? t('kcs.ingest.running') : t('kcs.ingest.run') }}
             </Button>
             <p v-if="result" class="text-sm text-muted-foreground" data-testid="fetch-result">
-              {{ t('kcs.ingest.done', { written: result.writtenCount ?? 0, skipped: result.skippedDupes ?? 0, failed: result.failedCount ?? 0 }) }}
-              <SourceBadge :source="result.sourceId ?? form.source" :mode="result.sourceMode" class="ml-1" />
+              <template v-if="result.queued">{{ t('kcs.ingest.queued') }}</template>
+              <template v-else>
+                {{ t('kcs.ingest.done', { written: result.writtenCount ?? 0, skipped: result.skippedDupes ?? 0, failed: result.failedCount ?? 0 }) }}
+                <SourceBadge :source="result.sourceId ?? form.source" :mode="result.sourceMode" class="ml-1" />
+              </template>
             </p>
             <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
           </div>
@@ -140,7 +142,8 @@
               <TableHead class="hidden md:table-cell">{{ t('kcs.ingest.jobQuery') }}</TableHead>
               <TableHead class="text-right">{{ t('kcs.ingest.jobWritten') }}</TableHead>
               <TableHead class="hidden text-right sm:table-cell">{{ t('kcs.ingest.jobFailed') }}</TableHead>
-              <TableHead class="w-24">{{ t('kcs.panel.status') }}</TableHead>
+              <TableHead class="min-w-44">{{ t('kcs.panel.status') }}</TableHead>
+              <TableHead class="w-20 text-right"><span class="sr-only">{{ t('kcs.ingest.jobActions') }}</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -151,21 +154,55 @@
                 <TableCell><Skeleton class="ml-auto h-4 w-8" /></TableCell>
                 <TableCell class="hidden sm:table-cell"><Skeleton class="ml-auto h-4 w-8" /></TableCell>
                 <TableCell><Skeleton class="h-5 w-16" /></TableCell>
+                <TableCell />
               </TableRow>
             </template>
             <TableRow v-for="job in jobs" :key="job.id" data-testid="row-fetch-job">
               <TableCell>
                 <div class="flex flex-col gap-1">
                   <SourceBadge :source="job.sourceId" :mode="job.sourceMode" />
-                  <span class="font-mono text-[11px] text-muted-foreground">{{ job.id.slice(0, 8) }}<template v-if="job.createdAt"> · {{ formatDate(job.createdAt) }}</template></span>
+                  <span v-if="job.createdAt" class="text-[11px] tabular-nums text-muted-foreground">{{ formatDate(job.createdAt) }}</span>
                 </div>
               </TableCell>
               <TableCell class="hidden max-w-64 md:table-cell">
-                <span class="block truncate font-mono text-[11px] text-muted-foreground" :title="describe(job.query)">{{ describe(job.query) || job.batchName || job.fileName || '—' }}</span>
+                <span class="block truncate text-xs text-muted-foreground" :title="describe(job.query)">{{ describe(job.query) || job.batchName || job.fileName || '—' }}</span>
               </TableCell>
               <TableCell class="text-right tabular-nums">{{ formatNumber(job.writtenCount) }}</TableCell>
               <TableCell class="hidden text-right tabular-nums sm:table-cell" :class="job.failedCount ? 'text-destructive' : 'text-muted-foreground'">{{ formatNumber(job.failedCount) }}</TableCell>
-              <TableCell><StatusBadge :status="job.status" /></TableCell>
+              <TableCell>
+                <div class="flex flex-col items-start gap-1">
+                  <StatusBadge :status="job.status" />
+                  <span v-if="progress(job)" class="whitespace-normal text-[11px] leading-snug tabular-nums text-muted-foreground" :title="job.error || undefined">{{ progress(job) }}</span>
+                </div>
+              </TableCell>
+              <TableCell class="text-right">
+                <div class="inline-flex gap-1">
+                  <Button
+                    v-if="job.status === 'failed' || job.status === 'partial'"
+                    variant="ghost"
+                    size="icon"
+                    class="size-7"
+                    :title="t('kcs.ingest.retry')"
+                    :disabled="acting === job.id"
+                    data-testid="job-retry"
+                    @click="act(job, 'retry')"
+                  >
+                    <RotateCcw class="size-3.5" />
+                  </Button>
+                  <Button
+                    v-if="job.status === 'queued' || job.status === 'running'"
+                    variant="ghost"
+                    size="icon"
+                    class="size-7 text-destructive hover:text-destructive"
+                    :title="t('kcs.ingest.cancel')"
+                    :disabled="acting === job.id"
+                    data-testid="job-cancel"
+                    @click="act(job, 'cancel')"
+                  >
+                    <X class="size-3.5" />
+                  </Button>
+                </div>
+              </TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -176,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, KeyRound, Play, Radar, TriangleAlert } from 'lucide-vue-next'
+import { ChevronDown, KeyRound, Play, Radar, RotateCcw, TriangleAlert, X } from 'lucide-vue-next'
 import { SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
 
 type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
@@ -194,6 +231,8 @@ const loadingJobs = ref(true)
 const running = ref(false)
 const result = ref<any>(null)
 const error = ref('')
+const acting = ref<string | null>(null)
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const form = reactive<SourceQuery & { health: HealthGrade[] }>({
   source: SOURCE_IDS[0],
@@ -227,12 +266,24 @@ function metricLabel(key: string) {
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
 }
+/** 把抓取参数说成人话：近 30 天 · 关键词 护肤 · 粉丝 1万–50万 · 只要优秀。 */
 function describe(q: any) {
   if (!q || typeof q !== 'object') return ''
-  return Object.entries(q)
-    .filter(([k, v]) => k !== 'source' && v !== '' && v != null && !(Array.isArray(v) && !v.length))
-    .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join('|') : v}`)
-    .join(' ')
+  const parts: string[] = []
+  if (q.window) parts.push(t(`kcs.ingest.window${q.window}`))
+  if (q.keyword) parts.push(`${t('kcs.ingest.keyword')} ${q.keyword}`)
+  if (q.category) parts.push(`${t('kcs.ingest.category')} ${q.category}`)
+  if (q.region) parts.push(`${t('kcs.ingest.region')} ${q.region}`)
+  if (q.followersMin != null || q.followersMax != null) parts.push(`${t('kcs.ingest.followersRange')} ${range(q.followersMin, q.followersMax)}`)
+  if (q.priceMin != null || q.priceMax != null) parts.push(`${t('kcs.ingest.priceRange')} ${range(q.priceMin, q.priceMax)}`)
+  if (Array.isArray(q.health) && q.health.length && q.health.length < healthIds.length) parts.push(q.health.map((h: HealthGrade) => t(`kcs.health.${h}`)).join(' / '))
+  if (Array.isArray(q.externalIds) && q.externalIds.length) parts.push(t('kcs.ingest.byIds', { n: q.externalIds.length }))
+  return parts.join(' · ')
+}
+function range(min?: number | null, max?: number | null) {
+  const a = min == null ? '' : formatNumber(min)
+  const b = max == null ? '' : formatNumber(max)
+  return a && b ? `${a}–${b}` : a ? `≥ ${a}` : `≤ ${b}`
 }
 
 async function loadAdapters() {
@@ -245,6 +296,23 @@ async function loadAdapters() {
   }
 }
 
+/** 排队/进行中/部分完成时的进度说明：第几页、用了多少次调用、几点继续。 */
+function progress(job: any): string {
+  const parts: string[] = []
+  if (job.pagesDone || job.quotaUsed) parts.push(t('kcs.ingest.progress', { pages: job.pagesDone ?? 0, calls: job.quotaUsed ?? 0 }))
+  if (job.status === 'partial' && job.nextRunAt) parts.push(t('kcs.ingest.nextRun', { time: formatDate(job.nextRunAt) }))
+  if (job.status === 'failed') parts.push(reason(job.errorCode))
+  return parts.join(' · ')
+}
+
+/** 失败原因只给人话；原始报错留在悬浮提示里。 */
+function reason(code: string | null | undefined): string {
+  const key = `kcs.ingest.reason.${code || 'UNKNOWN'}`
+  return te(key) ? t(key) : t('kcs.ingest.reason.UNKNOWN')
+}
+
+const hasActive = computed(() => jobs.value.some((j) => j.status === 'queued' || j.status === 'running'))
+
 async function loadJobs() {
   try {
     const res = await request<any>('/api/ingest/jobs')
@@ -252,6 +320,28 @@ async function loadJobs() {
     jobs.value = list.filter((j: any) => SOURCE_IDS.includes(j.sourceId)).slice(0, 20)
   } finally {
     loadingJobs.value = false
+    schedulePoll()
+  }
+}
+
+/** worker 在后台跑，有活动任务时每 3 秒刷一次，没有就停。 */
+function schedulePoll() {
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = null
+  if (!hasActive.value) return
+  pollTimer = setTimeout(loadJobs, 3000)
+}
+
+async function act(job: any, action: 'retry' | 'cancel') {
+  acting.value = job.id
+  error.value = ''
+  try {
+    await request(`/api/ingest/jobs/${job.id}/${action}`, { method: 'POST' })
+    await loadJobs()
+  } catch (e: any) {
+    error.value = e?.data?.error ?? e?.message ?? String(e)
+  } finally {
+    acting.value = null
   }
 }
 
@@ -266,7 +356,9 @@ async function runFetch() {
   }
   if (form.health.length && supports('health')) body.health = form.health
   try {
-    result.value = await request<any>('/api/ingest/fetch', { method: 'POST', body: JSON.stringify(body) })
+    const res = await request<any>('/api/ingest/fetch', { method: 'POST', body: JSON.stringify(body) })
+    // 202：任务已入队，worker 按配额执行；201（sync=1）：直接拿到结果
+    result.value = res.job && res.writtenCount == null ? { queued: true, jobId: res.job.id ?? res.job } : res
     await loadJobs()
   } catch (e: any) {
     error.value = e?.data?.error ?? e?.message ?? String(e)
@@ -278,5 +370,8 @@ async function runFetch() {
 onMounted(() => {
   loadAdapters()
   loadJobs()
+})
+onBeforeUnmount(() => {
+  if (pollTimer) clearTimeout(pollTimer)
 })
 </script>

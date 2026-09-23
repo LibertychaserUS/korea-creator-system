@@ -1,7 +1,6 @@
 import {
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
-  SEED_PASSWORD,
   SEED_USERS,
   type SavedQuery,
   type SourceId,
@@ -9,7 +8,6 @@ import {
 import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
-import { hashPassword } from './password'
 
 const CATEGORIES = [
   ['collaborated', '合作过的', 'Collaborated', '협업함', 'coop_history', true],
@@ -71,15 +69,10 @@ async function seedUsers(db: Db, orgId: string) {
   for (const user of SEED_USERS) {
     const id = `user_${user.role}`
     await db.query(
-      `INSERT INTO users (id, org_id, email, password_hash, role, display_name)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO users (id, org_id, email, role, display_name)
+       VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, display_name = EXCLUDED.display_name`,
-      [id, orgId, user.email, hashPassword(SEED_PASSWORD), user.role, user.displayName],
-    )
-    await db.query(
-      `INSERT INTO "user" (id, email, name, role) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, name = EXCLUDED.name, updated_at = now()`,
-      [id, user.email, user.displayName, user.role],
+      [id, orgId, user.email, user.role, user.displayName],
     )
   }
   for (const extra of [
@@ -87,19 +80,15 @@ async function seedUsers(db: Db, orgId: string) {
     ['user_selector_viewer_e2e', 'selector.viewer@kcs.local', 'selector_viewer', 'Selector Viewer'],
   ]) {
     await db.query(
-      `INSERT INTO users (id, org_id, email, password_hash, role, display_name)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role`,
-      [extra[0], orgId, extra[1], hashPassword('KcsE2e!2026'), extra[2], extra[3]],
-    )
-    await db.query(
-      `INSERT INTO "user" (id, email, name, role) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, updated_at = now()`,
-      [extra[0], extra[1], extra[3], extra[2]],
+      `INSERT INTO users (id, org_id, email, role, display_name)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role`,
+      [extra[0], orgId, extra[1], extra[2], extra[3]],
     )
   }
 }
 
 async function seedCreators(db: Db) {
+  const canonicalIds = new Map<string, string>()
   let index = 0
   for (const adapter of ADAPTERS) {
     const page = fixturePage(
@@ -112,7 +101,16 @@ async function seedCreators(db: Db) {
       if (!result.ok) continue
       index += 1
       const creator = result.creator
-      const id = `seed_${adapter.id}_${creator.externalId}`
+      const sourceId = `seed_${adapter.id}_${creator.externalId}`
+      const exact = await db.query('SELECT id FROM creators WHERE id = $1', [sourceId])
+      const matched = exact.rows[0] || !creator.xhsId
+        ? exact
+        : await db.query(
+            'SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
+            [creator.xhsId],
+          )
+      const id = matched.rows[0]?.id ?? sourceId
+      canonicalIds.set(sourceId, id)
       const isBad = creator.metrics.health === 'abnormal'
       const released = !isBad && index % 6 !== 0
       const status = released ? 'released' : 'draft'
@@ -150,7 +148,53 @@ async function seedCreators(db: Db) {
           `${adapter.id} fixture`,
         ],
       )
+      await db.query(
+        `INSERT INTO creator_sources
+          (creator_id, source, external_id, first_seen_at, last_seen_at)
+         VALUES ($1,$2,$3,$4,$4)
+         ON CONFLICT (source, external_id) DO UPDATE SET
+           creator_id = EXCLUDED.creator_id, last_seen_at = EXCLUDED.last_seen_at`,
+        [id, adapter.id, creator.externalId, raw.fetchedAt],
+      )
       await db.query('DELETE FROM creator_categories WHERE creator_id = $1', [id])
+      const latestAt = new Date(raw.fetchedAt)
+      for (let weeksAgo = 3; weeksAgo >= 0; weeksAgo -= 1) {
+        const fetchedAt = new Date(latestAt)
+        fetchedAt.setUTCDate(fetchedAt.getUTCDate() - weeksAgo * 7)
+        const factor = 1 - weeksAgo * 0.035
+        const metrics = weeksAgo === 0
+          ? creator.metrics
+          : {
+              ...creator.metrics,
+              followers: creator.metrics.followers == null
+                ? null
+                : Math.round(creator.metrics.followers * factor),
+              readMedian: creator.metrics.readMedian == null
+                ? null
+                : Math.round(creator.metrics.readMedian * factor * 0.98),
+              cpe: creator.metrics.cpe == null
+                ? null
+                : Number((creator.metrics.cpe * (1 + weeksAgo * 0.04)).toFixed(2)),
+            }
+        await db.query(
+          `INSERT INTO creator_metrics_history
+            (id, creator_id, source, "window", fetched_at, job_id, metrics)
+           VALUES ($1,$2,$3,$4,$5,NULL,$6)
+           ON CONFLICT (id) DO UPDATE SET
+             source = EXCLUDED.source,
+             "window" = EXCLUDED."window",
+             fetched_at = EXCLUDED.fetched_at,
+             metrics = EXCLUDED.metrics`,
+          [
+            `${id}_history_${weeksAgo}`,
+            id,
+            adapter.id,
+            creator.metrics.window,
+            fetchedAt,
+            JSON.stringify(metrics),
+          ],
+        )
+      }
       await db.query(
         `INSERT INTO creator_categories (creator_id, category_slug) VALUES ($1,$2)`,
         [id, isBad ? 'blacklist' : creator.metrics.coopBrands.length ? 'collaborated' : 'never_collaborated'],
@@ -174,9 +218,10 @@ async function seedCreators(db: Db) {
       }
     }
   }
+  return canonicalIds
 }
 
-async function seedProjects(db: Db, orgId: string) {
+async function seedProjects(db: Db, orgId: string, canonicalIds: Map<string, string>) {
   for (const [id, name, members] of PROJECTS) {
     await db.query(
       `INSERT INTO projects (id, org_id, name, note, status) VALUES ($1,$2,$3,$4,'open')
@@ -184,7 +229,7 @@ async function seedProjects(db: Db, orgId: string) {
       [id, orgId, name, 'fixture 指标项目'],
     )
     await db.query('DELETE FROM assignments WHERE project_id = $1', [id])
-    for (const creatorId of members) {
+    for (const creatorId of new Set(members.map((member) => canonicalIds.get(member) ?? member))) {
       await db.query(
         `INSERT INTO assignments (id, project_id, creator_id, status, assigned_by, note)
          VALUES ($1,$2,$3,'assigned','user_selector','种子项目')
@@ -200,8 +245,8 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     await db.query(`
       TRUNCATE TABLE
         audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
-        creator_raw, prices, collaborations, creator_categories, creators, assets,
-        ingest_jobs, ingest_sources, sessions, "user", users, orgs, categories
+        creator_raw, creator_metrics_history, creator_sources, prices, collaborations, creator_categories, creators, assets,
+        ingest_jobs, ingest_source_usage, ingest_sources, users, orgs, categories
       RESTART IDENTITY CASCADE
     `)
   }
@@ -254,8 +299,8 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
       ],
     )
   }
-  await seedCreators(db)
-  await seedProjects(db, orgId)
+  const canonicalIds = await seedCreators(db)
+  await seedProjects(db, orgId, canonicalIds)
   for (const spec of SAVED_QUERIES) {
     await db.query(
       `INSERT INTO saved_queries (id, org_id, name, version, spec, created_by)

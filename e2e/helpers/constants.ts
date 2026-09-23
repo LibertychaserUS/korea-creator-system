@@ -15,6 +15,7 @@ export const APP_URLS = {
 } as const;
 
 export const API_URL = process.env.E2E_API_URL || 'http://localhost:7100';
+export const AUTH_URL = process.env.E2E_AUTH_URL || APP_URLS.select;
 
 export const PASSWORD = process.env.E2E_PASSWORD || SEED_PASSWORD;
 
@@ -49,7 +50,7 @@ export const PAGES = {
 } as const;
 
 export const API = {
-  login: '/api/auth/login',
+  login: '/api/auth/sign-in/email',
   me: '/api/auth/me',
   assignments: (projectId: string) => `/api/select/projects/${projectId}/assignments`,
 } as const;

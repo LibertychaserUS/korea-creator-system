@@ -57,10 +57,26 @@ export type QueryRow = {
   metrics: CreatorMetrics
 }
 
+/**
+ * Percentiles are only comparable inside one data source (蒲公英 / 千瓜 / 新红
+ * measure "阅读中位数" differently) and one follower tier. The cohort a row
+ * was ranked against is returned so the UI can say "同源同量级 N 人".
+ */
+export type PercentileCohort = {
+  source: SourceId
+  tier: CreatorTier
+  size: number
+}
+
 export type QueryResultRow<T extends QueryRow = QueryRow> = T & {
   tier: CreatorTier
+  cohort: PercentileCohort
   percentiles: MetricPercentiles
   flags: { key: NumericMetricKey; tone: HighlightTone }[]
+}
+
+export function cohortKey(source: SourceId, tier: CreatorTier): string {
+  return `${source}:${tier}`
 }
 
 export const DEFAULT_QUERY_COLUMNS: NumericMetricKey[] = [
@@ -129,22 +145,25 @@ function passes(row: QueryResultRow, f: MetricFilter): boolean {
 }
 
 /**
- * Pure evaluation: derive ratios, compute tier percentiles against the whole
- * input (so percentile filters see the full cohort), then filter, flag, sort.
+ * Pure evaluation: derive ratios, compute percentiles against the whole
+ * input grouped by source × tier (so percentile filters see the full
+ * cohort), then filter, flag, sort.
  */
 export function applySavedQuery<T extends QueryRow>(rows: readonly T[], q: SavedQuery): QueryResultRow<T>[] {
   const derived = rows.map((r) => ({ ...r, metrics: deriveMetrics(r.metrics), tier: tierOf(r.metrics.followers) }))
-  const byTier = new Map<CreatorTier, CreatorMetrics[]>()
+  const byCohort = new Map<string, CreatorMetrics[]>()
   for (const r of derived) {
-    const list = byTier.get(r.tier) ?? []
+    const key = cohortKey(r.source, r.tier)
+    const list = byCohort.get(key) ?? []
     list.push(r.metrics)
-    byTier.set(r.tier, list)
+    byCohort.set(key, list)
   }
   const keys = [...new Set([...q.columns, ...q.filters.map((f) => f.key), ...q.highlights.map((h) => h.key)])]
   let out: QueryResultRow<T>[] = derived.map((r) => ({
     ...(r as T),
     tier: r.tier,
-    percentiles: cohortPercentiles(r.metrics, byTier.get(r.tier) ?? [], keys),
+    cohort: { source: r.source, tier: r.tier, size: byCohort.get(cohortKey(r.source, r.tier))?.length ?? 0 },
+    percentiles: cohortPercentiles(r.metrics, byCohort.get(cohortKey(r.source, r.tier)) ?? [], keys),
     flags: q.highlights
       .filter((h) => {
         const v = r.metrics[h.key]

@@ -116,7 +116,8 @@ const roleLabel = computed(() => {
 
 async function signOut() {
   try {
-    await request('/api/auth/logout', { method: 'POST' })
+    // 身份在 TinyShip（better-auth）；退出走本端源站，由服务端撤销会话并清 cookie
+    await fetch('/__logout', { method: 'POST', credentials: 'include' })
   } catch {
     // 会话可能已经过期，本地照样清
   }

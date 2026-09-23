@@ -15,22 +15,24 @@ describe('auth and HTTP RBAC', () => {
     await ctx.close()
   })
 
-  it('rejects unknown credentials with 401', async () => {
+  it('does not expose a local login endpoint', async () => {
     const res = await ctx.app.request('/api/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'nobody@kcs.local', password: 'wrong' }),
     })
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(404)
   })
 
-  it('logs in a seed ops user and returns role', async () => {
-    const res = await ctx.login('ops@kcs.local')
+  it('returns the role supplied by the session verifier', async () => {
+    const { token } = await ctx.loginJson('ops@kcs.local')
+    const res = await ctx.app.request('/api/auth/me', {
+      headers: { authorization: `Bearer ${token}` },
+    })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.user.role).toBe('ops')
     expect(body.user.email).toBe('ops@kcs.local')
-    expect(typeof body.token).toBe('string')
   })
 
   it('returns 401 for /api/ops/creators without a session', async () => {
