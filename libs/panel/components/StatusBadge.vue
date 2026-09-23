@@ -13,7 +13,7 @@
 const props = withDefaults(
   defineProps<{
     status: string
-    kind?: 'job' | 'assignment' | 'creator'
+    kind?: 'job' | 'assignment' | 'creator' | 'stage'
     dot?: boolean
   }>(),
   { kind: 'job', dot: true },
@@ -23,6 +23,7 @@ const { t, te } = useI18n()
 
 const key = computed(() => {
   if (props.kind === 'creator') return `kcs.panel.${props.status}`
+  if (props.kind === 'stage') return `kcs.opsCreators.stage.${props.status}`
   return `kcs.panel.${props.kind === 'job' ? 'jobStatus' : 'assignmentStatus'}.${props.status}`
 })
 const label = computed(() => (te(key.value) ? t(key.value) : props.status))
@@ -41,6 +42,8 @@ const tone = computed<{ variant: 'default' | 'secondary' | 'destructive' | 'outl
       return { variant: 'outline', class: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' }
     case 'partial':
       return { variant: 'outline', class: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' }
+    case 'withdrawn':
+      return { variant: 'outline', class: 'border-border bg-muted text-muted-foreground' }
     case 'failed':
     case 'removed':
       return { variant: 'outline', class: 'border-destructive/30 bg-destructive/10 text-destructive' }

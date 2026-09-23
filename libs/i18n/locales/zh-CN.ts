@@ -2482,6 +2482,28 @@ export const zhCN: Locale = {
       reviewed: "已复核",
       none: "未标记"
     },
+    opsCreators: {
+      title: "博主",
+      lead: "抓取来的和手动录入的博主都在这里。审核通过后发布到选人端；下架后可以再次发布。",
+      tabs: { review: "待审核", released: "已发布", withdrawn: "已下架" },
+      stage: { review: "待审核", released: "已发布", withdrawn: "已下架" },
+      search: "按昵称或小红书号搜索",
+      sourceAll: "全部来源",
+      manual: "手动录入",
+      cols: { creator: "博主", source: "来源", followers: "粉丝", tier: "量级", updated: "更新时间", status: "状态" },
+      needsReview: "有新数据",
+      empty: {
+        review: "没有待审核的博主",
+        released: "还没有已发布的博主",
+        withdrawn: "没有已下架的博主"
+      },
+      emptyHint: "去「数据源」抓一批，或者手动录入一位。",
+      emptyFilter: "没有符合条件的博主，换个关键词或来源试试。",
+      pageInfo: "第 {page} / {pages} 页 · 共 {total} 位",
+      prev: "上一页",
+      next: "下一页",
+      open: "查看详情"
+    },
     exempt: {
       note: "昵称、小红书号、原始关键词和手写备注保持原文，不做翻译。"
     }

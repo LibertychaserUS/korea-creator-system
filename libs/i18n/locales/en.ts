@@ -2475,6 +2475,28 @@ export const en: Locale = {
       reviewed: "Reviewed",
       none: "Untagged"
     },
+    opsCreators: {
+      title: "Creators",
+      lead: "Every creator you fetched or added by hand lands here. Approve one to publish it to the selection workspace; a withdrawn creator can be published again.",
+      tabs: { review: "To review", released: "Published", withdrawn: "Withdrawn" },
+      stage: { review: "To review", released: "Published", withdrawn: "Withdrawn" },
+      search: "Search by nickname or Xiaohongshu account",
+      sourceAll: "All sources",
+      manual: "Added by hand",
+      cols: { creator: "Creator", source: "Source", followers: "Followers", tier: "Tier", updated: "Updated", status: "Status" },
+      needsReview: "New numbers",
+      empty: {
+        review: "Nothing waiting for review",
+        released: "No published creators yet",
+        withdrawn: "No withdrawn creators"
+      },
+      emptyHint: "Fetch a batch under Data sources, or add one by hand.",
+      emptyFilter: "No creator matches. Try another keyword or source.",
+      pageInfo: "Page {page} of {pages} · {total} creators",
+      prev: "Previous",
+      next: "Next",
+      open: "View details"
+    },
     exempt: {
       note: "Nickname, Xiaohongshu account, raw keywords, and handwritten notes stay in the source language."
     }

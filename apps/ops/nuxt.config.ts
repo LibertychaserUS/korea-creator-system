@@ -11,6 +11,7 @@ export default defineNuxtConfig({
       perm: 'ops.read',
       nav: [
         { to: '/', labelKey: 'kcs.panel.opsHome' },
+        { to: '/creators', labelKey: 'kcs.nav.creators' },
         { to: '/creators/new', labelKey: 'kcs.panel.createCreator' },
         { to: '/sources', labelKey: 'kcs.nav.sources' },
       ],

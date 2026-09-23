@@ -608,6 +608,28 @@ export const ko: Locale = {
       reviewed: "검토 완료",
       none: "미확인",
     },
+    opsCreators: {
+      title: "크리에이터",
+      lead: "수집했거나 직접 등록한 크리에이터가 모두 여기에 모입니다. 검토를 통과하면 선정 화면에 게시되고, 게시를 내린 뒤에도 다시 게시할 수 있습니다.",
+      tabs: { review: "검토 대기", released: "게시됨", withdrawn: "게시 중단" },
+      stage: { review: "검토 대기", released: "게시됨", withdrawn: "게시 중단" },
+      search: "닉네임 또는 샤오홍슈 계정으로 검색",
+      sourceAll: "전체 출처",
+      manual: "직접 등록",
+      cols: { creator: "크리에이터", source: "출처", followers: "팔로워", tier: "팔로워 구간", updated: "업데이트", status: "상태" },
+      needsReview: "새 수치",
+      empty: {
+        review: "검토 대기 중인 크리에이터가 없습니다",
+        released: "아직 게시된 크리에이터가 없습니다",
+        withdrawn: "게시 중단된 크리에이터가 없습니다"
+      },
+      emptyHint: "‘데이터 소스’에서 한 번 수집하거나 직접 등록하세요.",
+      emptyFilter: "조건에 맞는 크리에이터가 없습니다. 다른 키워드나 출처로 찾아보세요.",
+      pageInfo: "{pages}페이지 중 {page}페이지 · 총 {total}명",
+      prev: "이전",
+      next: "다음",
+      open: "상세 보기"
+    },
     exempt: {
       note: "닉네임, 샤오홍슈 계정, 원본 키워드, 손으로 쓴 메모는 번역하지 않는다.",
     },

@@ -9,7 +9,7 @@
       </Button>
     </template>
 
-    <!-- 漏斗：草稿 → 待复核 → 已清洗 → 已发布 -->
+    <!-- 审核进度：待审核 / 有新数据待复核 / 已发布 / 已下架 -->
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <KpiTile
         v-for="tile in tiles"
@@ -19,6 +19,7 @@
         :icon="tile.icon"
         :tone="tile.tone"
         :testid="`tile-${tile.key}`"
+        :to="tile.to"
       />
     </div>
 
@@ -122,22 +123,23 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRight, CheckCircle2, ExternalLink, FileSpreadsheet, PencilLine, Search, Sparkles, UserPlus, Users } from 'lucide-vue-next'
+import { Archive, ChevronRight, CheckCircle2, ClipboardCheck, ExternalLink, FileSpreadsheet, Search, UserPlus, Users } from 'lucide-vue-next'
 
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
 const config = useRuntimeConfig()
 const { request } = useApi()
 const { formatNumber } = useFormat()
-const counts = ref({ draft: 0, review: 0, ready: 0, released: 0 })
+const counts = ref({ draft: 0, review: 0, ready: 0, released: 0, pending: 0, withdrawn: 0 })
 const jobs = ref<any[]>([])
 const loading = ref(true)
 
+const creatorsTab = (tab: string) => localePath({ path: '/creators', query: { tab } })
 const tiles = computed(() => [
-  { key: 'draft' as const, label: t('kcs.panel.draft'), icon: PencilLine, tone: 'ink' as const },
-  { key: 'review' as const, label: t('kcs.panel.review'), icon: Search, tone: 'sand' as const },
-  { key: 'ready' as const, label: t('kcs.panel.ready'), icon: Sparkles, tone: 'sea' as const },
-  { key: 'released' as const, label: t('kcs.panel.released'), icon: CheckCircle2, tone: 'moss' as const },
+  { key: 'pending' as const, label: t('kcs.opsCreators.tabs.review'), icon: ClipboardCheck, tone: 'sand' as const, to: creatorsTab('review') },
+  { key: 'review' as const, label: t('kcs.opsCreators.needsReview'), icon: Search, tone: 'sea' as const, to: undefined },
+  { key: 'released' as const, label: t('kcs.opsCreators.tabs.released'), icon: CheckCircle2, tone: 'moss' as const, to: creatorsTab('released') },
+  { key: 'withdrawn' as const, label: t('kcs.opsCreators.tabs.withdrawn'), icon: Archive, tone: 'ink' as const, to: creatorsTab('withdrawn') },
 ])
 
 const total = computed(() => counts.value.draft + counts.value.review + counts.value.ready + counts.value.released)
