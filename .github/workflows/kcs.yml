@@ -5,7 +5,7 @@ name: KCS
 
 on:
   push:
-    branches: [main, cursor/ci-kcs-pipeline-d3aa]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
