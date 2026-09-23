@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { deriveMetrics, emptyMetrics } from '@kcs/contract'
+import { deriveMetrics, emptyMetrics, type Permission } from '@kcs/contract'
+import type { MiddlewareHandler } from 'hono'
 import { runIngest, runWorkbookIngest } from '../ingest/service'
 import { audit } from '../http/audit'
 import {
@@ -13,8 +14,24 @@ import {
 } from '../http/creators'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
+import {
+  IMAGE_MAX_BYTES,
+  WORKBOOK_MAX_BYTES,
+  imageExtension,
+  isImageType,
+  safeImageHeaders,
+  sniffImage,
+  uploadLimit,
+} from '../http/uploads'
 
 export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
+  // Auth before the body limit, so strangers get 401/403 rather than a 413.
+  const gate = (permission: Permission): MiddlewareHandler => async (context, next) => {
+    const { denied } = await helpers.requireAuth(context, permission)
+    if (denied) return denied
+    await next()
+  }
+
   app.get('/api/ops/overview', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
@@ -247,7 +264,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     return context.json({ items: rows })
   })
 
-  app.post('/api/ops/batches', async (context) => {
+  app.post('/api/ops/batches', gate('ops.write'), uploadLimit(WORKBOOK_MAX_BYTES), async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
     if ((context.req.header('content-type') || '').includes('multipart/form-data')) {
@@ -270,45 +287,59 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.post('/api/assets/presign', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
-    const body = await context.req.json()
+    const body = await context.req.json().catch(() => ({}))
+    const contentType = body.contentType ?? 'image/png'
+    if (!isImageType(contentType)) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
     const purpose = body.purpose === 'attachment' ? 'attachments' : 'avatars'
-    const key = `${purpose}/${randomUUID()}`
-    const signed = await env.store.presign(key, body.contentType || 'application/octet-stream')
+    const key = `${purpose}/${randomUUID()}.${imageExtension(contentType)}`
+    const signed = await env.store.presign(key, contentType)
     const publicUrl = assetPublicUrl(key)
     await env.db.query(
       `INSERT INTO assets (key, url, content_type, size) VALUES ($1,$2,$3,0)
        ON CONFLICT (key) DO UPDATE SET url = EXCLUDED.url`,
-      [key, publicUrl, body.contentType || 'application/octet-stream'],
+      [key, publicUrl, contentType],
     )
     return context.json({ url: signed.url || publicUrl, key })
   })
 
+  // Anonymous on purpose (<img src> cannot send a Bearer), so it must never hand
+  // back anything a browser would run: bytes are re-sniffed and only an image
+  // type goes out, with nosniff / inline / a CSP that forbids everything.
   app.get('/api/assets/raw/*', async (context) => {
-    const key = decodeURIComponent(context.req.path.replace('/api/assets/raw/', ''))
-    const { rows } = await env.db.query('SELECT * FROM assets WHERE key = $1', [key])
-    if (!rows[0]?.bytes) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    return new Response(rows[0].bytes, {
-      headers: { 'content-type': rows[0].content_type || 'application/octet-stream' },
-    })
+    let key: string
+    try {
+      key = decodeURIComponent(context.req.path.replace('/api/assets/raw/', ''))
+    } catch {
+      return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    }
+    const { rows } = await env.db.query('SELECT bytes FROM assets WHERE key = $1', [key])
+    const bytes: Buffer | null = rows[0]?.bytes ?? null
+    const type = bytes ? sniffImage(bytes) : null
+    if (!bytes || !type) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return new Response(new Uint8Array(bytes), { headers: safeImageHeaders(type, bytes.length) })
   })
 
-  app.post('/api/assets', async (context) => {
+  app.post('/api/assets', gate('ops.write'), uploadLimit(IMAGE_MAX_BYTES), async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
-    const body = await context.req.parseBody()
-    const file = body.file
-    if (!(file instanceof File)) return jsonError(context, 400, 'VALIDATION', 'file_required')
-    const purpose = String(body.purpose || 'avatar') === 'attachment' ? 'attachments' : 'avatars'
-    const key = `${purpose}/${randomUUID()}`
+    const body = await context.req.parseBody().catch(() => null)
+    const file = body?.file
+    if (!(file instanceof File) || file.size === 0) return jsonError(context, 400, 'VALIDATION', 'file_required')
+    if (file.size > IMAGE_MAX_BYTES) return jsonError(context, 413, 'UPLOAD-TOO-LARGE', 'file_too_large')
     const bytes = Buffer.from(await file.arrayBuffer())
-    const stored = await env.store.put(key, bytes, file.type || 'image/png')
+    const type = sniffImage(bytes)
+    const declaredOk = !file.type || file.type === 'application/octet-stream' || isImageType(file.type)
+    if (!type || !declaredOk) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
+    const purpose = String(body?.purpose || 'avatar') === 'attachment' ? 'attachments' : 'avatars'
+    const key = `${purpose}/${randomUUID()}.${imageExtension(type)}`
+    const stored = await env.store.put(key, bytes, type)
     const publicUrl = stored.url || assetPublicUrl(key)
     await env.db.query(
       `INSERT INTO assets (key, url, content_type, size, bytes, uploaded_by)
        VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (key) DO UPDATE SET
-         bytes = EXCLUDED.bytes, size = EXCLUDED.size, url = EXCLUDED.url`,
-      [key, publicUrl, file.type || 'image/png', bytes.length, bytes, user!.id],
+         bytes = EXCLUDED.bytes, size = EXCLUDED.size, url = EXCLUDED.url, content_type = EXCLUDED.content_type`,
+      [key, publicUrl, type, bytes.length, env.store.durable ? null : bytes, user!.id],
     )
     return context.json({ url: publicUrl, key }, 201)
   })
