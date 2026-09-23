@@ -4,6 +4,7 @@
  */
 export const API = {
   health: { method: 'GET', path: '/api/health', auth: false },
+  healthLive: { method: 'GET', path: '/api/health/live', auth: false },
   openapi: { method: 'GET', path: '/api/openapi.json', auth: false },
   /**
    * Identity is TinyShip (better-auth) — sign-in / sign-out happen on the

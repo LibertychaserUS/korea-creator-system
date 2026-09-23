@@ -48,6 +48,10 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `KCS_SEED` | `demo` 时启动写入演示数据（24 个样例博主、4 个项目、6 条样例任务、2 个方案，重启会覆盖同 id 的样例行）；缺省不写。生产不要设。数据源行、内置分类由迁移 `0008` 写入，与此无关 |
 | `KCS_DEV_TOKENS` | `1` 时接受 `Bearer dev:<email>`（仅非生产、仅本地临时 curl；黑盒与 E2E 都走真实登录，默认关） |
 | `SESSION_CACHE_MS` | API 侧会话正缓存，默认 10000；也是退出后旧 token 最长存活时间 |
+| `SESSION_CACHE_MAX` | 会话缓存条数上限，默认 5000；超出按最久未用淘汰，另每分钟清一次过期 |
+| `LOG_REQUESTS` | `0` 关闭请求日志；默认每个请求一行 JSON（`http.request`：method / path / status / ms），健康探针成功不记 |
+| `SHUTDOWN_TIMEOUT_MS` | 收到 SIGTERM / SIGINT 后最多等多久（默认 25000），要小于编排的宽限期（k8s `terminationGracePeriodSeconds: 30`） |
+| `KCS_VERSION` | `/api/health` 报的版本号，缺省读 `apps/api/package.json` |
 | `INGEST_WORKER` | `0` 时该进程不参与抽水，只服务 HTTP（多副本时给额外副本用；抽水本身已由顾问锁保证全局只有一条） |
 | `INGEST_LEASE_MS` | 抓取任务租约，默认 60000；超过这个时间没续约的任务会被别的进程接手续跑 |
 | `RETENTION_RAW_PER_SOURCE` | 每个（博主，来源）保留最新几条平台原始 JSON，默认 10；`0` 全留 |

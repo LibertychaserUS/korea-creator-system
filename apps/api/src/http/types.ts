@@ -24,6 +24,8 @@ export type AppEnv = {
   now: () => Date
   verifySession?: (token: string) => Promise<VerifiedIdentity>
   getAdapter?: (source: string) => SourceAdapter | undefined
+  /** Flipped by the shutdown handler: new requests get 503 and readiness fails. */
+  lifecycle?: { draining: boolean }
 }
 
 export type KcsApp = Hono

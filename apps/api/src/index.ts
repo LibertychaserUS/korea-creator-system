@@ -7,6 +7,8 @@ import { seed } from './seed'
 import { MemoryObjectStore } from './store'
 import { startIngestWorker } from './ingest/worker'
 import { ensurePublishedSnapshots } from './http/pool'
+import { errorMessage, logEvent } from './log'
+import { createShutdown, SHUTDOWN_TIMEOUT_MS } from './shutdown'
 
 const port = Number(process.env.PORT || 7100)
 
@@ -21,7 +23,7 @@ async function main() {
   // Demo creators / projects / jobs are opt-in: a real install must never get them.
   if (process.env.KCS_SEED === 'demo') {
     const counts = await seed(db)
-    console.log('demo data loaded', JSON.stringify(counts))
+    logEvent('info', 'seed.demo_loaded', counts)
   }
   await ensurePublishedSnapshots(db, { full: true })
   const store =
@@ -35,15 +37,19 @@ async function main() {
           forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
         })
       : new MemoryObjectStore()
-  const env = { db, store, now: () => new Date() }
+  const lifecycle = { draining: false }
+  const env = { db, store, now: () => new Date(), lifecycle }
   const app = createApp(env)
-  startIngestWorker(env)
-  serve({ fetch: app.fetch, port }, () => {
-    console.log(`kcs-api listening on :${port}`)
+  const stopWorker = startIngestWorker(env)
+  const server = serve({ fetch: app.fetch, port }, () => {
+    logEvent('info', 'api.listening', { port })
   })
+  const timeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS) || SHUTDOWN_TIMEOUT_MS
+  const shutdown = createShutdown({ server, stopWorker, db, lifecycle, timeoutMs, exit: process.exit })
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => void shutdown(signal))
 }
 
 main().catch((err) => {
-  console.error(err)
+  logEvent('error', 'api.start_failed', { message: errorMessage(err) })
   process.exit(1)
 })
