@@ -5,6 +5,8 @@ import { closeJobDeadLetters } from '../ingest/dead-letters'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
+import { z } from 'zod'
+import { ingestJobBody, readJson } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -34,8 +36,10 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
   app.post('/api/ingest/fetch', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
     if (denied) return denied
-    const query = await context.req.json().catch(() => null) as SourceQuery | null
-    if (!query || !SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
+    const { data: raw, invalid } = await readJson(context, z.unknown())
+    if (invalid) return invalid
+    const query = raw as SourceQuery | null
+    if (!query || typeof query !== 'object' || !SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
       return jsonError(context, 400, 'SOURCE-INVALID', 'invalid_source_query')
     }
     const maxPages = Number((query as SourceQuery & { maxPages?: number }).maxPages ?? 5)
@@ -76,7 +80,8 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
   app.post('/api/ingest/jobs', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
     if (denied) return denied
-    const body = await context.req.json()
+    const { data: body, invalid } = await readJson(context, ingestJobBody)
+    if (invalid) return invalid
     if (body.sourceUrl) return jsonError(context, 400, 'SOURCE-INVALID', 'adhoc_url_forbidden')
     const source = await env.db.query('SELECT * FROM ingest_sources WHERE id = $1', [body.sourceId])
     if (!source.rows[0]) return jsonError(context, 400, 'SOURCE-INVALID', 'source_missing')
@@ -86,7 +91,7 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     return context.json(
       await runIngest(
         env,
-        body.sourceId,
+        source.rows[0].id,
         body.schedule || 'once',
         body.sampleRate ?? 0.1,
         user!.id,

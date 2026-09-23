@@ -30,6 +30,8 @@ export const ERROR = {
   VALIDATION: 'VALIDATION',
   SOURCE_INVALID: 'SOURCE-INVALID',
   NOT_FOUND: 'NOT-FOUND',
+  UPLOAD_TYPE: 'UPLOAD-TYPE',
+  UPLOAD_TOO_LARGE: 'UPLOAD-TOO-LARGE',
 } as const
 
 export const PATHS = {
@@ -73,6 +75,7 @@ export const PATHS = {
   assetsPresign: '/api/assets/presign',
   assets: '/api/assets',
   asset: (key: string) => `/api/assets/${encodeURIComponent(key)}`,
+  assetRaw: (key: string) => `/api/assets/raw/${key}`,
 } as const
 
 /** Endpoints that require a session. Anonymous callers must get AUTH-LOGIN. */

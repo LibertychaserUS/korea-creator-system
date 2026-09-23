@@ -88,6 +88,38 @@ describe('usable demo seed', () => {
     expect(statuses.size).toBeGreaterThanOrEqual(3)
   })
 
+  it('migrations alone write the reference rows and no demo data', async () => {
+    const db = await connectDb(TEST_URL)
+    try {
+      await db.query(`
+        TRUNCATE TABLE
+          audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
+          creator_raw, creator_metrics_history, creator_sources, prices, collaborations, creator_categories, creators, assets,
+          ingest_dead_letters, ingest_jobs, ingest_source_usage, ingest_sources, users, orgs, categories
+        RESTART IDENTITY CASCADE
+      `)
+      await db.query(`DELETE FROM schema_migrations WHERE version = '0008_base_reference_data.sql'`)
+      await migrate(db)
+      await migrate(db)
+      const count = async (sql: string) => (await db.query(sql)).rows[0].n as number
+      expect(await count('SELECT count(*)::int AS n FROM orgs')).toBe(1)
+      expect(await count('SELECT count(*)::int AS n FROM categories WHERE builtin')).toBe(5)
+      expect(await count(`SELECT count(*)::int AS n FROM categories WHERE group_name = 'coop_history'`)).toBe(2)
+      expect(await count('SELECT count(*)::int AS n FROM ingest_sources')).toBe(4)
+      for (const table of ['creators', 'projects', 'assignments', 'ingest_jobs', 'saved_queries', 'users']) {
+        expect(await count(`SELECT count(*)::int AS n FROM ${table}`), table).toBe(0)
+      }
+      await db.query(`UPDATE ingest_sources SET name = '千瓜（停用）', enabled = false WHERE id = 'qiangua'`)
+      await db.query(`DELETE FROM schema_migrations WHERE version = '0008_base_reference_data.sql'`)
+      await migrate(db)
+      const qiangua = await db.query(`SELECT name, enabled FROM ingest_sources WHERE id = 'qiangua'`)
+      expect(qiangua.rows[0]).toEqual({ name: '千瓜（停用）', enabled: false })
+    } finally {
+      await seed(db, { reset: true })
+      await db.end()
+    }
+  })
+
   it('does not duplicate seed rows when run again without reset', async () => {
     const db = await connectDb(TEST_URL)
     await migrate(db)

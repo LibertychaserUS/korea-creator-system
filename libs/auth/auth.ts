@@ -2,7 +2,6 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { phoneNumber, admin, bearer, captcha } from "better-auth/plugins"
 import { createAuthMiddleware, APIError } from "better-auth/api"
-import { nanoid } from "nanoid";
 
 import { db, user, account, session, verification, isSqliteDialect } from '@libs/database'
 import { sendSMS } from '@libs/sms';
@@ -106,8 +105,11 @@ export const auth = betterAuth({
     }
   },
   // https://www.better-auth.com/docs/concepts/email
+  // KCS accounts are provisioned (db:seed:auth / admin createUser), never self-registered:
+  // every path that could mint a new user — email, social, phone OTP, WeChat — is closed.
   emailAndPassword: {
     enabled: true,
+    disableSignUp: true,
     autoSignIn: true,
     requireEmailVerification: config.auth.requireEmailVerification,
     sendResetPassword: async ({user, url, token}, request) => {
@@ -194,10 +196,14 @@ export const auth = betterAuth({
     google: {
       clientId: config.auth.socialProviders.google.clientId!,
       clientSecret: config.auth.socialProviders.google.clientSecret!,
+      disableSignUp: true,
+      disableImplicitSignUp: true,
     },
     github: {
       clientId: config.auth.socialProviders.github.clientId!,
       clientSecret: config.auth.socialProviders.github.clientSecret!,
+      disableSignUp: true,
+      disableImplicitSignUp: true,
       mapProfileToUser(profile) {
         return {
           emailVerified: true,
@@ -231,6 +237,7 @@ export const auth = betterAuth({
     wechatPlugin({
       appId: config.auth.socialProviders.wechat.appId!,
       appSecret: config.auth.socialProviders.wechat.appSecret!,
+      disableSignUp: true,
     }),
 
     // https://www.better-auth.com/docs/plugins/phone-number
@@ -286,21 +293,6 @@ export const auth = betterAuth({
           });
         }
       },
-      signUpOnVerification: {
-        getTempEmail: (phoneNumber) => {
-          // Generate unique virtual email, only used during user creation
-          // Subsequent logins are found via phoneNumber field
-          // Using .internal TLD to indicate internal-use virtual email
-          return `phone.${nanoid(8)}@tinyship.internal`;
-        },
-        //optionally, you can also pass `getTempName` function to generate a temporary name for the user
-        getTempName: (phoneNumber) => {
-          // 提取手机号的后4位作为临时用户名
-          const cleanPhone = phoneNumber.replace(/\D/g, ''); // 移除非数字字符
-          const suffix = cleanPhone.slice(-4); // 取后4位
-          return suffix;
-      }
-      }
     }),
     // Body validation with 400 + field issues (not 500) on bad input.
     validateBody([

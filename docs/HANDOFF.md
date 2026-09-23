@@ -15,15 +15,16 @@ pnpm install
 export DB_DIALECT=pg DATABASE_URL=postgres://kcs:kcs@localhost:5432/tinyship
 export BETTER_AUTH_SECRET=<32+ 字符> BETTER_AUTH_URL=http://localhost:7004
 pnpm db:push            # 建 user / session / account / verification
-pnpm db:seed:auth       # 五个种子账号 + KCS 角色（幂等）
+pnpm db:seed:auth       # 五个种子账号 + KCS 角色（幂等）；公开注册已关闭，账号只能这样或用 admin 插件开通
+# pnpm db:seed:auth --stranger   # 另建一个能登录但没有 KCS 角色的 stranger@kcs.local（黑盒要用）
 # 本机 Postgres 已建好 tinyship 库；旧的 sqlite（/tmp/kcs-local.sqlite）不再使用
 
 # 2. KCS API 库
-DATABASE_URL=postgres://kcs:kcs@localhost:5432/kcs pnpm db:migrate:kcs   # schema_migrations 版本化
-DATABASE_URL=postgres://kcs:kcs@localhost:5432/kcs pnpm db:seed:kcs      # 样例博主 + 4 条历史快照
+DATABASE_URL=postgres://kcs:kcs@localhost:5432/kcs pnpm db:migrate:kcs   # schema_migrations 版本化；含数据源 / 内置分类等基础行
+DATABASE_URL=postgres://kcs:kcs@localhost:5432/kcs pnpm --filter @kcs/api db:seed   # 可选：样例博主 + 4 条历史快照（加 -- --reset 清空重灌）
 
-# 3. API（含 ingest worker）
-DATABASE_URL=postgres://kcs:kcs@localhost:5432/kcs AUTH_BASE_URL=http://localhost:7004 pnpm dev:api   # :7100
+# 3. API（含 ingest worker）；本地演示可加 KCS_SEED=demo 让启动时顺带灌样例
+DATABASE_URL=postgres://kcs:kcs@localhost:5432/kcs AUTH_BASE_URL=http://localhost:7004 KCS_SEED=demo pnpm dev:api   # :7100
 
 # 4. 四端（每个一个终端；生产产物用 node apps/<app>/.output/server/index.mjs）
 PORT=7004 pnpm --filter @kcs/app-select dev
@@ -44,6 +45,7 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 |---|---|
 | `DATABASE_URL` | `kcs` 库 |
 | `AUTH_BASE_URL` | 任一工作端源站，用于 `GET /api/auth/get-session` 校验会话 |
+| `KCS_SEED` | `demo` 时启动写入演示数据（24 个样例博主、4 个项目、6 条样例任务、2 个方案，重启会覆盖同 id 的样例行）；缺省不写。生产不要设。数据源行、内置分类由迁移 `0008` 写入，与此无关 |
 | `KCS_DEV_TOKENS` | `1` 时接受 `Bearer dev:<email>`（仅非生产、仅本地临时 curl；黑盒与 E2E 都走真实登录，默认关） |
 | `SESSION_CACHE_MS` | API 侧会话正缓存，默认 10000；也是退出后旧 token 最长存活时间 |
 | `INGEST_WORKER` | `0` 时该进程不参与抽水，只服务 HTTP（多副本时给额外副本用；抽水本身已由顾问锁保证全局只有一条） |

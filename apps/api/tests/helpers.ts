@@ -3,7 +3,7 @@ import { SEED_PASSWORD, SEED_USERS } from '@kcs/contract'
 import { connectDb } from '../src/db'
 import { migrate } from '../src/migrate'
 import { seed } from '../src/seed'
-import { MemoryObjectStore } from '../src/store'
+import { MemoryObjectStore, type ObjectStore } from '../src/store'
 import type { SourceAdapter } from '@kcs/contract'
 import type { Db } from '../src/db'
 
@@ -20,12 +20,13 @@ const DEFAULT_URL = 'postgres://kcs:kcs@127.0.0.1:5432/kcs_test'
 
 export async function createTestApp(options: {
   getAdapter?: (source: string) => SourceAdapter | undefined
+  store?: ObjectStore
 } = {}): Promise<TestCtx> {
   const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || DEFAULT_URL
   const db = await connectDb(url)
   await migrate(db)
   await seed(db, { reset: true })
-  const store = new MemoryObjectStore()
+  const store = options.store ?? new MemoryObjectStore()
   const usersByToken = new Map(
     SEED_USERS.map((user) => [
       `test:${user.email}`,

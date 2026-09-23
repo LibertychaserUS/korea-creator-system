@@ -2,7 +2,7 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**160 cases** across 11 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**181 cases** across 12 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
 The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
@@ -21,7 +21,7 @@ Seed users (`packages/kcs-contract/src/users.ts`):
 | selector | selector@kcs.local | same |
 | selector_viewer | viewer@kcs.local | same |
 
-Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND`.
+Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND` `JOB-STATE` `CONFLICT` `UPLOAD-TYPE` `UPLOAD-TOO-LARGE`. `VALIDATION` bodies add `error.fields: [{ path, message }]`.
 
 ---
 
@@ -41,7 +41,8 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | `/__login` locale follows the form (`/en/login?error=1`) | 06 登录页 | `POST /__login` |
 | marketing `/__login` hands each role to its workspace origin | 06 宣传页登录交接 | `POST {marketing}/__login` |
 | `kcs_last_ws` cookie wins for multi-workspace roles | 06 宣传页登录交接 | `POST {marketing}/__login` |
-| public sign-up gets a TinyShip session but **no** KCS role | 05 §认证 `roleFromIdentity` | `POST /api/auth/sign-up/email` |
+| public sign-up is refused (4xx, no token, no session cookie) and the email cannot sign in afterwards | 05 §认证 公开注册已关闭 | `POST /api/auth/sign-up/email` `POST /api/auth/sign-in/email` |
+| an admin-provisioned account with no KCS job signs in to TinyShip but holds **no** KCS role | 05 §认证 `roleFromIdentity` | `POST /api/auth/sign-in/email` `GET /api/auth/get-session` |
 | role-less account → 403 `AUTH-DENIED` on `/me`, pool, ops, ingest, projects; nothing leaked | 07 身份与权限 | `GET` those |
 | role-less account via `/__login` lands on `/zh-CN/denied` | 06 denied 页 | `POST /__login` |
 | 6 rapid wrong passwords hit 429 with a retry hint; none succeed | 05 §认证 限速 | `POST /api/auth/sign-in/email` |
@@ -251,3 +252,49 @@ Spec: `docs/04_抓取流水线与队列.md`（§抽水 / §失败 / §搁置记�
 | `AUTH-LOGIN` stable | UX 未登录 | `GET /api/select/pool` unauthenticated |
 | id / creator_key / metrics / followers / display_name unchanged | DOMAIN §7; PRD §9 | `GET /api/select/pool` |
 | detail keeps 서울살림노트 under `locale=ko` | PRD §9 原文 | `GET /api/select/creators/:id` |
+
+## 11. 安全（上线阻塞项回归）— `11-security.test.ts`
+
+Specs: `docs/05_接口说明.md` §认证 / §上传限制 / §错误码; `docs/07_测试与验收清单.md` §安全.
+Workspace origins that are not running are skipped case by case. The `Secure`
+assertions expect production builds (`NODE_ENV=production`, as in the deploy
+images); set `BLACKBOX_WORKSPACE_DEV=1` when pointing at `nuxt dev`.
+
+### 登录跳转
+
+| case | spec | HTTP |
+|------|------|------|
+| `/__login` with `locale` = `/evil…`, `//evil…`, `\evil…`, `https://evil…`, `zh-CN/../..`, `fr` and a wrong password → 302 `/zh-CN/login?error=1` every time | 05 §认证「跳转只拼站内相对路径」 | `POST /__login` |
+| successful `/__login` with `locale=//evil…` → 302 `/zh-CN/`; `kcs_session` carries `Secure`, not `HttpOnly` | 05 §认证 `kcs_session` | `POST /__login` |
+| `/__logout` clears `kcs_session` with the same attributes (`Secure` in production) | 05 §认证 退出 | `POST /__logout` |
+| marketing hand-off with an evil `locale` still lands on the configured select origin `/zh-CN/` | 05 §认证「目标源站只取服务端配置」 | `POST {marketing}/__login` |
+
+### 上传
+
+| case | spec | HTTP |
+|------|------|------|
+| HTML declared as `image/png` → 415 `UPLOAD-TYPE`, no asset stored | 05 §上传限制 魔数 | `POST /api/assets` `GET /api/assets` |
+| script-bearing SVG and a `text/html` file → 415 | 05 §上传限制 四种图片 | `POST /api/assets` |
+| > 5 MB with a real PNG header → 413 `UPLOAD-TOO-LARGE` | 05 §上传限制 5 MB | `POST /api/assets` |
+| presign for `text/html` → 415 `UPLOAD-TYPE` | 05 §上传限制 | `POST /api/assets/presign` |
+| raw read of a real PNG: `Content-Type: image/png`, `nosniff`, `inline`, `default-src 'none'`, bytes intact | 05 §上传限制 读回 | `GET /api/assets/raw/*` |
+| a pre-fix HTML row (planted over SQL) is 404 on raw read, never served as a page | 05 §上传限制 旧行 | `GET /api/assets/raw/*` |
+| unknown key and a badly percent-encoded key → 404 | 05 §上传限制 | `GET /api/assets/raw/*` |
+
+### 模板路由与注册
+
+| case | spec | HTTP |
+|------|------|------|
+| on each of select / ops / dev / marketing: `/api/chat`, `/api/image-generate`, `/api/video-generate(/status)`, `/api/upload`, `/api/kcs/overview`, `/api/kcs/reviews`, `/api/orders`, `/api/users/:id`, `/api/admin/*`, `/api/blog`, `/api/credits/*`, `/api/subscription/*`, `/api/payment/initiate`, all five `/api/payment/webhook/*`, `/api/payment/return/paypal`, `/api/fixtures/imok/*` → 404 (4 cases) | 07 §安全「四端只剩身份路由」 | `GET` / `POST` those |
+| better-auth identity routes still answer (`get-session`) | 05 §认证 | `GET /api/auth/get-session` |
+| the API origin has none of those routes either | 05 | same paths on the API |
+| public sign-up refused on every reachable workspace origin | 05 §认证 公开注册已关闭 | `POST {origin}/api/auth/sign-up/email` |
+
+### 错误处理
+
+| case | spec | HTTP |
+|------|------|------|
+| broken JSON on creator create / patch, ingest job, project, saved query → 400 `VALIDATION`, never 500 | 05 §错误码 | `POST` / `PATCH` those |
+| bad fields → 400 `VALIDATION` with `error.fields[].path` (e.g. `followers`) | 05 §错误码 | `POST /api/ops/creators` |
+| PATCH / unpublish a creator that does not exist → 404 `NOT-FOUND`, no audit row | 05 §错误码「不写审计」 | `PATCH /api/ops/creators/:id` `POST …/unpublish` `GET /api/dev/audit` |
+| assign into a missing project, remove a missing assignment → 404, no audit row | 05 §错误码 | `POST /api/select/projects/:id/assignments` `DELETE …/assignments/:creatorId` |

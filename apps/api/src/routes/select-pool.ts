@@ -6,6 +6,7 @@ import {
   publicPoolRow,
   queryPool,
 } from '../http/creators'
+import { readJson, shortlistBody } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -123,7 +124,12 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
   app.post('/api/select/shortlist', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'select.write')
     if (denied) return denied
-    const body = await context.req.json()
+    const { data: body, invalid } = await readJson(context, shortlistBody)
+    if (invalid) return invalid
+    const creator = await loadCreator(env.db, body.creatorId, false)
+    if (!creator || creator.status !== 'released' || creator.categories.includes('blacklist')) {
+      return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    }
     await env.db.query(
       `INSERT INTO shortlist_items (org_id, creator_id) VALUES ($1,$2)
        ON CONFLICT DO NOTHING`,

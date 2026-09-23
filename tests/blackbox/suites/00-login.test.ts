@@ -9,6 +9,7 @@ import {
   signInEmail,
   signInWithBackoff,
   signOut,
+  signUpWithBackoff,
   type Session,
 } from '../helpers/auth'
 import { ERROR, PATHS, ROLES, SEED_PASSWORD, SEED_USERS, type Role } from '../helpers/contract'
@@ -30,10 +31,10 @@ const DEV_URL = (process.env.BLACKBOX_DEV_URL || 'http://localhost:7003').replac
 const SELECT_URL = (process.env.BLACKBOX_SELECT_URL || AUTH_URL).replace(/\/$/, '')
 const MARKETING_URL = (process.env.BLACKBOX_MARKETING_URL || 'http://localhost:7005').replace(/\/$/, '')
 
+/** Provisioned by `pnpm db:seed:auth --stranger`: a TinyShip account with no KCS job. */
 const STRANGER = {
   email: process.env.BLACKBOX_STRANGER_EMAIL || 'stranger@kcs.local',
-  password: 'Stranger!2026pass',
-  name: '路人',
+  password: SEED_PASSWORD,
 }
 
 type FormLoginResult = {
@@ -242,18 +243,6 @@ describe('登录 — 没有分工的账号', () => {
   let strangerToken: string | null = null
 
   beforeAll(async () => {
-    // Public sign-up creates a TinyShip account with the stock `user` role.
-    const res = await fetch(`${AUTH_URL}${AUTH.signUp}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: AUTH_URL },
-      body: JSON.stringify({ email: STRANGER.email, password: STRANGER.password, name: STRANGER.name }),
-    })
-    const body = (await res.json().catch(() => null)) as { token?: string } | null
-    if (res.status === 200 && body?.token) {
-      strangerToken = body.token
-      return
-    }
-    // Already registered from a previous run: sign in instead.
     const signIn = await signInWithBackoff(STRANGER.email, STRANGER.password)
     strangerToken = signIn.token
   })
@@ -262,8 +251,23 @@ describe('登录 — 没有分工的账号', () => {
     if (strangerToken) await signOut(strangerToken).catch(() => undefined)
   })
 
-  it('注册成功即有 TinyShip 会话，但没有 KCS 角色', async () => {
-    expect(strangerToken, 'stranger sign-up / sign-in').toBeTruthy()
+  it('公开注册被拒：不建账号、不发会话，之后也登不进来', async () => {
+    const email = `walk-in-${Date.now()}@kcs.local`
+    const password = 'Walk-in!2026pass'
+    const res = await signUpWithBackoff(email, password)
+    expect(res.status).toBeGreaterThanOrEqual(400)
+    expect(res.status).toBeLessThan(500)
+    expect(res.status).not.toBe(429)
+    expect(res.token).toBeNull()
+    expect(res.user).toBeNull()
+    expect(res.cookies.some((c) => /session_token=[^;]+/.test(c) && !/Max-Age=0/i.test(c))).toBe(false)
+    const signIn = await signInWithBackoff(email, password)
+    expect(signIn.status).toBe(401)
+    expect(signIn.token).toBeNull()
+  })
+
+  it('由管理员开通、没有分工的账号能登录 TinyShip，但没有 KCS 角色', async () => {
+    expect(strangerToken, `sign-in ${STRANGER.email} (run pnpm db:seed:auth --stranger)`).toBeTruthy()
     const session = await getSession(strangerToken!)
     expect(session.user?.email).toBe(STRANGER.email)
     expect(ROLES as readonly string[]).not.toContain(String(session.user?.role ?? ''))

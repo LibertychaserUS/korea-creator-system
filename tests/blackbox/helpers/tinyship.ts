@@ -101,3 +101,50 @@ export async function signOut(token: string): Promise<number> {
   })
   return res.status
 }
+
+export type SignUpResult = {
+  status: number
+  token: string | null
+  user: unknown
+  code: string | undefined
+  cookies: string[]
+}
+
+/**
+ * Public sign-up attempt on one origin. Sign-up shares the sign-in throttle, so a
+ * 429 is waited out: the case must see the real answer, not the rate limiter's.
+ */
+export async function signUpWithBackoff(
+  email: string,
+  password: string,
+  opts: { base?: string } = {},
+  attempts = 6,
+): Promise<SignUpResult> {
+  const base = (opts.base || AUTH_URL).replace(/\/$/, '')
+  const once = async () => {
+    const res = await fetch(`${base}${AUTH.signUp}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: base },
+      body: JSON.stringify({ email, password, name: '路人' }),
+      redirect: 'manual',
+    })
+    const body = (await res.json().catch(() => null)) as { token?: string; user?: unknown; code?: string } | null
+    const retryAfter = res.headers.get('x-retry-after') ?? res.headers.get('retry-after')
+    return {
+      result: {
+        status: res.status,
+        token: typeof body?.token === 'string' ? body.token : null,
+        user: body?.user ?? null,
+        code: typeof body?.code === 'string' ? body.code : undefined,
+        cookies: res.headers.getSetCookie(),
+      },
+      retryAfterMs: retryAfter ? Number(retryAfter) * 1000 : null,
+    }
+  }
+  let last = await once()
+  for (let i = 1; i < attempts && last.result.status === 429; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(last.retryAfterMs ?? 4_000, 11_000) + 250))
+    last = await once()
+  }
+  return last.result
+}

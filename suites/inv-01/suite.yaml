@@ -1,10 +1,10 @@
 schema: overlay-suite/v2
 id: inv-01
-title: Score triplet is not written by AI or humans
+title: Metrics the platform did not return stay null, never 0
 status: active
 kind: functional
 subject: product
 source: inbox/inv-01.md
 packages:
-  - libs/kcs-domain
-product_command: pnpm exec vitest run tests/kcs/score-immutability.test.ts
+  - packages/kcs-contract
+product_command: pnpm --filter @kcs/contract exec vitest run tests/metrics-null.test.ts

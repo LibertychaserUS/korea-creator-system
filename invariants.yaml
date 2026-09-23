@@ -1,7 +1,7 @@
 schema: overlay-invariants/v1
 items:
-  - id: INV-score-immutable
-    text: Score.final, Score.grade, and Score.rank are written only by the rule engine. AIReview and ManualReview must not change them.
+  - id: INV-metrics-null-not-zero
+    text: A metric the platform did not return stays null from adapter to pool, filter and sort. It is never defaulted to 0 or guessed, and a null is never ranked or filtered as if it were 0.
     function_ids:
       - INV-01
     span: local
