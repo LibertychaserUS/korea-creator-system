@@ -66,6 +66,7 @@ See [`.env.example`](./.env.example). Defaults:
 | `BLACKBOX_AUTH_URL` | `http://localhost:7004` (TinyShip auth origin used for sign-in) |
 | `BLACKBOX_SELECT_URL` / `BLACKBOX_OPS_URL` / `BLACKBOX_DEV_URL` / `BLACKBOX_MARKETING_URL` | `:7004` / `:7002` / `:7003` / `:7005` (form-login and hand-off cases; unreachable origins are skipped) |
 | `BLACKBOX_STRANGER_EMAIL` | `stranger@kcs.local` (signed-in account with no KCS role; provision it with `pnpm db:seed:auth --stranger`, password = `BLACKBOX_PASSWORD`) |
+| `BLACKBOX_WORKSPACE_DEV` | unset. Set to `1` only when the workspace origins run `nuxt dev`: `11-security` then skips the `Secure` cookie assertions (production builds must send `Secure`) |
 | `BLACKBOX_VENDOR_PORT` / `BLACKBOX_VENDOR_TOKEN` | `7190` / `blackbox-vendor-token` (stand-in vendor for the queue suite; the API's `QIANGUA_BASE_URL` / `QIANGUA_TOKEN` must match) |
 
 `BLACKBOX_DATABASE_URL` must be `postgres://`. A `sqlite` URL fails setup.
