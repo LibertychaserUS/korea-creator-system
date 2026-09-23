@@ -20,7 +20,14 @@ describe('saved query CRUD and run', () => {
       body: JSON.stringify({ name: '', filters: [] }),
     })
     expect(res.status).toBe(400)
-    expect(await res.json()).toEqual({ error: 'invalid', errors: ['name.required'] })
+    expect(await res.json()).toEqual({
+      error: {
+        code: 'VALIDATION',
+        message: 'invalid_query',
+        fields: [{ path: 'name', message: 'name.required' }],
+      },
+      errors: ['name.required'],
+    })
   })
 
   it('creates, lists, reads and increments version on patch', async () => {
