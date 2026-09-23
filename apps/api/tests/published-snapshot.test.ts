@@ -124,6 +124,21 @@ describe('published snapshot', () => {
     expect(history.body.snapshots.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('ops sees the trend and every raw record, newest first', async () => {
+    const history = await get(`/api/ops/creators/${creatorId}/history`, opsToken)
+    expect(history.status).toBe(200)
+    expect(history.body.snapshots.at(-1).metrics.followers).toBe(40_000)
+    expect((await get(`/api/ops/creators/${creatorId}/history`, selectorToken)).status).toBe(403)
+    expect((await get('/api/ops/creators/00000000-0000-0000-0000-000000000000/history', opsToken)).status).toBe(404)
+
+    const raw = await get(`/api/ingest/raw/${creatorId}`, opsToken)
+    expect(raw.status).toBe(200)
+    expect(raw.body.items.map((item: { payload: { followers: number } }) => item.payload.followers)).toEqual([40_000, 10_000])
+    expect(raw.body.payload.followers).toBe(40_000)
+    expect(raw.body.items[0].source).toBe('qiangua')
+    expect(typeof raw.body.items[0].fetchedAt).toBe('string')
+  })
+
   it('pool filters and sorts on the snapshot, not the latest ingest', async () => {
     expect(await poolRow('?followersMin=20000')).toBeUndefined()
     expect(await poolRow('?followersMax=15000')).toBeTruthy()

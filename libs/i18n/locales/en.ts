@@ -2497,6 +2497,65 @@ export const en: Locale = {
       next: "Next",
       open: "View details"
     },
+    opsCreator: {
+      back: "Creators",
+      approve: "Approve and publish",
+      unpublish: "Withdraw",
+      republish: "Publish again",
+      raw: "Original platform data",
+      publishedAt: "Published {date}",
+      updatedAt: "Updated {date}",
+      notFound: "This creator could not be found. It may have been deleted.",
+      newNumbers: "New numbers came in. Compare them under “At publish vs latest”.",
+      confirm: {
+        approveTitle: "Approve and publish this creator?",
+        approveBody: "The selection workspace will see this creator and filter and sort on today’s numbers. Numbers fetched later will not replace them automatically.",
+        unpublishTitle: "Withdraw this creator?",
+        unpublishBody: "The selection workspace will stop showing this creator, and project assignments will be marked as withdrawn. You can publish again at any time.",
+        republishTitle: "Publish this creator again?",
+        republishBody: "Publishing again switches the selection workspace to the most recently fetched numbers.",
+        cancel: "Cancel",
+        ok: "Confirm"
+      },
+      toast: {
+        published: "Published to the selection workspace",
+        republished: "Published again with the latest numbers",
+        unchanged: "Already published. The numbers stay as they were.",
+        unpublished: "Withdrawn from the selection workspace",
+        saved: "Profile saved",
+        incomplete: "Missing details: a nickname, a region or content focus, and a follower count (or tick “Followers unknown”)",
+        failed: "That did not work. Please try again later.",
+        created: "Draft saved. Publish it once it passes review."
+      },
+      edit: {
+        title: "Profile",
+        lead: "Edits change the latest profile. Published numbers only change when you publish again.",
+        regions: "Regions",
+        verticals: "Content focus",
+        listHint: "Separate several with commas",
+        categories: "Categories",
+        note: "Note",
+        readOnly: "Your account can view but not edit."
+      },
+      rawSheet: {
+        lead: "Everything each platform sent back is kept, newest first.",
+        empty: "This creator was added by hand, so there is no original platform data.",
+        count: "{n} records",
+        expand: "Show original content",
+        fields: "Main fields"
+      }
+    },
+    compare: {
+      title: "At publish vs latest",
+      lead: "The selection workspace filters and sorts on the numbers “At publish”. Each later fetch only updates “Latest”. To move the selection workspace onto the latest numbers, withdraw and publish again.",
+      leadSelect: "The list filters and sorts on the numbers “At publish”. “Latest” shows what was fetched since, for comparison only.",
+      notPublished: "Not published yet. Publishing freezes the “Latest” column as it is.",
+      metric: "Metric",
+      locked: "At publish",
+      latest: "Latest",
+      change: "Change",
+      same: "No change"
+    },
     exempt: {
       note: "Nickname, Xiaohongshu account, raw keywords, and handwritten notes stay in the source language."
     }

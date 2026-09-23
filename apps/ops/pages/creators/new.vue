@@ -251,31 +251,6 @@
                 <p class="text-xs text-muted-foreground">
                   {{ saved.status === 'released' ? t('kcs.panel.published') : t('kcs.panel.scoreLocked') }}
                 </p>
-                <div v-if="saved.id && saved.status !== 'released'" class="mt-2 flex flex-wrap gap-2">
-                  <Button data-testid="btn-publish" type="button" size="sm" :disabled="confirming" @click="confirming = true">
-                    <Send class="size-4" />
-                    {{ t('kcs.panel.publish') }}
-                  </Button>
-                  <Button
-                    v-if="confirming"
-                    data-testid="btn-publish-confirm"
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    :disabled="publishing"
-                    @click="publish"
-                  >
-                    <Loader2 v-if="publishing" class="size-4 animate-spin" />
-                    <Check v-else class="size-4" />
-                    {{ t('kcs.panel.confirmPublish') }}
-                  </Button>
-                </div>
-                <Button v-else-if="saved.status === 'released'" as-child size="sm" variant="outline" class="mt-2">
-                  <a :href="`${config.public.selectUrl}/${locale}/`">
-                    <ExternalLink class="size-4" />
-                    {{ t('kcs.panel.openSelect') }}
-                  </a>
-                </Button>
               </div>
             </li>
           </ol>
@@ -290,20 +265,18 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
-  ExternalLink,
   Handshake,
   Image as ImageIcon,
   Loader2,
   Radio,
   RotateCcw,
   Save,
-  Send,
   Sparkles,
   Upload,
 } from 'lucide-vue-next'
 import { coopPressed, selectCoop, type CoopSlug } from '@libs/panel/utils/coop-category'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const { request } = useApi()
 const localePath = useLocalePath()
 const config = useRuntimeConfig()
@@ -324,9 +297,7 @@ const uploadError = ref('')
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024
 const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const saving = ref(false)
-const publishing = ref(false)
 const error = ref(false)
-const confirming = ref(false)
 const saved = reactive({ id: '', creatorKey: '', status: 'draft' })
 
 async function onFile(ev: Event) {
@@ -395,21 +366,12 @@ async function save() {
     saved.id = created.id
     saved.creatorKey = created.creatorKey
     saved.status = 'draft'
+    // 审核、发布都在详情页做
+    await navigateTo(localePath({ path: `/creators/${created.id}`, query: { created: '1' } }))
   } catch {
     error.value = true
   } finally {
     saving.value = false
-  }
-}
-
-async function publish() {
-  publishing.value = true
-  try {
-    await request(`/api/ops/creators/${saved.id}/publish`, { method: 'POST' })
-    saved.status = 'released'
-    confirming.value = false
-  } finally {
-    publishing.value = false
   }
 }
 
@@ -425,7 +387,6 @@ function reset() {
   saved.id = ''
   saved.creatorKey = ''
   saved.status = 'draft'
-  confirming.value = false
   error.value = false
 }
 </script>

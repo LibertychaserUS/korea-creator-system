@@ -151,6 +151,37 @@ export async function saveRelations(db: Db, creatorId: string, body: Record<stri
   }
 }
 
+/** One record per day and source (the day's last fetch), oldest first. */
+export async function creatorHistory(
+  db: Db,
+  creatorId: string,
+  query: Record<string, string | undefined>,
+) {
+  const window = query.window === '90' ? 90 : 30
+  const limit = Math.max(1, Math.min(200, Number(query.limit || 60)))
+  const { rows } = await db.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON ((fetched_at AT TIME ZONE 'UTC')::date, source)
+         id, creator_id, source, "window", fetched_at, job_id, metrics
+       FROM creator_metrics_history
+       WHERE creator_id = $1 AND "window" = $2
+       ORDER BY (fetched_at AT TIME ZONE 'UTC')::date, source, fetched_at DESC
+     ) snapshots
+     ORDER BY fetched_at DESC
+     LIMIT $3`,
+    [creatorId, window, limit],
+  )
+  return rows.reverse().map((row) => ({
+    id: row.id,
+    creatorId: row.creator_id,
+    source: row.source,
+    window: Number(row.window),
+    fetchedAt: isoOrNull(row.fetched_at),
+    jobId: row.job_id ?? null,
+    metrics: parseMetrics(row.metrics),
+  }))
+}
+
 export async function attachCreatorMeta(
   db: Db,
   rows: Array<Record<string, any>>,

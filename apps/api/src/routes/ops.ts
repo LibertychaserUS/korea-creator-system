@@ -14,6 +14,7 @@ import {
 import {
   assetPublicUrl,
   attachCreatorMeta,
+  creatorHistory,
   hasCollabSql,
   loadCreator,
   mutexCoop,
@@ -140,6 +141,15 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const item = await loadCreator(env.db, context.req.param('id'), true)
     if (!item) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     return context.json(item)
+  })
+
+  app.get('/api/ops/creators/:id/history', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ops.read')
+    if (denied) return denied
+    const creatorId = context.req.param('id')
+    const exists = await env.db.query('SELECT 1 FROM creators WHERE id = $1', [creatorId])
+    if (!exists.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json({ snapshots: await creatorHistory(env.db, creatorId, context.req.query()) })
   })
 
   app.patch('/api/ops/creators/:id', async (context) => {

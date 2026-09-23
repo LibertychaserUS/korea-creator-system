@@ -2504,6 +2504,65 @@ export const zhCN: Locale = {
       next: "下一页",
       open: "查看详情"
     },
+    opsCreator: {
+      back: "博主列表",
+      approve: "通过并发布",
+      unpublish: "下架",
+      republish: "重新发布",
+      raw: "平台原始信息",
+      publishedAt: "发布于 {date}",
+      updatedAt: "{date} 更新",
+      notFound: "找不到这位博主，可能已被删除。",
+      newNumbers: "抓到了新数字，对照下方「发布时与最新」看看差多少。",
+      confirm: {
+        approveTitle: "通过并发布这位博主？",
+        approveBody: "发布后选人端就能看到 TA，并按现在这组数字筛选和排序；之后抓到的新数字不会自动替换。",
+        unpublishTitle: "下架这位博主？",
+        unpublishBody: "下架后选人端不再显示 TA，已经分派进项目的记录会标成已下架。之后随时可以重新发布。",
+        republishTitle: "重新发布这位博主？",
+        republishBody: "重新发布会把选人端的数字换成最新一次抓取的结果。",
+        cancel: "取消",
+        ok: "确认"
+      },
+      toast: {
+        published: "已发布到选人端",
+        republished: "已重新发布，选人端换成了最新数字",
+        unchanged: "已经在选人端了，数字保持不变",
+        unpublished: "已下架，选人端不再显示",
+        saved: "资料已保存",
+        incomplete: "还差信息：需要昵称、地域或内容方向，以及粉丝数（或勾选粉丝未知）",
+        failed: "没有成功，请稍后再试",
+        created: "已保存草稿，审核通过后就能发布"
+      },
+      edit: {
+        title: "资料",
+        lead: "这里改的是最新资料；已发布的数字要重新发布才会更新。",
+        regions: "地域",
+        verticals: "内容方向",
+        listHint: "多个用逗号分开",
+        categories: "分类",
+        note: "备注",
+        readOnly: "你的账号只能查看，不能修改。"
+      },
+      rawSheet: {
+        lead: "每次从平台取回的原始内容都留着，按时间倒序排列。",
+        empty: "这位博主是手动录入的，没有平台原始信息。",
+        count: "共 {n} 条",
+        expand: "展开原始内容",
+        fields: "主要字段"
+      }
+    },
+    compare: {
+      title: "发布时与最新",
+      lead: "选人端按「发布时」的数字筛选和排序；之后每次抓取只更新「最新」。想让选人端用上最新数字，先下架再重新发布。",
+      leadSelect: "名单按「发布时」的数字筛选和排序；「最新」是之后抓到的数字，仅供对照。",
+      notPublished: "还没发布过；发布时会把「最新」这一列原样定下来。",
+      metric: "指标",
+      locked: "发布时",
+      latest: "最新",
+      change: "变化",
+      same: "持平"
+    },
     exempt: {
       note: "昵称、小红书号、原始关键词和手写备注保持原文，不做翻译。"
     }

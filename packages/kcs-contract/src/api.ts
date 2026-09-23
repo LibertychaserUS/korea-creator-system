@@ -15,6 +15,7 @@ export const API = {
   opsCreators: { method: 'GET', path: '/api/ops/creators', perm: 'ops.read' },
   opsCreatorCreate: { method: 'POST', path: '/api/ops/creators', perm: 'ops.write' },
   opsCreatorGet: { method: 'GET', path: '/api/ops/creators/:id', perm: 'ops.read' },
+  opsCreatorHistory: { method: 'GET', path: '/api/ops/creators/:id/history', perm: 'ops.read' },
   opsCreatorPatch: { method: 'PATCH', path: '/api/ops/creators/:id', perm: 'ops.write' },
   opsPublish: { method: 'POST', path: '/api/ops/creators/:id/publish', perm: 'ops.publish' },
   opsUnpublish: { method: 'POST', path: '/api/ops/creators/:id/unpublish', perm: 'ops.publish' },
