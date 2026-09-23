@@ -113,7 +113,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | viewer cannot assign | UX 1; user brief | POST → 403 `AUTH-DENIED` |
 | viewer cannot remove | DOMAIN 移出 | DELETE → 403 |
 | unpublish: existing `pool_gone`, new assign blocked | PRD §7; DOMAIN 边界 | GET project; POST new project |
-| optional SQL count ≥ 1 (fallback GET) | user brief persistence | `assignment` table or GET project |
+| optional SQL count ≥ 1 (fallback GET) | user brief persistence | `assignments` table or GET project |
 
 ## 6. Ingest — `06-ingest.test.ts`
 

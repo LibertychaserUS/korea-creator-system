@@ -131,7 +131,7 @@ describe('Project assign / remove', () => {
     })
     try {
       const rows = await sqlRead<{ n: string }>(
-        `SELECT count(*)::text AS n FROM assignment WHERE project_id = $1`,
+        `SELECT count(*)::text AS n FROM assignments WHERE project_id = $1`,
         [project.id],
       )
       expect(Number(rows[0]?.n ?? 0)).toBeGreaterThanOrEqual(1)
