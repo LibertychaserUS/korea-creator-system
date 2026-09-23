@@ -2,7 +2,8 @@
 # Bring up everything tests/blackbox needs on top of a running Postgres, then
 # return once it is healthy:
 #   1. KCS database + TinyShip identity database (created if missing)
-#   2. identity schema (drizzle push) + the five seed accounts (db:seed:auth)
+#   2. identity schema (drizzle push) + the seed accounts (db:seed:auth, plus
+#      --stranger when the seed supports it)
 #   3. workspace app(s) as the TinyShip sign-in origin (production build)
 #   4. KCS API wired to the stand-in vendor that global-setup starts
 #
@@ -120,9 +121,15 @@ NODE
 log "identity schema + seed accounts"
 DB_DIALECT=pg DATABASE_URL="$BLACKBOX_AUTH_DATABASE_URL" \
   pnpm exec drizzle-kit push --config drizzle.config.ts --force
+# Once public sign-up is closed, the "signed in, no role" account the 00-login
+# suite needs only exists via `db:seed:auth --stranger`; older seeds lack the flag.
+seed_args=()
+if grep -q -- '--stranger' libs/database/seed-auth.ts; then
+  seed_args+=(--stranger)
+fi
 DB_DIALECT=pg DATABASE_URL="$BLACKBOX_AUTH_DATABASE_URL" \
   BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" BETTER_AUTH_URL="$BLACKBOX_AUTH_URL" \
-  pnpm db:seed:auth
+  pnpm db:seed:auth ${seed_args[@]+"${seed_args[@]}"}
 
 for app in $BLACKBOX_APPS; do
   output="apps/$app/.output/server/index.mjs"
