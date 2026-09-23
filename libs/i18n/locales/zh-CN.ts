@@ -2563,6 +2563,20 @@ export const zhCN: Locale = {
       change: "变化",
       same: "持平"
     },
+    projectBoard: {
+      export: "导出表格",
+      exporting: "正在导出…",
+      exported: "表格已开始下载",
+      exportHint: "数字用博主发布时的那一组，和博主库里看到的一致。",
+      remove: "移出项目",
+      removeTitle: "把「{name}」移出这个项目？",
+      removeBody: "只是从这个项目的候选名单里拿掉，博主本身和其他项目不受影响；之后还可以再从博主库加回来。",
+      removed: "已移出项目",
+      cancel: "取消",
+      confirm: "移出",
+      failed: "没有成功，请稍后再试",
+      actions: "操作"
+    },
     exempt: {
       note: "昵称、小红书号、原始关键词和手写备注保持原文，不做翻译。"
     }

@@ -368,11 +368,6 @@ export function publicQueryResultRow(item: Record<string, any>) {
   return { ...item, health: item.metrics.health }
 }
 
-export function csvCell(value: unknown): string {
-  const text = String(value ?? '')
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
 export async function queryPool(db: Db, query: Record<string, string>) {
   const { rows } = await db.query("SELECT * FROM creators WHERE status = 'released'")
   const visible = (await attachCreatorMeta(db, rows, false))

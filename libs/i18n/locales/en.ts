@@ -2556,6 +2556,20 @@ export const en: Locale = {
       change: "Change",
       same: "No change"
     },
+    projectBoard: {
+      export: "Export sheet",
+      exporting: "Exporting…",
+      exported: "Your sheet is downloading",
+      exportHint: "Numbers are the ones frozen when each creator was published, same as in the creator pool.",
+      remove: "Remove from project",
+      removeTitle: "Remove “{name}” from this project?",
+      removeBody: "This only takes them off this project’s shortlist. The creator and other projects stay as they are, and you can add them back from the creator pool later.",
+      removed: "Removed from the project",
+      cancel: "Cancel",
+      confirm: "Remove",
+      failed: "That did not work. Please try again later.",
+      actions: "Actions"
+    },
     exempt: {
       note: "Nickname, Xiaohongshu account, raw keywords, and handwritten notes stay in the source language."
     }

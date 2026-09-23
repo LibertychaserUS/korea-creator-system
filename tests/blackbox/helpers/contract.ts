@@ -42,6 +42,7 @@ export const PATHS = {
   opsCreator: (id: string) => `/api/ops/creators/${id}`,
   opsPublish: (id: string) => `/api/ops/creators/${id}/publish`,
   opsUnpublish: (id: string) => `/api/ops/creators/${id}/unpublish`,
+  opsCreatorHistory: (id: string) => `/api/ops/creators/${id}/history`,
   opsCategories: '/api/ops/categories',
   opsCategory: (slug: string) => `/api/ops/categories/${slug}`,
   pool: '/api/select/pool',
@@ -54,6 +55,7 @@ export const PATHS = {
   assignments: (projectId: string) => `/api/select/projects/${projectId}/assignments`,
   assignment: (projectId: string, creatorId: string) =>
     `/api/select/projects/${projectId}/assignments/${creatorId}`,
+  projectExport: (projectId: string) => `/api/select/projects/${projectId}/export`,
   ingestSources: '/api/ingest/sources',
   ingestAdapters: '/api/ingest/adapters',
   ingestFetch: '/api/ingest/fetch',

@@ -50,4 +50,7 @@ export const TESTID = {
   metricCompare: 'metric-compare',
   creatorTrend: 'creator-trend',
   creatorSources: 'creator-sources',
+  btnExportProject: 'btn-export-project',
+  btnRemoveAssignment: 'btn-remove-assignment',
+  btnRemoveAssignmentConfirm: 'btn-remove-assignment-confirm',
 } as const

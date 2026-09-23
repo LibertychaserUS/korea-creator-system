@@ -312,3 +312,16 @@ The re-ingest group needs the stand-in vendor (`bb-grow`: the same two creators,
 | publish while released → `refreshed: false`; take down → `withdrawn`, off the pool; publish again → pool on the latest numbers (tier moves to `mid`) | 03 §发布快照「下架、再发布」 | `POST …/publish` `POST …/unpublish` |
 | manual PATCH of metrics after publish leaves the pool alone; detail shows both; re-publish moves the pool | 02 `metrics` / `metrics_locked` | `PATCH /api/ops/creators/:id` |
 | ops list rows carry `stage`; overview has `pending` / `withdrawn` counts | 05 运营端 | `GET /api/ops/creators` `GET /api/ops/overview` |
+
+## 13. 项目导出与移出 — `13-project-board.test.ts`
+
+Specs: `docs/05_接口说明.md` 选人端 · 项目导出 / 移出分派; `docs/03_指标口径与数据源.md` §发布快照（导出用发布时的数字）.
+
+| case | spec | HTTP |
+|------|------|------|
+| export is `text/csv` attachment, bytes start with the UTF-8 BOM, Chinese headers, followers = publish-time (not the later PATCH), `=` in the nickname is defused, status 已分派 | 05 项目导出 | `GET /api/select/projects/:id/export` |
+| `?locale=en` / `ko` headers; unknown locale falls back to Chinese | 05 项目导出 | `GET …/export?locale=` |
+| viewer (select.read) can export; ops 403; anonymous `AUTH-LOGIN` | 01 RBAC | `GET …/export` |
+| viewer cannot remove an assignment (403) | 01 RBAC `select.assign` | `DELETE /api/select/projects/:id/assignments/:creatorId` |
+| selector removes → board empty, export no longer lists the creator, second delete 404 | 05 移出分派 | `DELETE …/assignments/:creatorId` `GET /api/select/projects/:id` |
+| ops reads a creator's history; selector 403 | 05 运营端 | `GET /api/ops/creators/:id/history` |

@@ -689,6 +689,20 @@ export const ko: Locale = {
       change: "변화",
       same: "변화 없음"
     },
+    projectBoard: {
+      export: "표 내보내기",
+      exporting: "내보내는 중…",
+      exported: "표 다운로드를 시작했습니다",
+      exportHint: "각 크리에이터를 게시할 때의 수치로, 크리에이터 풀과 같습니다.",
+      remove: "프로젝트에서 빼기",
+      removeTitle: "‘{name}’을(를) 이 프로젝트에서 뺄까요?",
+      removeBody: "이 프로젝트의 후보 명단에서만 빠지며, 크리에이터와 다른 프로젝트에는 영향이 없습니다. 나중에 크리에이터 풀에서 다시 추가할 수 있습니다.",
+      removed: "프로젝트에서 뺐습니다",
+      cancel: "취소",
+      confirm: "빼기",
+      failed: "처리하지 못했습니다. 잠시 후 다시 시도하세요.",
+      actions: "작업"
+    },
     exempt: {
       note: "닉네임, 샤오홍슈 계정, 원본 키워드, 손으로 쓴 메모는 번역하지 않는다.",
     },

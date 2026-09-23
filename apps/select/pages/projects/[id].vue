@@ -13,6 +13,18 @@
           {{ t('kcs.panel.projects') }}
         </NuxtLink>
       </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        :disabled="exporting || loading || !assignments.length"
+        :title="t('kcs.projectBoard.exportHint')"
+        :data-testid="TESTID.btnExportProject"
+        @click="exportSheet"
+      >
+        <Loader2 v-if="exporting" class="size-4 animate-spin" />
+        <Download v-else class="size-4" />
+        {{ exporting ? t('kcs.projectBoard.exporting') : t('kcs.projectBoard.export') }}
+      </Button>
       <Button v-if="canAssign" as-child>
         <NuxtLink data-testid="btn-open-library" :to="localePath(`/?project=${id}`)">
           <UserPlus class="size-4" />
@@ -45,6 +57,7 @@
             <TableHead class="text-right">{{ t('kcs.creators.cols.fans') }}</TableHead>
             <TableHead class="hidden text-right sm:table-cell">{{ t('kcs.panel.quote') }}</TableHead>
             <TableHead class="w-28">{{ t('kcs.panel.status') }}</TableHead>
+            <TableHead v-if="canAssign" class="w-12"><span class="sr-only">{{ t('kcs.projectBoard.actions') }}</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -58,6 +71,7 @@
               <TableCell><Skeleton class="ml-auto h-4 w-16" /></TableCell>
               <TableCell class="hidden sm:table-cell"><Skeleton class="ml-auto h-4 w-20" /></TableCell>
               <TableCell><Skeleton class="h-5 w-16" /></TableCell>
+              <TableCell v-if="canAssign" />
             </TableRow>
           </template>
           <TableRow
@@ -86,7 +100,21 @@
               {{ formatPrice(row.price?.amountMin, row.price?.currency) }}
             </TableCell>
             <TableCell>
-              <StatusBadge :status="row.poolGone ? 'removed' : row.status" kind="assignment" />
+              <StatusBadge v-if="row.poolGone" status="withdrawn" kind="stage" />
+              <StatusBadge v-else :status="row.status" kind="assignment" />
+            </TableCell>
+            <TableCell v-if="canAssign" class="text-right">
+              <Button
+                variant="ghost"
+                size="icon"
+                class="size-8 text-muted-foreground hover:text-destructive"
+                :title="t('kcs.projectBoard.remove')"
+                :aria-label="t('kcs.projectBoard.remove')"
+                :data-testid="TESTID.btnRemoveAssignment"
+                @click="removing = row"
+              >
+                <UserMinus class="size-4" />
+              </Button>
             </TableCell>
           </TableRow>
         </TableBody>
@@ -97,18 +125,35 @@
         </Button>
       </EmptyState>
     </TableCard>
+
+    <AlertDialog :open="Boolean(removing)" @update:open="(v: boolean) => { if (!v) removing = null }">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('kcs.projectBoard.removeTitle', { name: removing?.displayName ?? '' }) }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('kcs.projectBoard.removeBody') }}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="removeBusy">{{ t('kcs.projectBoard.cancel') }}</AlertDialogCancel>
+          <Button variant="destructive" :disabled="removeBusy" :data-testid="TESTID.btnRemoveAssignmentConfirm" @click="removeAssignment">
+            <Loader2 v-if="removeBusy" class="size-4 animate-spin" />
+            {{ t('kcs.projectBoard.confirm') }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </PanelPage>
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Coins, Gauge, Radio, UserPlus, Users } from 'lucide-vue-next'
-import { can } from '@kcs/contract'
+import { ArrowLeft, Coins, Download, Gauge, Loader2, Radio, UserMinus, UserPlus, Users } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
+import { TESTID, can } from '@kcs/contract'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const id = computed(() => String(route.params.id))
 const localePath = useLocalePath()
-const { request } = useApi()
+const { request, download } = useApi()
 const { user } = useSession()
 const { formatPrice, toCny } = useCurrency()
 const { formatNumber } = useFormat()
@@ -126,9 +171,46 @@ const medianCpe = computed(() => {
 const totalFollowers = computed(() => assignments.value.reduce((sum, r) => sum + (Number(r.followers) || 0), 0))
 const totalQuote = computed(() => assignments.value.reduce((sum, r) => sum + toCny(r.price?.amountMin, r.price?.currency), 0))
 
+const exporting = ref(false)
+const removing = ref<any>(null)
+const removeBusy = ref(false)
+
+async function load() {
+  project.value = await request(`/api/select/projects/${id.value}`)
+}
+
+async function exportSheet() {
+  exporting.value = true
+  try {
+    const name = (project.value.name || 'project').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'project'
+    await download(`/api/select/projects/${id.value}/export?locale=${locale.value}`, `${name}.csv`)
+    toast.success(t('kcs.projectBoard.exported'))
+  } catch {
+    toast.error(t('kcs.projectBoard.failed'))
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function removeAssignment() {
+  const row = removing.value
+  if (!row) return
+  removeBusy.value = true
+  try {
+    await request(`/api/select/projects/${id.value}/assignments/${row.creatorId}`, { method: 'DELETE' })
+    toast.success(t('kcs.projectBoard.removed'))
+    removing.value = null
+    await load()
+  } catch {
+    toast.error(t('kcs.projectBoard.failed'))
+  } finally {
+    removeBusy.value = false
+  }
+}
+
 onMounted(async () => {
   try {
-    project.value = await request(`/api/select/projects/${id.value}`)
+    await load()
   } finally {
     loading.value = false
   }
