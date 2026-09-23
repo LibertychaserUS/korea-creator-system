@@ -2,7 +2,7 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**203 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**205 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
 The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
@@ -21,7 +21,7 @@ Seed users (`packages/kcs-contract/src/users.ts`):
 | selector | selector@kcs.local | same |
 | selector_viewer | viewer@kcs.local | same |
 
-Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND` `JOB-STATE` `CONFLICT` `UPLOAD-TYPE` `UPLOAD-TOO-LARGE`. `VALIDATION` bodies add `error.fields: [{ path, message }]`.
+Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND` `JOB-STATE` `CONFLICT` `UPLOAD-TYPE` `UPLOAD-TOO-LARGE` `GONE`. `VALIDATION` bodies add `error.fields: [{ path, message }]`.
 
 ---
 
@@ -57,7 +57,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | selector / viewer / devops POST create → 403 | UX 2 选人写录入; UX 3 运维写 Creator | `POST /api/ops/creators` |
 | selector / viewer / devops publish or unpublish → 403 | PRD §2; UX 3 运维调发布 | `POST /api/ops/creators/:id/publish` `/unpublish` |
 | selector / viewer GET `/dev` or `/ingest` → 403, no job stack | UX 1 / 3 / 4 | `GET /api/dev/jobs` `GET /api/ingest/jobs` |
-| selector POST ingest job or retry → 403 | PRD §8.3; UX 4 | `POST /api/ingest/jobs` `POST /api/dev/jobs/:id/retry` |
+| selector POST ingest job or retry → 403 | PRD §8.3; UX 4 | `POST /api/ingest/fetch` `POST /api/dev/jobs/:id/retry` |
 | ops retry → 403 (M1 重试仅运维) | UX 3 | `POST /api/dev/jobs/:id/retry` |
 | ops / devops / viewer assign or create project → 403 | PRD §2 §8.1 §8.2; UX 权限跳转 | `POST /api/select/projects` `POST .../assignments` |
 | viewer DELETE assignment → 403 | DOMAIN 移出 = 写 | `DELETE .../assignments/:creatorId` |
@@ -119,10 +119,12 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 
 | case | spec | HTTP |
 |------|------|------|
-| job on enabled `file_drop` source | PRD §8.3 §12; UX 4 | `GET /api/ingest/sources` `POST /api/ingest/jobs` |
-| unknown `sourceId` → 400 `SOURCE-INVALID` | PRD §8.3 | `POST /api/ingest/jobs` |
-| ad-hoc `sourceUrl` → 400, no silent job | UX 4 硬限制 | `POST /api/ingest/jobs` `{ sourceUrl }` |
-| devops retry follows the lifecycle: live / finished job → 409 `JOB-STATE`; cancelled (failed) job → 200 and back to `queued` | 04 抓取流水线 §生命周期; SCREEN DEV-JOB-DETAIL | `POST /api/ingest/jobs/:id/cancel` `POST /api/dev/jobs/:id/retry` |
+| job on a registered source goes through the queue → 202 `{ job }` | PRD §8.3 §12; UX 4; 04 队列 | `POST /api/ingest/fetch` `GET /api/ingest/jobs/:id` |
+| old inline route → 410 `GONE`, no job, no made-up creator | 05 数据源与抓取 | `POST /api/ingest/jobs` |
+| batch without a workbook → 400 `VALIDATION`, no job | 05 运营端 | `POST /api/ops/batches` |
+| unknown `source` → 400 `SOURCE-INVALID` | PRD §8.3 | `POST /api/ingest/fetch` |
+| ad-hoc `sourceUrl` → 400 `SOURCE-INVALID`, no silent job | UX 4 硬限制 | `POST /api/ingest/fetch` `{ sourceUrl }` |
+| devops retry follows the lifecycle: live / finished job → 409 `JOB-STATE`; cancelled (failed) job → 200 and back to `queued` | 04 抓取流水线 §生命周期; SCREEN DEV-JOB-DETAIL | `POST /api/ingest/fetch` `POST /api/ingest/jobs/:id/cancel` `POST /api/dev/jobs/:id/retry` |
 | selector cannot retry | PRD §8.3; UX 4 | retry → 403 |
 | ops cannot retry (M1) | UX 3 | retry → 403 |
 | devops GET sees the same job | PRD §8.2 同套数据 | `GET /api/dev/jobs` |

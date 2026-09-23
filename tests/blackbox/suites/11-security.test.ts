@@ -349,7 +349,7 @@ describe('安全 — 坏请求给 4xx，写不存在的对象不留痕', () => {
     const cases: Array<[Session, string, string]> = [
       [ops, 'POST', PATHS.opsCreators],
       [ops, 'PATCH', PATHS.opsCreator(String(creator.id))],
-      [ops, 'POST', PATHS.ingestJobs],
+      [ops, 'POST', PATHS.ingestFetch],
       [selector, 'POST', PATHS.projects],
       [selector, 'POST', PATHS.queries],
     ]

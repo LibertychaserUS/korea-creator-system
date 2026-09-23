@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { deriveMetrics, emptyMetrics, type Permission } from '@kcs/contract'
 import type { Context, MiddlewareHandler } from 'hono'
-import { runIngest, runWorkbookIngest } from '../ingest/service'
+import { runWorkbookIngest } from '../ingest/workbook'
 import { audit } from '../http/audit'
 import {
   categoryPatchBody,
@@ -366,7 +366,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         )
       }
     }
-    return context.json(await runIngest(env, 'file-drop', 'once', 0.1, user!.id), 201)
+    return validationError(context, 'file_required', [{ path: 'file', message: 'an .xlsx workbook is required' }])
   })
 
   app.post('/api/assets/presign', async (context) => {

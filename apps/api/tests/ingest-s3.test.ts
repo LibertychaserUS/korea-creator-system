@@ -12,7 +12,7 @@ describe('ingest jobs and S3 contract', () => {
     await ctx.close()
   })
 
-  it('runs a file-drop source without inventing an arbitrary URL', async () => {
+  it('no longer runs jobs outside the queue: POST /api/ingest/jobs is 410 and makes up nothing', async () => {
     const ops = await ctx.loginJson('ops@kcs.local')
     const sources = await ctx.app.request('/api/ingest/sources', {
       headers: { authorization: `Bearer ${ops.token}` },
@@ -21,6 +21,8 @@ describe('ingest jobs and S3 contract', () => {
     const list = await sources.json()
     const file = list.items.find((s: { adapterType: string }) => s.adapterType === 'file_drop')
     expect(file.enabled).toBe(true)
+    const before = await ctx.db.query('SELECT count(*)::int AS n FROM creators')
+    const jobsBefore = await ctx.db.query('SELECT count(*)::int AS n FROM ingest_jobs')
     const job = await ctx.app.request('/api/ingest/jobs', {
       method: 'POST',
       headers: {
@@ -29,15 +31,15 @@ describe('ingest jobs and S3 contract', () => {
       },
       body: JSON.stringify({ sourceId: file.id, schedule: 'once', sampleRate: 0.1 }),
     })
-    expect(job.status).toBe(201)
-    const body = await job.json()
-    expect(['queued', 'running', 'ok']).toContain(body.status)
-    const detail = await ctx.app.request(`/api/ingest/jobs/${body.id}`, {
-      headers: { authorization: `Bearer ${ops.token}` },
-    })
-    const row = await detail.json()
-    expect(row.writtenCount).toBeGreaterThanOrEqual(1)
-    expect(row.errorSummary ?? '').not.toMatch(/password|secret|key=/i)
+    expect(job.status).toBe(410)
+    expect((await job.json()).error).toMatchObject({ code: 'GONE', message: 'use_ingest_fetch' })
+    expect((await ctx.db.query('SELECT count(*)::int AS n FROM creators')).rows[0].n).toBe(before.rows[0].n)
+    expect((await ctx.db.query('SELECT count(*)::int AS n FROM ingest_jobs')).rows[0].n).toBe(jobsBefore.rows[0].n)
+    const named = await ctx.db.query("SELECT 1 FROM creators WHERE display_name LIKE '投递达人 %'")
+    expect(named.rowCount).toBe(0)
+
+    const stranger = await ctx.app.request('/api/ingest/jobs', { method: 'POST' })
+    expect(stranger.status).toBe(401)
   })
 
   it('lets devops retry a failed job and forbids ops retry', async () => {

@@ -1,27 +1,28 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { login, type Session } from '../helpers/auth'
 import { ERROR, PATHS } from '../helpers/contract'
-import { enabledFileDropSource } from '../helpers/fixtures'
 import { assertDenied, errorCode, itemsOf, leakedBusinessPayload, request } from '../helpers/http'
 
 /**
  * PRD §8.3 IngestJob + UX 4 硬限制 + SCREEN ING-JOB-NEW / DEV-JOB-DETAIL.
- * Break: unregistered URL starts a job, or selector can retry.
+ * Break: unregistered URL starts a job, a job runs outside the queue, or selector can retry.
+ *
+ * Jobs are opened on 新红 (`xinhong`): demo data, one page, no quota — so this
+ * suite never competes with 09-queue for the 千瓜 stand-in vendor.
  */
+
+const SOURCE = 'xinhong'
 
 describe('Ingest jobs', () => {
   let ops: Session
   let devops: Session
   let selector: Session
-  let sourceId: string
   let jobId: string
 
   beforeAll(async () => {
     ops = await login('ops')
     devops = await login('devops')
     selector = await login('selector')
-    const source = await enabledFileDropSource(ops)
-    sourceId = String(source.id)
   })
 
   it('exposes only the official and vendor adapters (no self-built scraper)', async () => {
@@ -33,37 +34,57 @@ describe('Ingest jobs', () => {
     expect(adapters.filter((row) => row.route === 'vendor')).toHaveLength(2)
   })
 
-  it('creates a job against an enabled configured source (PRD §8.3 / §12)', async () => {
-    const res = await request('POST', PATHS.ingestJobs, {
+  it('creates a job against an enabled configured source through the queue (PRD §8.3 / §12, 04 队列)', async () => {
+    const res = await request('POST', PATHS.ingestFetch, {
       token: ops.token,
-      body: { sourceId, schedule: 'once', sampleRate: 0.1 },
+      body: { source: SOURCE, window: 30, maxPages: 1 },
     })
-    expect(res.status).toBe(201)
-    expect(typeof res.json.id).toBe('string')
-    expect(['queued', 'running', 'ok', 'failed']).toContain(res.json.status)
-    jobId = String(res.json.id)
+    expect(res.status).toBe(202)
+    const job = res.json.job as Record<string, unknown>
+    expect(typeof job.id).toBe('string')
+    expect(['queued', 'running', 'ok']).toContain(job.status)
+    jobId = String(job.id)
 
     const detail = await request('GET', PATHS.ingestJob(jobId), { token: ops.token })
     expect(detail.status).toBe(200)
-    expect(detail.json.sourceId ?? detail.json.source_id).toBeTruthy()
+    expect(detail.json.sourceId).toBe(SOURCE)
     expect(String(detail.json.errorSummary ?? '')).not.toMatch(/password|secret|key=/i)
   })
 
-  it('rejects an unregistered source id with 400 SOURCE-INVALID (PRD §8.3 只打已配置 Source)', async () => {
+  it('the old inline route is gone: POST /api/ingest/jobs → 410 GONE, no job, no made-up creator (05 数据源与抓取)', async () => {
+    const before = itemsOf((await request('GET', PATHS.ingestJobs, { token: ops.token })).json).length
     const res = await request('POST', PATHS.ingestJobs, {
       token: ops.token,
-      body: { sourceId: 'src_not_registered', schedule: 'once' },
+      body: { sourceId: 'file-drop', schedule: 'once', sampleRate: 0.1 },
+    })
+    expect(res.status).toBe(410)
+    expect(errorCode(res.json)).toBe(ERROR.GONE)
+    const after = itemsOf((await request('GET', PATHS.ingestJobs, { token: ops.token })).json).length
+    expect(after).toBe(before)
+  })
+
+  it('a batch without a workbook → 400 VALIDATION, no job (05 运营端 batches)', async () => {
+    const res = await request('POST', PATHS.opsBatches, { token: ops.token })
+    expect(res.status).toBe(400)
+    expect(errorCode(res.json)).toBe(ERROR.VALIDATION)
+  })
+
+  it('rejects an unregistered source with 400 SOURCE-INVALID (PRD §8.3 只打已配置 Source)', async () => {
+    const res = await request('POST', PATHS.ingestFetch, {
+      token: ops.token,
+      body: { source: 'src_not_registered', window: 30 },
     })
     expect(res.status).toBe(400)
-    expect([ERROR.SOURCE_INVALID, ERROR.VALIDATION]).toContain(errorCode(res.json))
+    expect(errorCode(res.json)).toBe(ERROR.SOURCE_INVALID)
   })
 
   it('rejects an ad-hoc source URL with 400 — no silent run (UX 4 硬限制)', async () => {
-    const res = await request('POST', PATHS.ingestJobs, {
+    const res = await request('POST', PATHS.ingestFetch, {
       token: ops.token,
-      body: { sourceUrl: 'https://example.invalid/unregistered-scrape', schedule: 'once' },
+      body: { source: SOURCE, window: 30, sourceUrl: 'https://example.invalid/unregistered-scrape' },
     })
     expect(res.status).toBe(400)
+    expect(errorCode(res.json)).toBe(ERROR.SOURCE_INVALID)
     const jobs = await request('GET', PATHS.ingestJobs, { token: ops.token })
     const leaked = itemsOf(jobs.json).some((row) =>
       JSON.stringify(row).includes('example.invalid'),
@@ -72,11 +93,11 @@ describe('Ingest jobs', () => {
   })
 
   it('retry follows the job lifecycle: a live job is not retryable (409), a cancelled one goes back to the queue (04 抓取流水线 §生命周期)', async () => {
-    const create = await request('POST', PATHS.ingestJobs, {
+    const create = await request('POST', PATHS.ingestFetch, {
       token: ops.token,
-      body: { sourceId, schedule: 'once' },
+      body: { source: SOURCE, window: 30, maxPages: 1 },
     })
-    const id = String(create.json.id ?? jobId)
+    const id = String((create.json.job as { id?: string } | undefined)?.id ?? jobId)
 
     // Retry is only for jobs that stopped short (failed / partial); a live or finished one is 409.
     const state = String((await request('GET', PATHS.devJob(id), { token: devops.token })).json.status)

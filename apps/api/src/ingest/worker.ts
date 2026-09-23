@@ -13,7 +13,8 @@ import {
 import { getAdapter } from '../adapters'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
-import { deadLetterJob, deadLetterRecord, failureOf } from './dead-letters'
+import { deadLetterJob, failureOf } from './dead-letters'
+import { persistPage } from './persist'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
 const WORKER_ID = `${hostname()}:${process.pid}`
@@ -343,145 +344,6 @@ export async function replayRecord(
     ],
   }
   return persistPage(env, adapter, page, input.jobId, input.source)
-}
-
-async function persistPage(
-  env: AppEnv,
-  adapter: SourceAdapter,
-  page: SourcePage,
-  jobId: string | null,
-  source: SourceId,
-) {
-  let written = 0
-  let skipped = 0
-  let failed = 0
-  for (const raw of page.records) {
-    const normalized = adapter.normalize(raw)
-    if (!normalized.ok) {
-      // Unreadable payload: park it with the original JSON rather than counting
-      // it and moving on — this is usually a field map that needs one fix.
-      failed += 1
-      await deadLetterRecord(env, {
-        jobId,
-        source,
-        raw,
-        code: 'RECORD_INVALID',
-        message: normalized.errors.join('; ') || 'record could not be read',
-      })
-      continue
-    }
-    try {
-      const creator = normalized.creator
-      const linked = await env.db.query(
-        'SELECT creator_id FROM creator_sources WHERE source = $1 AND external_id = $2',
-        [source, creator.externalId],
-      )
-      const byXhs = !linked.rows[0] && creator.xhsId
-        ? await env.db.query(
-            'SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
-            [creator.xhsId],
-          )
-        : { rows: [] as Array<{ id: string }> }
-      const existingId = linked.rows[0]?.creator_id ?? byXhs.rows[0]?.id
-      const creatorId = existingId ?? randomUUID()
-      if (existingId) {
-        await env.db.query(
-          `UPDATE creators SET
-             display_name = $2, needs_review = true, followers = $3, followers_unknown = $4,
-             regions = $5, verticals = $6, xhs_id = COALESCE($7, xhs_id),
-             metrics = $8, metrics_window = $9, source = $10, external_id = $11,
-             metrics_fetched_at = $12, last_ingest_job_id = $13, updated_at = now()
-           WHERE id = $1`,
-          [
-            creatorId,
-            creator.displayName,
-            creator.metrics.followers,
-            creator.metrics.followers == null,
-            creator.regions,
-            creator.verticals,
-            creator.xhsId,
-            JSON.stringify(creator.metrics),
-            creator.metrics.window,
-            source,
-            creator.externalId,
-            raw.fetchedAt,
-            jobId,
-          ],
-        )
-      } else {
-        await env.db.query(
-          `INSERT INTO creators (
-             id, creator_key, display_name, status, needs_review, followers, followers_unknown,
-             regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-             metrics_fetched_at, last_ingest_job_id
-           ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [
-            creatorId,
-            creator.creatorKey,
-            creator.displayName,
-            creator.metrics.followers,
-            creator.metrics.followers == null,
-            creator.regions,
-            creator.verticals,
-            creator.xhsId,
-            JSON.stringify(creator.metrics),
-            creator.metrics.window,
-            source,
-            creator.externalId,
-            raw.fetchedAt,
-            jobId,
-          ],
-        )
-      }
-      await env.db.query(
-        `INSERT INTO creator_sources
-          (creator_id, source, external_id, first_seen_at, last_seen_at)
-         VALUES ($1,$2,$3,$4,$4)
-         ON CONFLICT (source, external_id) DO UPDATE SET
-           creator_id = EXCLUDED.creator_id,
-           last_seen_at = GREATEST(creator_sources.last_seen_at, EXCLUDED.last_seen_at)`,
-        [creatorId, source, creator.externalId, raw.fetchedAt],
-      )
-      await env.db.query(
-        `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [
-          randomUUID(),
-          creatorId,
-          source,
-          raw.externalId,
-          raw.fetchedAt,
-          JSON.stringify(raw.payload),
-        ],
-      )
-      await env.db.query(
-        `INSERT INTO creator_metrics_history
-          (id, creator_id, source, "window", fetched_at, job_id, metrics)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [
-          randomUUID(),
-          creatorId,
-          source,
-          creator.metrics.window,
-          raw.fetchedAt,
-          jobId,
-          JSON.stringify(creator.metrics),
-        ],
-      )
-      if (existingId) skipped += 1
-      else written += 1
-    } catch (error) {
-      failed += 1
-      await deadLetterRecord(env, {
-        jobId,
-        source,
-        raw,
-        code: 'RECORD_WRITE_FAILED',
-        message: failureOf(error).message,
-      }).catch(() => undefined)
-    }
-  }
-  return { written, skipped, failed }
 }
 
 async function reserveQuota(env: AppEnv, source: string, quota: number) {

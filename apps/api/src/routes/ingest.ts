@@ -1,12 +1,11 @@
 import { SOURCE_IDS, type SourceQuery } from '@kcs/contract'
 import { adapterDescriptions } from '../adapters'
-import { runIngest } from '../ingest/service'
 import { closeJobDeadLetters } from '../ingest/dead-letters'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { z } from 'zod'
-import { ingestJobBody, readJson } from '../http/body'
+import { readJson } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -38,12 +37,15 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (denied) return denied
     const { data: raw, invalid } = await readJson(context, z.unknown())
     if (invalid) return invalid
-    const query = raw as SourceQuery | null
-    if (!query || typeof query !== 'object' || !SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
+    const input = raw as (SourceQuery & { maxPages?: number; sourceUrl?: unknown; url?: unknown }) | null
+    if (!input || typeof input !== 'object' || !SOURCE_IDS.includes(input.source) || ![30, 90].includes(input.window)) {
       return jsonError(context, 400, 'SOURCE-INVALID', 'invalid_source_query')
     }
-    const maxPages = Number((query as SourceQuery & { maxPages?: number }).maxPages ?? 5)
-    const job = await enqueueIngestJob(env, query, user!.id, maxPages)
+    // Only registered sources are ever called; a URL in the body is refused, not ignored.
+    if (input.sourceUrl != null || input.url != null) {
+      return jsonError(context, 400, 'SOURCE-INVALID', 'adhoc_url_forbidden')
+    }
+    const job = await enqueueIngestJob(env, pickSourceQuery(input), user!.id, Number(input.maxPages ?? 5))
     if (context.req.query('sync') === '1') {
       return context.json(await processJob(env, job!.id), 201)
     }
@@ -79,27 +81,13 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     return context.json({ items: camelJobs(rows) })
   })
 
+  // Gone: it ran a job inline, outside the queue's quota and rate limit, and
+  // for a non-adapter source made up a creator. Sources go through
+  // POST /api/ingest/fetch, files through POST /api/ops/batches.
   app.post('/api/ingest/jobs', async (context) => {
-    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    const { denied } = await helpers.requireAuth(context, 'ingest.write')
     if (denied) return denied
-    const { data: body, invalid } = await readJson(context, ingestJobBody)
-    if (invalid) return invalid
-    if (body.sourceUrl) return jsonError(context, 400, 'SOURCE-INVALID', 'adhoc_url_forbidden')
-    const source = await env.db.query('SELECT * FROM ingest_sources WHERE id = $1', [body.sourceId])
-    if (!source.rows[0]) return jsonError(context, 400, 'SOURCE-INVALID', 'source_missing')
-    if (!source.rows[0].enabled) {
-      return jsonError(context, 400, 'SOURCE-INVALID', 'source_disabled')
-    }
-    return context.json(
-      await runIngest(
-        env,
-        source.rows[0].id,
-        body.schedule || 'once',
-        body.sampleRate ?? 0.1,
-        user!.id,
-      ),
-      201,
-    )
+    return jsonError(context, 410, 'GONE', 'use_ingest_fetch')
   })
 
   app.get('/api/ingest/jobs/:id', async (context) => {
@@ -168,4 +156,16 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     await audit(env.db, user!.id, 'ingest.cancel', 'ingest_job', rows[0].id, 'cancel')
     return context.json(camelJobs(rows)[0])
   })
+}
+
+const SOURCE_QUERY_KEYS = [
+  'source', 'window', 'keyword', 'category', 'region', 'followersMin', 'followersMax',
+  'priceMin', 'priceMax', 'health', 'externalIds', 'cursor', 'limit',
+] as const satisfies readonly (keyof SourceQuery)[]
+
+/** The stored `query` holds exactly the SourceQuery fields, nothing the client tacked on. */
+function pickSourceQuery(input: SourceQuery): SourceQuery {
+  const out: Record<string, unknown> = {}
+  for (const key of SOURCE_QUERY_KEYS) if (input[key] !== undefined) out[key] = input[key]
+  return out as SourceQuery
 }

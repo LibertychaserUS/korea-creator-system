@@ -76,17 +76,3 @@ export async function createProject(selector: Session, name: string): Promise<Js
   }
   return res.json
 }
-
-export async function enabledFileDropSource(ops: Session): Promise<Json> {
-  const res = await authed(ops, 'GET', PATHS.ingestSources)
-  if (res.status !== 200) {
-    throw new Error(`GET ingest sources HTTP ${res.status}: ${res.raw.slice(0, 300)}`)
-  }
-  const source = itemsOf(res.json).find(
-    (row) => row.adapterType === 'file_drop' && row.enabled === true,
-  )
-  if (!source) {
-    throw new Error('no enabled file_drop source — seed one configured Source (PRD §8.3)')
-  }
-  return source
-}

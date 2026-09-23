@@ -13,7 +13,7 @@ import {
   type SourceId,
   type SourceQuery,
 } from '@kcs/contract'
-import type { Db } from '../db'
+import type { Db, Queryable } from '../db'
 
 export function hasCollabSql() {
   return `(SELECT count(*) FROM collaborations col WHERE col.creator_id = c.id)`
@@ -109,7 +109,7 @@ export async function readUpload(file: unknown): Promise<{ name: string; buf: Bu
   return { name: blob.name || 'upload.xlsx', buf }
 }
 
-export async function saveRelations(db: Db, creatorId: string, body: Record<string, any>) {
+export async function saveRelations(db: Queryable, creatorId: string, body: Record<string, any>) {
   if (Array.isArray(body.categories)) {
     await db.query('DELETE FROM creator_categories WHERE creator_id = $1', [creatorId])
     for (const slug of body.categories as string[]) {

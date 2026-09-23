@@ -31,6 +31,7 @@ export const API = {
   opsReview: { method: 'GET', path: '/api/ops/review', perm: 'ops.read' },
   opsReviewPass: { method: 'POST', path: '/api/ops/review/:id/pass', perm: 'ops.write' },
   opsBatches: { method: 'GET', path: '/api/ops/batches', perm: 'ops.read' },
+  /** multipart `file` (.xlsx) required; without one 400 `VALIDATION` / `file_required`. */
   opsBatchUpload: { method: 'POST', path: '/api/ops/batches', perm: 'ops.write' },
   pool: { method: 'GET', path: '/api/select/pool', perm: 'select.read' },
   queries: { method: 'GET', path: '/api/select/queries', perm: 'select.read' },
@@ -67,7 +68,8 @@ export const API = {
   ingestFetch: { method: 'POST', path: '/api/ingest/fetch', perm: 'ingest.write' },
   ingestRaw: { method: 'GET', path: '/api/ingest/raw/:creatorId', perm: 'ingest.read' },
   ingestJobs: { method: 'GET', path: '/api/ingest/jobs', perm: 'ingest.read' },
-  ingestJobCreate: { method: 'POST', path: '/api/ingest/jobs', perm: 'ingest.write' },
+  /** 410 `GONE`: jobs only start through the queue (`ingestFetch`) or a workbook (`opsBatchUpload`). */
+  ingestJobCreate: { method: 'POST', path: '/api/ingest/jobs', perm: 'ingest.write', gone: true },
   ingestJob: { method: 'GET', path: '/api/ingest/jobs/:id', perm: 'ingest.read' },
   ingestSample: { method: 'GET', path: '/api/ingest/jobs/:id/sample', perm: 'ingest.read' },
   ingestJobRetry: { method: 'POST', path: '/api/ingest/jobs/:id/retry', perm: 'ingest.retry' },
