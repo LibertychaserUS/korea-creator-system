@@ -44,10 +44,17 @@
 # own better-auth routes under /api/auth/* — goes to that app, never to the API.
 (app) {
 	import common
+	# `defer`: replace the app's own Cache-Control instead of sending two.
 	@hashed path /_nuxt/*
-	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	header @hashed {
+		Cache-Control "public, max-age=31536000, immutable"
+		defer
+	}
 	@icons path /favicon.ico /favicon-*.png /apple-touch-icon.png /android-chrome-*.png /logo.svg /site.webmanifest /robots.txt
-	header @icons Cache-Control "public, max-age=86400"
+	header @icons {
+		Cache-Control "public, max-age=86400"
+		defer
+	}
 	import upstream {args[0]}
 }
 
