@@ -67,6 +67,9 @@ export const API = {
   devI18n: { method: 'GET', path: '/api/dev/i18n-theme', perm: 'dev.read' },
   /** Per-source bootstrap sample targets with their basis, group sizes, and 25/50/75 reference lines. */
   devCohorts: { method: 'GET', path: '/api/dev/cohorts', perm: 'dev.read' },
+  devCapacity: { method: 'GET', path: '/api/dev/capacity', perm: 'dev.read' },
+  /** Take today's storage reading now (replaces today's numbers). */
+  devCapacitySnapshot: { method: 'POST', path: '/api/dev/capacity/snapshot', perm: 'dev.retry' },
   devDeadLetters: { method: 'GET', path: '/api/dev/dead-letters', perm: 'dev.read' },
   devDeadLetter: { method: 'GET', path: '/api/dev/dead-letters/:id', perm: 'dev.read' },
   devDeadLetterReplay: { method: 'POST', path: '/api/dev/dead-letters/:id/replay', perm: 'dev.retry' },

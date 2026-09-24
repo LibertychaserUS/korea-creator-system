@@ -25,6 +25,8 @@
       <KpiTile :label="t('kcs.panel.sources')" :value="formatNumber(health.sourcesEnabled)" :icon="Plug" tone="sand" />
     </div>
 
+    <CapacityCard />
+
     <div class="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
       <!-- 状态分布 -->
       <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="table-jobs">
