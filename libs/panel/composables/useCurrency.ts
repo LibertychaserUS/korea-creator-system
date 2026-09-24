@@ -1,3 +1,5 @@
+import { formatMoney } from '@kcs/contract'
+
 export type DisplayCurrency = 'CNY' | 'USD' | 'KRW'
 
 export const DISPLAY_CURRENCIES: readonly DisplayCurrency[] = ['CNY', 'USD', 'KRW'] as const
@@ -34,25 +36,36 @@ export function useCurrency() {
     }
   }
 
+  function sourceCurrency(source?: string | null): DisplayCurrency {
+    const code = source?.trim().toUpperCase()
+    return (code && code in TO_CNY ? code : 'CNY') as DisplayCurrency
+  }
+
   /** Format an amount stored in `source` currency into the user's display currency. */
-  function formatPrice(amount?: number | null, source?: string | null): string {
+  function formatPrice(amount?: number | null, source?: string | null, options: { compact?: boolean } = {}): string {
     if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return '—'
-    const src = (source && source in TO_CNY ? source : 'CNY') as DisplayCurrency
     const dst = currency.value
-    const value = (Number(amount) * TO_CNY[src]) / TO_CNY[dst]
-    return new Intl.NumberFormat(locale.value, {
-      style: 'currency',
-      currency: dst,
-      maximumFractionDigits: 0,
-    }).format(value)
+    const value = (Number(amount) * TO_CNY[sourceCurrency(source)]) / TO_CNY[dst]
+    return formatMoney(value, dst, locale.value, options)
   }
 
-  /** 把任意来源币种的金额折成 CNY（用于汇总）；空值当 0。 */
-  function toCny(amount?: number | null, source?: string | null): number {
-    if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return 0
-    const src = (source && source in TO_CNY ? source : 'CNY') as DisplayCurrency
-    return Number(amount) * TO_CNY[src]
+  /** 把任意来源币种的金额折成 CNY（用于汇总）；没有报价返回 null，由调用方决定怎么计。 */
+  function toCny(amount?: number | null, source?: string | null): number | null {
+    if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return null
+    return Number(amount) * TO_CNY[sourceCurrency(source)]
   }
 
-  return { currency, setCurrency, formatPrice, toCny }
+  /** 合计报价；没报价的人数单独给出，不当 0 混进合计。 */
+  function sumCny(rows: { amount?: number | null; currency?: string | null }[]): { total: number | null; missing: number } {
+    let total: number | null = null
+    let missing = 0
+    for (const row of rows) {
+      const cny = toCny(row.amount, row.currency)
+      if (cny == null) missing += 1
+      else total = (total ?? 0) + cny
+    }
+    return { total, missing }
+  }
+
+  return { currency, setCurrency, formatPrice, toCny, sumCny }
 }

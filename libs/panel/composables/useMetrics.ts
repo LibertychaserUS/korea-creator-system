@@ -1,6 +1,6 @@
 import {
   METRIC_FIELDS,
-  metricField,
+  formatMetricValue,
   type MetricGroup,
   type NumericMetricKey,
   type PercentileBand,
@@ -25,22 +25,8 @@ export function useMetrics() {
   }
 
   function format(key: NumericMetricKey, value: number | null | undefined, compact = false): string {
-    if (value == null || Number.isNaN(Number(value))) return '—'
-    const n = Number(value)
-    const field = metricField(key)
-    const nf = (opts: Intl.NumberFormatOptions) => new Intl.NumberFormat(locale.value, opts).format(n)
-    switch (field.unit) {
-      case 'ratio':
-        return nf({ style: 'percent', maximumFractionDigits: n < 0.01 ? 2 : 1 })
-      case 'cny':
-        return nf({ style: 'currency', currency: 'CNY', maximumFractionDigits: 0, ...(compact ? { notation: 'compact' } : {}) })
-      case 'cnyPerUnit':
-        return `¥${nf({ maximumFractionDigits: n < 10 ? 2 : 0 })}`
-      case 'days':
-        return nf({ maximumFractionDigits: 0 })
-      default:
-        return nf(compact ? { notation: 'compact', maximumFractionDigits: 1 } : { maximumFractionDigits: 0 })
-    }
+    if (value == null) return '—'
+    return formatMetricValue(key, Number(value), locale.value, { compact })
   }
 
   function bandClass(band?: PercentileBand | null): string {

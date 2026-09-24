@@ -1,3 +1,4 @@
+import { kcsConsoleCopy } from './kcs-console'
 import type { Locale } from './types'
 
 export const en: Locale = {
@@ -1896,6 +1897,7 @@ export const en: Locale = {
     backToBlog: "Back to Blog"
   },
   kcs: {
+    ...kcsConsoleCopy.en,
     metric: {
       followers: "Followers",
       followerGrowth: "Follower gain",

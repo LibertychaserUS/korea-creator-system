@@ -212,3 +212,11 @@ describe('writes that used to leave no audit row', () => {
     expect(await trail('category.update', 'no-such-slug')).toHaveLength(0)
   })
 })
+
+describe('date columns', () => {
+  it('come back as the calendar day, whatever the process time zone', async () => {
+    const { rows } = await ctx.db.query("SELECT '2026-09-24'::date AS day, NULL::date AS none")
+    expect(rows[0].day).toBe('2026-09-24')
+    expect(rows[0].none).toBeNull()
+  })
+})

@@ -1,4 +1,5 @@
 import { en } from './en'
+import { kcsConsoleCopy } from './kcs-console'
 import type { Locale } from './types'
 
 export const ko: Locale = {
@@ -29,6 +30,7 @@ export const ko: Locale = {
     },
   },
   kcs: {
+    ...kcsConsoleCopy.ko,
     metric: {
       followers: "팔로워",
       followerGrowth: "팔로워 증가",
