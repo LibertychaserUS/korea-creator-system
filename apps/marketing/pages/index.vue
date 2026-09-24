@@ -107,7 +107,7 @@
               </tbody>
             </table>
             <div class="flex items-center justify-between border-t border-border/60 bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
-              <span class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3.5 text-primary" />{{ t('kcs.health.label') }} · {{ t('kcs.health.excellent') }}</span>
+              <span class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3.5 text-primary" />{{ t('kcs.health.label') }} · {{ t('kcs.health.healthy') }}</span>
               <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground"><UserPlus class="size-3.5" />{{ t('kcs.actions.assign') }}</span>
             </div>
           </div>
@@ -212,9 +212,9 @@
             <h3 class="text-sm font-semibold">{{ t('kcs.landing.gateTitle') }}</h3>
             <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('kcs.landing.gateBody') }}</p>
             <div class="mt-4 flex flex-wrap gap-2">
-              <HealthBadge health="excellent" />
-              <HealthBadge health="normal" />
+              <HealthBadge health="healthy" />
               <HealthBadge health="abnormal" />
+              <HealthBadge health="healthy" low-active />
             </div>
           </div>
           <div class="tide-rule-card relative overflow-hidden rounded-xl p-6 text-white">

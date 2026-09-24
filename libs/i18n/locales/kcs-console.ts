@@ -8,6 +8,9 @@ const zhCN = {
     quoteMissing: "{n} 位还没报价，未计入合计",
     trendBySource: "各来源分开画，口径不同不连成一条",
   },
+  apiError: {
+    owner_only: "只有建这个方案的人能改谁能看到",
+  },
 }
 
 const en = {
@@ -15,12 +18,18 @@ const en = {
     quoteMissing: "{n} without a quote, not counted",
     trendBySource: "One line per source; sources measure differently, so they are never joined",
   },
+  apiError: {
+    owner_only: "Only the person who created this plan can change who sees it",
+  },
 }
 
 const ko = {
   display: {
     quoteMissing: "견적 없는 {n}명은 합계에서 제외",
     trendBySource: "출처마다 기준이 달라 따로 그립니다",
+  },
+  apiError: {
+    owner_only: "공개 범위는 이 기준을 만든 사람만 바꿀 수 있습니다",
   },
 }
 

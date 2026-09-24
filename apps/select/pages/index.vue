@@ -546,7 +546,7 @@
             <div class="flex items-center justify-between gap-2">
               <span class="truncate font-medium text-foreground">{{ row.displayName }}</span>
               <span v-if="row.stale" class="ml-auto shrink-0 rounded border border-border px-1.5 text-[10px] text-muted-foreground" :title="t('kcs.band.stale')" data-testid="row-stale">{{ t('kcs.band.staleShort') }}</span>
-              <HealthBadge :health="row.metrics?.health" />
+              <HealthBadge :health="row.metrics?.health" :low-active="row.metrics?.lowActive" />
             </div>
             <div class="mt-1 flex flex-wrap items-center gap-1.5">
               <TierBadge :tier="row.tier" />
@@ -639,7 +639,7 @@
                 </div>
               </TableCell>
               <TableCell><TierBadge :tier="row.tier" /></TableCell>
-              <TableCell><HealthBadge :health="row.metrics?.health" /></TableCell>
+              <TableCell><HealthBadge :health="row.metrics?.health" :low-active="row.metrics?.lowActive" /></TableCell>
               <TableCell v-for="key in spec.columns" :key="key" class="text-right text-[13px]">
                 <MetricValue :metric-key="key" :value="row.metrics?.[key]" :rank="row.percentiles?.[key]" :cohort="row.cohort" :stale="row.stale" compact />
               </TableCell>
@@ -757,7 +757,7 @@ function specOf(value: Partial<SavedQuery> & Record<string, unknown>): SavedQuer
 }
 
 const { t, te, locale } = useI18n()
-const { request } = useApi()
+const { request, errorText } = useApi()
 const { user } = useSession()
 const { formatNumber } = useFormat()
 const { label, help, format } = useMetrics()
@@ -1024,7 +1024,7 @@ async function save(asNew: boolean) {
       notice.value = t('kcs.query.conflict', { n: e.data.current.version })
       editorOpen.value = true
     } else {
-      errors.value = e?.data?.errors ?? [String(e?.message ?? e)]
+      errors.value = e?.data?.errors ?? [errorText(e)]
     }
   } finally {
     saving.value = false

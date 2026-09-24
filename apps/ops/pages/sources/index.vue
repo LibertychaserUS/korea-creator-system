@@ -223,7 +223,7 @@ const { request } = useApi()
 const { formatNumber } = useFormat()
 const { label } = useMetrics()
 
-const healthIds: HealthGrade[] = ['excellent', 'normal', 'abnormal']
+const healthIds: HealthGrade[] = ['healthy', 'abnormal']
 const adapters = ref<AdapterInfo[]>([])
 const jobs = ref<any[]>([])
 const loadingAdapters = ref(true)
@@ -244,7 +244,7 @@ const form = reactive<SourceQuery & { health: HealthGrade[] }>({
   followersMax: undefined,
   priceMin: undefined,
   priceMax: undefined,
-  health: ['excellent'],
+  health: ['healthy'],
   limit: 50,
 })
 
@@ -266,7 +266,7 @@ function metricLabel(key: string) {
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
 }
-/** 把抓取参数说成人话：近 30 天 · 关键词 护肤 · 粉丝 1万–50万 · 只要优秀。 */
+/** 把抓取参数说成人话：近 30 天 · 关键词 护肤 · 粉丝 1万–50万 · 只要健康。 */
 function describe(q: any) {
   if (!q || typeof q !== 'object') return ''
   const parts: string[] = []

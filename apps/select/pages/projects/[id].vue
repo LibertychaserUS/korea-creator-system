@@ -97,7 +97,7 @@
               </div>
             </TableCell>
             <TableCell><TierBadge :tier="row.tier" /></TableCell>
-            <TableCell><HealthBadge :health="row.metrics?.health ?? row.health" /></TableCell>
+            <TableCell><HealthBadge :health="row.metrics?.health ?? row.health" :low-active="row.metrics?.lowActive" /></TableCell>
             <TableCell class="text-right"><MetricValue metric-key="cpe" :value="row.metrics?.cpe" :rank="row.percentiles?.cpe" :cohort="row.cohort" :stale="row.stale" /></TableCell>
             <TableCell class="hidden text-right md:table-cell"><MetricValue metric-key="engagementRate" :value="row.metrics?.engagementRate" :rank="row.percentiles?.engagementRate" :cohort="row.cohort" :stale="row.stale" /></TableCell>
             <TableCell class="text-right tabular-nums">{{ formatNumber(row.followers) }}</TableCell>

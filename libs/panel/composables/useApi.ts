@@ -1,3 +1,5 @@
+import { isPermissionDenial } from '@kcs/contract'
+
 type ApiOrigin = 'api' | 'self'
 
 export function useApi() {
@@ -8,6 +10,7 @@ export function useApi() {
    */
   const token = useCookie<string | null>('kcs_session', { sameSite: 'lax', path: '/' })
   const localePath = useLocalePath()
+  const { t, te } = useI18n()
 
   /**
    * `origin: 'self'` 打本端源站（账号管理 `/api/kcs-admin/**` 就在 TinyShip 这边），
@@ -28,9 +31,13 @@ export function useApi() {
       await navigateTo(localePath('/login'))
       throw new Error('unauthenticated')
     }
+    // 只有「这个账号不能来这里」才跳走；「这件事你不能做」（如只有作者能改可见范围）留在原页，由调用方就地提示。
     if (res.status === 403) {
-      await navigateTo(localePath('/denied'))
-      throw new Error('forbidden')
+      const body = await res.clone().json().catch(() => null)
+      if (isPermissionDenial(body)) {
+        await navigateTo(localePath('/denied'))
+        throw new Error('forbidden')
+      }
     }
     return res
   }
@@ -63,5 +70,12 @@ export function useApi() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  return { request, download, token }
+  /** 接口报错的人话：已知错误码有对应文案就用文案，否则原样。 */
+  function errorText(error: unknown): string {
+    const message = String((error as { message?: unknown })?.message ?? error ?? '')
+    const key = `kcs.apiError.${message}`
+    return te(key) ? t(key) : message
+  }
+
+  return { request, download, token, errorText }
 }
