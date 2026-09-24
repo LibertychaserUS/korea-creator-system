@@ -20,12 +20,29 @@ export type PipelineSourceView = {
   quotaDay: string
   /** When this source's counter resets (ISO). */
   resetsAt: string
+  /** Billed calls today (what the quota counts). */
   callsToday: number
   remainingToday: number | null
   /** callsToday ÷ quota, `null` when there is no quota. */
   usageRatio: number | null
+  /** What today's billed calls cost at list price (USD). */
+  costTodayUsd: number
+  /** The day's money cap (USD) in force, `null` = none. */
+  dailyBudgetUsd: number | null
+  /** Where the cap comes from: an env override or the source row. */
+  budgetFrom: 'env' | 'source' | null
+  /** costToday ÷ budget, `null` without a budget. */
+  budgetRatio: number | null
+  /** Requests sent today, billed or not; `requestsToday − callsToday` were free (non-200 on TikHub). */
+  requestsToday: number
+  /** Timeouts after sending: counted as billed because the vendor may have charged. */
+  maybeBilledToday: number
+  /** 查无结果 today (billed, nothing in the answer). */
+  emptyToday: number
+  /** Billed calls today on endpoints with no known price (not in the money total). */
+  unpricedToday: number
   /** Oldest first, one row per quota day that had calls, last 7 days including today. */
-  recentDays: { day: string; calls: number }[]
+  recentDays: { day: string; calls: number; costUsd: number }[]
   lastSuccessAt: string | null
   lastFailureAt: string | null
   lastErrorCode: string | null

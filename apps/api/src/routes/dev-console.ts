@@ -12,6 +12,7 @@ import {
 } from '@kcs/contract'
 import { validationError } from '../http/body'
 import { quotaDay, quotaTimeZone } from '../ingest/worker'
+import { dailyBudget } from '../ingest/meter'
 import { auditLogView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -42,10 +43,11 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
         (SELECT count(*) FROM creators WHERE needs_review)::int AS review,
         (SELECT count(*) FROM creators WHERE status = 'released')::int AS released
     `),
-    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz FROM ingest_sources ORDER BY id'),
+    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz, daily_budget_usd FROM ingest_sources ORDER BY id'),
     // Zones are at most a day apart, so this window covers every source's last 7 days.
     env.db.query(
-      `SELECT source, to_char(day, 'YYYY-MM-DD') AS day, calls FROM ingest_source_usage
+      `SELECT source, to_char(day, 'YYYY-MM-DD') AS day, calls, cost_micros, requests, maybe_billed, empty_results, unpriced_calls
+         FROM ingest_source_usage
         WHERE day > $1::date - 9 AND day <= $1::date + 1 ORDER BY day`,
       [now.toISOString().slice(0, 10)],
     ),
@@ -74,11 +76,13 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
     const tz = quotaTimeZone(row.quota_tz)
     const { day, resetsAt } = days.get(tz)!
     const from = addDays(day, -7)
-    const recentDays = usage.rows
-      .filter((u) => u.source === row.id && String(u.day) > from && String(u.day) <= day)
-      .map((u) => ({ day: String(u.day), calls: Number(u.calls) }))
-    const callsToday = recentDays.find((u) => u.day === day)?.calls ?? 0
+    const own = usage.rows.filter((u) => u.source === row.id && String(u.day) > from && String(u.day) <= day)
+    const recentDays = own.map((u) => ({ day: String(u.day), calls: Number(u.calls), costUsd: Number(u.cost_micros ?? 0) / 1_000_000 }))
+    const todayRow = own.find((u) => String(u.day) === day)
+    const callsToday = Number(todayRow?.calls ?? 0)
+    const costTodayUsd = Number(todayRow?.cost_micros ?? 0) / 1_000_000
     const quota = row.quota == null ? null : Number(row.quota)
+    const { usd: budget, from: budgetFrom } = dailyBudget(row.id, row.daily_budget_usd)
     const job = jobsBy.get(row.id)
     return {
       id: row.id,
@@ -93,6 +97,14 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
       callsToday,
       remainingToday: quota == null ? null : Math.max(0, quota - callsToday),
       usageRatio: quota ? callsToday / quota : null,
+      costTodayUsd,
+      dailyBudgetUsd: budget,
+      budgetFrom,
+      budgetRatio: budget ? costTodayUsd / budget : budget === 0 ? 1 : null,
+      requestsToday: Number(todayRow?.requests ?? 0),
+      maybeBilledToday: Number(todayRow?.maybe_billed ?? 0),
+      emptyToday: Number(todayRow?.empty_results ?? 0),
+      unpricedToday: Number(todayRow?.unpriced_calls ?? 0),
       recentDays,
       lastSuccessAt: iso(job?.last_success_at),
       lastFailureAt: iso(job?.last_failure_at),

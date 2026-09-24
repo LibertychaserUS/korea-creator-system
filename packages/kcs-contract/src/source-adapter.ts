@@ -10,6 +10,7 @@
  * Self-built scraping (route C) is deliberately not a source.
  */
 import type { CreatorMetrics, MetricWindow, HealthGrade, NumericMetricKey, Platform } from './metrics'
+import type { FetchContext, PageInterruption, VendorNote } from './billing'
 
 export const SOURCE_IDS = ['pugongying', 'qiangua', 'xinhong'] as const
 export type SourceId = (typeof SOURCE_IDS)[number]
@@ -28,10 +29,23 @@ export const SOURCE_ROUTE: Record<SourceId, 'official' | 'vendor'> = {
 /** Vendors reset their daily call quota at midnight in this zone. */
 export const DEFAULT_QUOTA_TIME_ZONE = 'Asia/Shanghai'
 
-export const SOURCE_DEFAULTS: Record<SourceId, { name: string; shortName: string; rateLimit: number; quota: number }> = {
-  pugongying: { name: '蒲公英 OpenAPI', shortName: '蒲公英', rateLimit: 60, quota: 1000 },
-  qiangua: { name: '千瓜', shortName: '千瓜', rateLimit: 60, quota: 1000 },
-  xinhong: { name: '新红', shortName: '新红', rateLimit: 60, quota: 1000 },
+/**
+ * `dailyBudgetUsd` caps what one quota day may cost (see `VENDOR_PRICES_USD`);
+ * `null` = no money cap, only the call quota. 蒲公英 via TikHub starts at $5
+ * (250 calls at $0.02): enough for a day of list pages and a few dozen
+ * detail refreshes, small enough that a mistake costs little.
+ */
+export const SOURCE_DEFAULTS: Record<SourceId, { name: string; shortName: string; rateLimit: number; quota: number; dailyBudgetUsd: number | null }> = {
+  pugongying: { name: '蒲公英 OpenAPI', shortName: '蒲公英', rateLimit: 60, quota: 1000, dailyBudgetUsd: 5 },
+  qiangua: { name: '千瓜', shortName: '千瓜', rateLimit: 60, quota: 1000, dailyBudgetUsd: null },
+  xinhong: { name: '新红', shortName: '新红', rateLimit: 60, quota: 1000, dailyBudgetUsd: null },
+}
+
+/** Env override of a source's daily money budget (USD), read before `ingest_sources.daily_budget_usd`. */
+export const SOURCE_BUDGET_ENV: Record<SourceId, string> = {
+  pugongying: 'PGY_DAILY_BUDGET_USD',
+  qiangua: 'QIANGUA_DAILY_BUDGET_USD',
+  xinhong: 'XINHONG_DAILY_BUDGET_USD',
 }
 
 /** Parameters ops fill in on the ingest page; every adapter accepts the same shape. */
@@ -66,10 +80,14 @@ export type SourcePage = {
   /** Vendor-side quota left, when exposed; surfaced on the dev page. */
   quotaRemaining?: number | null
   /**
-   * Paid vendor calls this page actually made (list + detail + enrichment);
-   * the queue charges the daily quota this many. Omitted = 1.
+   * Paid vendor calls this page made, for adapters the queue does not meter
+   * call by call (`SourceAdapter.metered`); charged after the page. Omitted = 1.
    */
   calls?: number
+  /** The page stopped before its last item; `nextCursor` resumes at the first item not fetched. */
+  interrupted?: PageInterruption
+  /** 查无结果 and per-item refusals met on the way; kept on the job. */
+  vendorNotes?: VendorNote[]
 }
 
 export type NormalizedCreator = {
@@ -228,8 +246,16 @@ export type IngestJobProgress = {
   /** Pages fetched so far; `cursor` is where the next run continues. */
   pagesDone: number
   cursor: string | null
-  /** Vendor calls consumed by this job (each page / detail call is one). */
+  /** Billed vendor calls this job used (list, detail and every enrichment call). */
   quotaUsed: number
+  /** What those calls cost at list price (USD); unpriced endpoints add 0. */
+  costUsd: number
+  /** Requests sent, billed or not. */
+  vendorRequests: number
+  /** Answers with nothing in them (查无结果), billed all the same. */
+  emptyCount: number
+  /** Latest 查无结果 / per-item refusals, newest last. */
+  vendorNotes: VendorNote[]
   attempts: number
   nextRunAt: string | null
   error: string | null
@@ -261,6 +287,7 @@ export const INGEST_FAILURE_CODES = [
   'VENDOR_REJECTED',
   'CONFIG_MISSING',
   'QUOTA_EXHAUSTED',
+  'BUDGET_EXHAUSTED',
   'CANCELLED',
   'RECORD_INVALID',
   'RECORD_WRITE_FAILED',
@@ -369,7 +396,13 @@ export interface SourceAdapter {
   readonly supports: readonly (keyof SourceQuery)[]
   /** Which metric keys this source can populate; drives the ingest page column hints. */
   readonly provides: readonly (keyof CreatorMetrics)[]
-  fetch(query: SourceQuery): Promise<SourcePage>
+  /**
+   * True when every paid request goes through `context.meter` (reserve before,
+   * settle after). Otherwise the queue reserves one call per page and charges
+   * `page.calls` afterwards.
+   */
+  readonly metered?: boolean
+  fetch(query: SourceQuery, context?: FetchContext): Promise<SourcePage>
   normalize(raw: RawRecord): NormalizeResult
 }
 

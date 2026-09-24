@@ -12,10 +12,12 @@ import {
   type SourceQuery,
 } from '@kcs/contract'
 import { getAdapter } from '../adapters'
+import { isMeterStop } from '../adapters/billing'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
 import { recordRefreshMisses } from './data-status'
 import { deadLetterJob, failureOf } from './dead-letters'
+import { createMeter, dailyBudgetUsd } from './meter'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
 import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
@@ -27,6 +29,10 @@ import { errorMessage, logEvent } from '../log'
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
 const WORKER_ID = `${hostname()}:${process.pid}`
 const LEASE_SECONDS = Number(process.env.INGEST_LEASE_MS || INGEST_LEASE_MS) / 1_000
+/** Pushed out before every metered call: one call may wait out the vendor timeout. */
+const CALL_LEASE_SECONDS = LEASE_SECONDS + 75
+/** `ingest_jobs.vendor_notes` keeps the latest this many. */
+const VENDOR_NOTES_KEPT = 50
 
 /**
  * Retry delay after a transient failure: "full jitter" — a uniform draw in
@@ -161,12 +167,23 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     const adapter = resolveAdapter(env, source)
     if (!adapter) throw new Error(`unsupported adapter: ${source}`)
     const sourceRow = await env.db.query(
-      'SELECT rate_limit, quota, quota_tz FROM ingest_sources WHERE id = $1',
+      'SELECT rate_limit, quota, quota_tz, daily_budget_usd FROM ingest_sources WHERE id = $1',
       [source],
     )
     const quotaTz = quotaTimeZone(sourceRow.rows[0]?.quota_tz)
     const rateLimit = Math.max(1, Number(sourceRow.rows[0]?.rate_limit ?? 60))
     const quota = Math.max(0, Number(sourceRow.rows[0]?.quota ?? 1000))
+    const meter = adapter.metered
+      ? createMeter(env, {
+          source,
+          jobId,
+          lease,
+          leaseSeconds: CALL_LEASE_SECONDS,
+          limits: { rateLimit, quota, tz: quotaTz, budgetUsd: dailyBudgetUsd(source, sourceRow.rows[0]?.daily_budget_usd) },
+          shouldStop: options.shouldStop,
+          deps: { quotaDay, takeToken: takePgToken },
+        })
+      : null
 
     const baseQuery = parseQuery(claimed.rows[0].query, source as SourceId)
     let cursor = claimed.rows[0].cursor ?? baseQuery.cursor ?? null
@@ -191,53 +208,70 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       if (current.rows[0]?.status !== 'running' || current.rows[0]?.locked_by !== lease) {
         return readJob(env, jobId)
       }
-      if (options.shouldStop?.() || !(await takeRateToken(env, source, rateLimit, options.shouldStop))) {
-        return requeueJob(env, jobId, lease, source, cursor, pagesDone)
+      if (options.shouldStop?.()) return requeueJob(env, jobId, lease, source, cursor, pagesDone)
+      let reserved: { day: string } | null = null
+      if (!meter) {
+        // An adapter that does not meter its calls: one token and one call per page, the rest charged after.
+        if (!(await takeRateToken(env, source, rateLimit, options.shouldStop))) {
+          return requeueJob(env, jobId, lease, source, cursor, pagesDone)
+        }
+        const reservation = await reserveQuota(env, source, quota, quotaTz)
+        if (!reservation.ok) {
+          return stopAtLimit(env, jobId, source, cursor, pagesDone, 'quota', reservation.resetsAt)
+        }
+        reserved = reservation
       }
-      const reserved = await reserveQuota(env, source, quota, quotaTz)
-      if (!reserved.ok) {
-        await env.db.query(
-          `UPDATE ingest_jobs SET status = 'partial', cursor = $2, next_run_at = $3,
-           error = 'quota_exhausted', error_code = 'QUOTA_EXHAUSTED',
-           error_summary = 'daily source quota exhausted', ended_at = now(),
-           locked_by = NULL, lease_expires_at = NULL, updated_at = now()
-           WHERE id = $1`,
-          [jobId, cursor, reserved.resetsAt],
-        )
-        logEvent('warn', 'ingest.job_partial', { jobId, source, code: 'QUOTA_EXHAUSTED', pages: pagesDone })
-        return readJob(env, jobId)
+      let page: SourcePage
+      try {
+        page = await adapter.fetch({ ...baseQuery, cursor }, meter ? { meter } : undefined)
+      } catch (error) {
+        // Refused before anything was fetched (the first call of the page).
+        if (!isMeterStop(error)) throw error
+        page = { records: [], nextCursor: cursor, interrupted: { reason: error.reason, resetsAt: error.resetsAt } }
       }
-      const page = await adapter.fetch({ ...baseQuery, cursor })
       sourceMode = (page as SourcePage & { sourceMode?: string }).sourceMode ?? sourceMode
-      if (sourceMode === 'fixture') {
-        // No vendor was called (demo data) — give the reserved call back, 04 §fixture 模式「不计配额」.
-        await releaseQuota(env, source, reserved.day)
-      } else {
-        // Enrichment inside one page (蒲公英 detail + 4 data calls per creator) is billed too.
-        const calls = Math.max(1, Math.floor(Number(page.calls ?? 1)) || 1)
-        if (calls > 1) await chargeQuota(env, source, reserved.day, calls - 1)
-        quotaUsed += calls
+      if (reserved) {
+        if (sourceMode === 'fixture') {
+          // No vendor was called (demo data) — give the reserved call back, 04 §fixture 模式「不计配额」.
+          await releaseQuota(env, source, reserved.day)
+        } else {
+          const calls = Math.max(1, Math.floor(Number(page.calls ?? 1)) || 1)
+          if (calls > 1) await chargeQuota(env, source, reserved.day, calls - 1)
+          quotaUsed += calls
+        }
       }
       const counts = await persistPage(env, adapter, page, jobId, source as SourceId)
       written += counts.written
       skipped += counts.skipped
       failed += counts.failed
-      pagesDone += 1
+      const stop = page.interrupted
+      if (!stop) pagesDone += 1
       cursor = page.nextCursor
       // The page write doubles as the lease heartbeat: a job that keeps making
       // progress keeps its claim, one that stalls loses it after LEASE_SECONDS.
+      // A metered run keeps quota_used / cost on the row call by call already.
       await env.db.query(
-        `UPDATE ingest_jobs SET cursor = $2, pages_done = $3, quota_used = $4,
+        `UPDATE ingest_jobs SET cursor = $2, pages_done = $3, quota_used = COALESCE($4::int, quota_used),
          written_count = $5, skipped_dupes = $6, failed_count = $7, source_mode = $8,
          lease_expires_at = now() + make_interval(secs => $9::float8),
          seen_external_ids = CASE WHEN $10::text[] IS NULL THEN seen_external_ids
            ELSE ARRAY(SELECT DISTINCT unnest(COALESCE(seen_external_ids, '{}') || $10::text[])) END,
+         vendor_notes = CASE WHEN $11::jsonb IS NULL THEN vendor_notes ELSE (
+           SELECT COALESCE(jsonb_agg(note ORDER BY n), '[]'::jsonb) FROM (
+             SELECT note, n FROM jsonb_array_elements(vendor_notes || $11::jsonb) WITH ORDINALITY AS t(note, n)
+             ORDER BY n DESC LIMIT ${VENDOR_NOTES_KEPT}) kept) END,
          updated_at = now() WHERE id = $1`,
         [
-          jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS,
+          jobId, cursor, pagesDone, meter ? null : quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS,
           requestedIds ? page.records.map((record) => String(record.externalId)) : null,
+          page.vendorNotes?.length ? JSON.stringify(page.vendorNotes) : null,
         ],
       )
+      if (stop) {
+        if (stop.reason === 'error') throw stop.error
+        if (stop.reason === 'stopping') return requeueJob(env, jobId, lease, source, cursor, pagesDone)
+        return stopAtLimit(env, jobId, source, cursor, pagesDone, stop.reason, stop.resetsAt ? new Date(stop.resetsAt) : null)
+      }
       if (!cursor) break
     }
 
@@ -253,13 +287,49 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       [jobId, cursor],
     )
     logEvent('info', 'ingest.job_done', {
-      jobId, source, pages: pagesDone, written, skipped, failed, quotaUsed, sourceMode,
+      jobId, source, pages: pagesDone, written, skipped, failed, sourceMode,
+      quotaUsed: meter ? undefined : quotaUsed,
+      calls: meter?.totals.calls, costUsd: meter ? meter.totals.costMicros / 1_000_000 : undefined,
+      requests: meter?.totals.requests, empty: meter?.totals.empties,
     })
     return readJob(env, jobId)
   } catch (error) {
     return failJob(env, jobId, source, error)
   }
 }
+
+/**
+ * The day's call quota or money budget is used up: the run waits as `partial`
+ * with its cursor until the source's quota day turns over, then continues.
+ * `paused` (the source was taken offline) waits for a human instead.
+ */
+async function stopAtLimit(
+  env: AppEnv,
+  jobId: string,
+  source: string,
+  cursor: string | null,
+  pagesDone: number,
+  reason: 'quota' | 'budget' | 'paused',
+  resetsAt: Date | null,
+) {
+  const code = LIMIT_CODES[reason]
+  await env.db.query(
+    `UPDATE ingest_jobs SET status = 'partial', cursor = $2, next_run_at = $3,
+     error = $4, error_code = $5, error_summary = $6, ended_at = now(),
+     locked_by = NULL, lease_expires_at = NULL, updated_at = now()
+     WHERE id = $1`,
+    [jobId, cursor, reason === 'paused' ? null : resetsAt, code.toLowerCase(), code, LIMIT_SUMMARIES[reason]],
+  )
+  logEvent('warn', 'ingest.job_partial', { jobId, source, code, pages: pagesDone })
+  return readJob(env, jobId)
+}
+
+const LIMIT_CODES = { quota: 'QUOTA_EXHAUSTED', budget: 'BUDGET_EXHAUSTED', paused: 'QUOTA_EXHAUSTED' } as const
+const LIMIT_SUMMARIES = {
+  quota: 'daily source quota exhausted',
+  budget: 'daily source budget exhausted',
+  paused: 'source paused',
+} as const
 
 /**
  * Shutdown between pages: the run goes back to `queued` with its cursor and

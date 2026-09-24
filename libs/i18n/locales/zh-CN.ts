@@ -2184,6 +2184,7 @@ export const zhCN: Locale = {
         RECORD_INVALID: "这条博主信息读不出来",
         RECORD_WRITE_FAILED: "这条博主信息没能存下来",
         QUOTA_EXHAUSTED: "今天的额度用完了，明天会自动继续",
+        BUDGET_EXHAUSTED: "今天的花费到了上限，明天会自动继续",
         CANCELLED: "已手动停止",
         UNKNOWN: "这次没有抓完，可以重试",
       },

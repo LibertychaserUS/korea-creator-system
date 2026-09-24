@@ -8,9 +8,9 @@ import { closeJobDeadLetters } from './dead-letters'
 export async function ensureSource(env: AppEnv, source: SourceId) {
   const defaults = SOURCE_DEFAULTS[source]
   await env.db.query(
-    `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, owner)
-     VALUES ($1,$2,$1,true,$3,$4,'ops') ON CONFLICT (id) DO NOTHING`,
-    [source, defaults.name, defaults.rateLimit, defaults.quota],
+    `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, daily_budget_usd, owner)
+     VALUES ($1,$2,$1,true,$3,$4,$5,'ops') ON CONFLICT (id) DO NOTHING`,
+    [source, defaults.name, defaults.rateLimit, defaults.quota, defaults.dailyBudgetUsd],
   )
 }
 

@@ -2,6 +2,7 @@ import {
   normalizeMetrics,
   toMinorUnits,
   SOURCE_DEFAULTS,
+  SOURCE_IDS,
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
   SEED_USERS,
@@ -267,6 +268,9 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
   }
   // A reset truncates the reference rows migration 0008 wrote; put them back first.
   await db.query(await readFile(BASE_DATA_SQL, 'utf8'))
+  for (const id of SOURCE_IDS) {
+    await db.query('UPDATE ingest_sources SET daily_budget_usd = $2 WHERE id = $1', [id, SOURCE_DEFAULTS[id].dailyBudgetUsd])
+  }
   const orgId = 'org_platform'
   await db.query(
     `INSERT INTO orgs (id, name, budget_note) VALUES ($1,$2,$3)

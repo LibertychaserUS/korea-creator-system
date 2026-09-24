@@ -29,10 +29,12 @@ import {
   type ParsedNumber,
   type RatioUnit,
   type RawRecord,
+  type FetchContext,
   type SourceId,
   type SourcePage,
   type SourceQuery,
 } from '@kcs/contract'
+import { billedCall } from './billing'
 
 export type FieldMap = Partial<Record<
   | keyof CreatorMetrics
@@ -75,6 +77,7 @@ export class VendorHttpError extends Error {
     readonly source: string,
     readonly status: number,
     readonly retryAfterMs: number | null,
+    readonly requestId: string | null = null,
   ) {
     super(`${source} HTTP ${status}`)
     this.name = 'VendorHttpError'
@@ -285,44 +288,46 @@ export async function fetchJsonPage(input: {
   body?: Record<string, unknown>
   /** 新榜-style APIs take `application/x-www-form-urlencoded`. */
   encoding?: 'json' | 'form'
+  context?: FetchContext
 }): Promise<AdapterPage> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 10_000)
-  try {
-    const payload = input.body ?? input.query
-    const form = input.encoding === 'form'
-    const body = form
-      ? new URLSearchParams(
-          Object.entries(payload)
-            .filter(([, v]) => v != null && v !== '')
-            .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)]),
-        ).toString()
-      : JSON.stringify(payload)
-    const response = await fetch(input.url, {
+  const payload = input.body ?? input.query
+  const form = input.encoding === 'form'
+  const body = form
+    ? new URLSearchParams(
+        Object.entries(payload)
+          .filter(([, v]) => v != null && v !== '')
+          .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)]),
+      ).toString()
+    : JSON.stringify(payload)
+  const url = new URL(input.url)
+  // No published billing rule for 千瓜 / 新红: every answer counts against the day.
+  const { value: json } = await billedCall(input.context, {
+    source: input.source,
+    endpoint: `${input.source}:${url.pathname}`,
+    url: input.url,
+    init: {
       method: 'POST',
       headers: { 'content-type': form ? 'application/x-www-form-urlencoded;charset=utf-8' : 'application/json', ...input.headers },
       body,
-      signal: controller.signal,
-    })
-    if (!response.ok) throw vendorHttpError(input.source, response)
-    const json = await readVendorJson(response)
-    const candidates = [json.data, (json.data as Record<string, unknown> | undefined)?.list, json.list, json.records]
-    const payloads = candidates.find(Array.isArray) as Record<string, unknown>[] | undefined
-    if (!payloads) throw new Error(`${input.source} response has no record list`)
-    const fetchedAt = new Date().toISOString()
-    return {
-      sourceMode: 'live',
-      records: payloads.map((payload, index) => ({
-        source: input.source,
-        platform: 'xhs',
-        externalId: payloadId(payload, `${input.source}-${index + 1}`),
-        fetchedAt,
-        payload,
-      })),
-      nextCursor: String(json.next_cursor ?? (json.data as Record<string, unknown> | undefined)?.next_cursor ?? '') || null,
-      quotaRemaining: toNumber(json.quota_remaining),
-    }
-  } finally {
-    clearTimeout(timer)
+    },
+    rule: 'every-response',
+    timeoutMs: 10_000,
+    read: (value) => ({ value, empty: false }),
+  })
+  const candidates = [json.data, (json.data as Record<string, unknown> | undefined)?.list, json.list, json.records]
+  const payloads = candidates.find(Array.isArray) as Record<string, unknown>[] | undefined
+  if (!payloads) throw new Error(`${input.source} response has no record list`)
+  const fetchedAt = new Date().toISOString()
+  return {
+    sourceMode: 'live',
+    records: payloads.map((record, index) => ({
+      source: input.source,
+      platform: 'xhs',
+      externalId: payloadId(record, `${input.source}-${index + 1}`),
+      fetchedAt,
+      payload: record,
+    })),
+    nextCursor: String(json.next_cursor ?? (json.data as Record<string, unknown> | undefined)?.next_cursor ?? '') || null,
+    quotaRemaining: toNumber(json.quota_remaining),
   }
 }

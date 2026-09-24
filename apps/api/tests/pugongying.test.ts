@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizePugongying, pugongyingAdapter } from '../src/adapters/pugongying'
 import { fixturePage } from '../src/adapters/common'
+import { recordingMeter } from './meter-stub'
 
 const fixtureUrl = new URL('../src/adapters/fixtures/pugongying.json', import.meta.url)
 
@@ -146,17 +147,19 @@ describe('蒲公英 gateways', () => {
   it('tikhub: builds the grouped filter body and unwraps data.data', async () => {
     process.env.PGY_GATEWAY = 'tikhub'
     const kol = record(1).payload
-    stubFetch(() => ({ code: 200, data: { code: 0, success: true, data: { kols: [kol], total: 5000 } } }))
+    stubFetch(() => ({ code: 200, request_id: 'req-list-1', data: { code: 0, success: true, data: { kols: [kol], total: 5000 } } }))
+    const billing = recordingMeter()
     const page = await pugongyingAdapter.fetch({
       source: 'pugongying', window: 30, keyword: '空瓶', category: '美妆', region: '上海',
       followersMin: 10000, followersMax: 500000, priceMin: 2000, health: ['healthy'], cursor: '3',
-    })
+    }, { meter: billing.meter })
     expect((page as { sourceMode?: string }).sourceMode).toBe('live')
     expect(page.records).toHaveLength(1)
     expect(page.records[0]!.externalId).toBe('pgy_002')
     expect(page.nextCursor).toBeNull()
     expect(calls).toHaveLength(1)
-    expect(page.calls).toBe(1)
+    expect(billing.acquired).toEqual(['tikhub:/api/v1/xiaohongshu/pgy/get_blogger_list'])
+    expect(billing.settled).toMatchObject([{ outcome: 'billed', status: 200, requestId: 'req-list-1', empty: false }])
     expect(calls[0]!.url).toBe('https://api.tikhub.io/api/v1/xiaohongshu/pgy/get_blogger_list')
     expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe('Bearer test-token')
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
@@ -177,10 +180,16 @@ describe('蒲公英 gateways', () => {
       if (url.endsWith('get_blogger_notes_rate')) return { data: { data: { noteNumber: 18, interactionRate: '6.7' } } }
       return { data: { data: null } }
     })
-    const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 90, externalIds: ['pgy_002'] })
+    const billing = recordingMeter()
+    const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 90, externalIds: ['pgy_002'] }, { meter: billing.meter })
     expect(calls).toHaveLength(5)
-    // Every one of them is billed, and the page says so for the quota ledger.
-    expect(page.calls).toBe(5)
+    // Each one went through the meter before it was sent, and each 200 is billed (empty ones too).
+    expect(billing.acquired).toHaveLength(5)
+    expect(billing.settled.map((s) => s.outcome)).toEqual(['billed', 'billed', 'billed', 'billed', 'billed'])
+    expect(billing.settled.filter((s) => s.empty).map((s) => s.endpoint)).toEqual([
+      'tikhub:/api/v1/xiaohongshu/pgy/get_blogger_data_summary',
+      'tikhub:/api/v1/xiaohongshu/pgy/get_blogger_fans_profile',
+    ])
     const notesCall = calls.find((c) => c.url.endsWith('get_blogger_notes_rate'))!
     // Docs: 1 = 30 天, 2 = 90 天, 3 → 422 (待实测).
     expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 2, business: 0, note_type: 3 })

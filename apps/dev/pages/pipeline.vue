@@ -82,6 +82,37 @@
             </p>
           </div>
 
+          <div data-testid="pipeline-spend">
+            <div class="flex items-baseline justify-between gap-2">
+              <span class="text-xs text-muted-foreground">{{ t('kcs.console.pipeline.cols.spend') }}</span>
+              <span class="text-sm tabular-nums">
+                <span class="text-lg font-semibold text-foreground" data-testid="pipeline-cost-today">{{ usd(s.costTodayUsd) }}</span>
+                <span v-if="s.dailyBudgetUsd != null" class="text-muted-foreground"> / {{ usd(s.dailyBudgetUsd) }}</span>
+              </span>
+            </div>
+            <div
+              v-if="s.dailyBudgetUsd != null"
+              class="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              :aria-label="t('kcs.console.pipeline.cols.spend')"
+              :aria-valuenow="s.costTodayUsd"
+              :aria-valuemin="0"
+              :aria-valuemax="s.dailyBudgetUsd"
+            >
+              <span class="block h-full rounded-full transition-[width] duration-500" :class="usageBar(s.budgetRatio)" :style="{ width: usageWidth(s.budgetRatio) }" />
+            </div>
+            <p class="mt-1.5 flex flex-wrap justify-between gap-x-3 text-[11px] tabular-nums text-muted-foreground">
+              <span>{{ s.budgetRatio == null ? t('kcs.console.pipeline.noBudget') : t('kcs.console.pipeline.used', { pct: percent(s.budgetRatio) }) }}</span>
+              <span v-if="s.budgetFrom === 'env'">{{ t('kcs.console.pipeline.budgetFromEnv') }}</span>
+            </p>
+            <ul v-if="s.requestsToday || s.emptyToday || s.maybeBilledToday || s.unpricedToday" class="mt-2 space-y-0.5 text-[11px] text-muted-foreground" data-testid="pipeline-call-notes">
+              <li v-if="s.requestsToday">{{ t('kcs.console.pipeline.requests', { n: formatNumber(s.requestsToday), free: formatNumber(Math.max(0, s.requestsToday - s.callsToday)) }) }}</li>
+              <li v-if="s.emptyToday">{{ t('kcs.console.pipeline.emptyResults', { n: formatNumber(s.emptyToday) }) }}</li>
+              <li v-if="s.maybeBilledToday" class="text-amber-700 dark:text-amber-300">{{ t('kcs.console.pipeline.maybeBilled', { n: formatNumber(s.maybeBilledToday) }) }}</li>
+              <li v-if="s.unpricedToday">{{ t('kcs.console.pipeline.unpriced', { n: formatNumber(s.unpricedToday) }) }}</li>
+            </ul>
+          </div>
+
           <div>
             <p class="text-xs text-muted-foreground">{{ t('kcs.console.pipeline.cols.week') }}</p>
             <ol class="mt-2 flex h-10 items-end gap-1" :aria-label="t('kcs.console.pipeline.cols.week')">
@@ -91,9 +122,9 @@
                 class="flex-1 rounded-sm"
                 :class="d.today ? 'bg-primary' : 'bg-primary/35'"
                 :style="{ height: d.height }"
-                :title="t('kcs.console.pipeline.weekDay', { day: dayLabel(d.day), n: formatNumber(d.calls) })"
+                :title="weekTitle(d)"
               >
-                <span class="sr-only">{{ t('kcs.console.pipeline.weekDay', { day: dayLabel(d.day), n: formatNumber(d.calls) }) }}</span>
+                <span class="sr-only">{{ weekTitle(d) }}</span>
               </li>
             </ol>
           </div>
@@ -178,13 +209,24 @@ function shiftDay(day: string, delta: number): string {
 /** 最近 7 天每天一根柱子；没调用的日子也占位，今天高亮。 */
 function week(s: PipelineSourceView) {
   const today = report.value?.day ?? ''
-  const byDay = new Map(s.recentDays.map((d) => [d.day, d.calls]))
+  const byDay = new Map(s.recentDays.map((d) => [d.day, d]))
   const days = Array.from({ length: 7 }, (_, i) => shiftDay(today, i - 6))
-  const max = Math.max(1, ...days.map((d) => byDay.get(d) ?? 0))
+  const max = Math.max(1, ...days.map((d) => byDay.get(d)?.calls ?? 0))
   return days.map((day) => {
-    const calls = byDay.get(day) ?? 0
-    return { day, calls, today: day === today, height: `${Math.max(calls ? 8 : 4, (calls / max) * 100)}%` }
+    const calls = byDay.get(day)?.calls ?? 0
+    const costUsd = byDay.get(day)?.costUsd ?? 0
+    return { day, calls, costUsd, today: day === today, height: `${Math.max(calls ? 8 : 4, (calls / max) * 100)}%` }
   })
+}
+
+function weekTitle(d: { day: string; calls: number; costUsd: number }): string {
+  return t('kcs.console.pipeline.weekDayCost', { day: dayLabel(d.day), n: formatNumber(d.calls), cost: usd(d.costUsd) })
+}
+
+/** Vendor prices are cents per call, so two decimals are enough and never round a real spend to $0. */
+function usd(value: number): string {
+  const digits = value > 0 && value < 0.01 ? 4 : 2
+  return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: digits }).format(value)
 }
 
 function dayLabel(day: string): string {

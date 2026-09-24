@@ -36,6 +36,7 @@ import {
   toNumber,
   type AudienceProfile,
   type CreatorMetrics,
+  type FetchContext,
   type NormalizeResult,
   type NumericMetricKey,
   type PgyGateway,
@@ -46,7 +47,8 @@ import {
   type SourceQuery,
   type SourceSignals,
 } from '@kcs/contract'
-import { filterFixturePage, fixturePage, readVendorJson, vendorHttpError, type AdapterPage } from './common'
+import { billedCall, isMeterStop } from './billing'
+import { filterFixturePage, fixturePage, type AdapterPage } from './common'
 
 type Json = Record<string, unknown>
 
@@ -96,16 +98,11 @@ export function dateTypeFor(gateway: PgyGateway, window: SourceQuery['window']):
   return PGY_DATE_TYPES[gateway][window]
 }
 
-async function http(url: string, init: RequestInit): Promise<Json> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const response = await fetch(url, { ...init, signal: controller.signal })
-    if (!response.ok) throw vendorHttpError('pugongying', response)
-    return await readVendorJson(response)
-  } finally {
-    clearTimeout(timer)
-  }
+/** Nothing to read: `data: null`, `{}`, or a list page without a single kol. Billed all the same. */
+function isEmptyData(data: Json | null): boolean {
+  if (data == null || typeof data !== 'object') return true
+  if (Array.isArray(data.kols)) return data.kols.length === 0
+  return Object.keys(data).length === 0
 }
 
 function range(min?: number, max?: number): Json | undefined {
@@ -122,15 +119,27 @@ function wantsLowActiveExcluded(query: SourceQuery): boolean {
 }
 
 /** TikHub — POST JSON, Bearer token, payload two layers deep (`data.data`). */
-function tikhub(token: string, base: string): Gateway {
+function tikhub(token: string, base: string, context?: FetchContext): Gateway {
   const call = async (path: string, body: Json): Promise<Json | null> => {
-    const json = await http(`${base}/api/v1/xiaohongshu/pgy/${path}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+    const route = `/api/v1/xiaohongshu/pgy/${path}`
+    const { value } = await billedCall(context, {
+      source: 'pugongying',
+      endpoint: `tikhub:${route}`,
+      url: `${base}${route}`,
+      init: {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      },
+      rule: 'tikhub',
+      timeoutMs: TIMEOUT_MS,
+      read: (json) => {
+        const envelope = json.data as Json | null | undefined
+        const data = (envelope?.data as Json | null | undefined) ?? null
+        return { value: data, empty: isEmptyData(data) }
+      },
     })
-    const envelope = json.data as Json | null | undefined
-    return (envelope?.data as Json | null | undefined) ?? null
+    return value
   }
   return {
     list(query, pageNum) {
@@ -164,15 +173,27 @@ function tikhub(token: string, base: string): Gateway {
 }
 
 /** JustOneAPI — GET with `token` query param, payload one layer deep (`data`). */
-function justoneapi(token: string, base: string): Gateway {
+function justoneapi(token: string, base: string, context?: FetchContext): Gateway {
   const call = async (path: string, params: Record<string, string | number | boolean | undefined>): Promise<Json | null> => {
-    const url = new URL(`${base}/api/xiaohongshu-pgy/api/solar/${path}`)
+    const route = `/api/xiaohongshu-pgy/api/solar/${path}`
+    const url = new URL(`${base}${route}`)
     url.searchParams.set('token', token)
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== '') url.searchParams.set(key, String(value))
     }
-    const json = await http(url.toString(), { method: 'GET' })
-    return (json.data as Json | null | undefined) ?? null
+    const { value } = await billedCall(context, {
+      source: 'pugongying',
+      endpoint: `justoneapi:${route}`,
+      url: url.toString(),
+      init: { method: 'GET' },
+      rule: 'every-response',
+      timeoutMs: TIMEOUT_MS,
+      read: (json) => {
+        const data = (json.data as Json | null | undefined) ?? null
+        return { value: data, empty: isEmptyData(data) }
+      },
+    })
+    return value
   }
   const bounds = (min?: number, max?: number) => (min == null && max == null ? undefined : `${min ?? 0},${max ?? -1}`)
   return {
@@ -204,13 +225,27 @@ function justoneapi(token: string, base: string): Gateway {
  * header and base URL are configurable so the path table can be corrected
  * without touching normalize().
  */
-function official(token: string, base: string): Gateway {
+function official(token: string, base: string, context?: FetchContext): Gateway {
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${token}` }
+  const send = async (path: string, url: string, init: RequestInit): Promise<Json | null> => {
+    const { value } = await billedCall(context, {
+      source: 'pugongying',
+      endpoint: `official:${path.replace(/\/[0-9a-zA-Z]{16,}(?=\/|$)/g, '/:userId')}`,
+      url,
+      init,
+      rule: 'every-response',
+      timeoutMs: TIMEOUT_MS,
+      read: (json) => {
+        const data = (json.data as Json | null | undefined) ?? null
+        return { value: data, empty: isEmptyData(data) }
+      },
+    })
+    return value
+  }
   const get = async (path: string, params: Record<string, string | number | undefined> = {}): Promise<Json | null> => {
     const url = new URL(`${base}${path}`)
     for (const [key, value] of Object.entries(params)) if (value !== undefined) url.searchParams.set(key, String(value))
-    const json = await http(url.toString(), { method: 'GET', headers })
-    return (json.data as Json | null | undefined) ?? null
+    return send(path, url.toString(), { method: 'GET', headers })
   }
   return {
     async list(query, pageNum) {
@@ -230,8 +265,8 @@ function official(token: string, base: string): Gateway {
       if (process.env.PGY_BRAND_USER_ID) body.brandUserId = process.env.PGY_BRAND_USER_ID
       if (query.category) body.contentTag = [query.category]
       if (query.priceMin != null || query.priceMax != null) body.estimatePicReadPrice = [query.priceMin ?? 0, query.priceMax ?? -1]
-      const json = await http(`${base}/api/solar/cooperator/blogger/v2`, { method: 'POST', headers, body: JSON.stringify(body) })
-      return (json.data as Json | null | undefined) ?? null
+      const path = '/api/solar/cooperator/blogger/v2'
+      return send(path, `${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
     },
     detail: (userId) => get(`/api/solar/cooperator/user/blogger/${encodeURIComponent(userId)}`),
     dataSummary: (userId) => get('/api/solar/kol/dataV3/dataSummary', { userId, business: 0 }),
@@ -250,14 +285,14 @@ const GATEWAY_BASE: Record<PgyGateway, string> = {
 
 type ResolvedGateway = { name: PgyGateway; gateway: Gateway }
 
-export function resolveGateway(): ResolvedGateway | null {
+export function resolveGateway(context?: FetchContext): ResolvedGateway | null {
   const token = process.env.PGY_ACCESS_TOKEN
   if (!token) return null
   const name = (process.env.PGY_GATEWAY || 'tikhub') as PgyGateway
   const base = (process.env.PGY_BASE_URL || GATEWAY_BASE[name] || GATEWAY_BASE.tikhub).replace(/\/$/, '')
-  if (name === 'justoneapi') return { name, gateway: justoneapi(token, base) }
-  if (name === 'official') return { name, gateway: official(token, base) }
-  return { name: 'tikhub', gateway: tikhub(token, base) }
+  if (name === 'justoneapi') return { name, gateway: justoneapi(token, base, context) }
+  if (name === 'official') return { name, gateway: official(token, base, context) }
+  return { name: 'tikhub', gateway: tikhub(token, base, context) }
 }
 
 // ---------------------------------------------------------------------------
@@ -267,19 +302,19 @@ export function resolveGateway(): ResolvedGateway | null {
 async function enrich(resolved: ResolvedGateway, userId: string, window: SourceQuery['window'], base: Json): Promise<Json> {
   const { gateway } = resolved
   const dateType = dateTypeFor(resolved.name, window)
+  // The meter refusing a call ends the page; any other failure only loses that section.
   const settle = async (p: Promise<Json | null>) => {
     try {
       return await p
-    } catch {
+    } catch (error) {
+      if (isMeterStop(error)) throw error
       return null
     }
   }
-  const [dataSummary, fansSummary, notesRate, fansProfile] = await Promise.all([
-    settle(gateway.dataSummary(userId)),
-    settle(gateway.fansSummary(userId)),
-    settle(gateway.notesRate(userId, dateType)),
-    settle(gateway.fansProfile(userId)),
-  ])
+  const dataSummary = await settle(gateway.dataSummary(userId))
+  const fansSummary = await settle(gateway.fansSummary(userId))
+  const notesRate = await settle(gateway.notesRate(userId, dateType))
+  const fansProfile = await settle(gateway.fansProfile(userId))
   // notesRate carries no dateType back, so remember what we asked for; if the
   // table above turns out wrong, stored payloads can still be re-read correctly.
   return { ...base, dataSummary, fansSummary, notesRate, fansProfile, kcsWindow: window, kcsDateType: dateType }
@@ -289,49 +324,63 @@ function toRecord(payload: Json, fetchedAt: string): RawRecord {
   return { source: 'pugongying', platform: 'xhs', externalId: String(payload.userId ?? ''), fetchedAt, payload }
 }
 
-/** Every gateway method call is one billed request (paid gateways charge 200s, empty or not). */
-function counting(gateway: Gateway): { gateway: Gateway; calls: () => number } {
-  let calls = 0
-  const wrapped = Object.fromEntries(Object.entries(gateway).map(([name, method]) => [
-    name,
-    (...args: unknown[]) => {
-      calls += 1
-      return (method as (...a: unknown[]) => Promise<Json | null>)(...args)
-    },
-  ])) as Gateway
-  return { gateway: wrapped, calls: () => calls }
+/**
+ * Where a page resumes. `@<n>` = the n-th id of an `externalIds` refresh;
+ * `<page>` or `<page>:<skip>` = a list page, skipping kols already written.
+ */
+export function parsePgyCursor(cursor: string | null | undefined): { index: number; pageNum: number; skip: number } {
+  const text = String(cursor ?? '').trim()
+  const at = /^@(\d+)$/.exec(text)
+  if (at) return { index: Number(at[1]), pageNum: 1, skip: 0 }
+  const page = /^(\d+)(?::(\d+))?$/.exec(text)
+  return { index: 0, pageNum: Math.max(1, Number(page?.[1] ?? 1) || 1), skip: Number(page?.[2] ?? 0) }
 }
 
-async function fetchLive(query: SourceQuery, live: ResolvedGateway): Promise<AdapterPage> {
-  const counter = counting(live.gateway)
-  const page = await fetchPage(query, { ...live, gateway: counter.gateway })
-  return { ...page, calls: counter.calls() }
+/** A stop mid-page keeps what was fetched (it was paid for) and says where to continue. */
+function interrupted(records: RawRecord[], nextCursor: string, error: unknown): AdapterPage {
+  return {
+    sourceMode: 'live',
+    records,
+    nextCursor,
+    interrupted: isMeterStop(error) ? { reason: error.reason, resetsAt: error.resetsAt } : { reason: 'error', error },
+  }
 }
 
 async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise<AdapterPage> {
   const { gateway } = resolved
   const fetchedAt = new Date().toISOString()
+  const at = parsePgyCursor(query.cursor)
   if (query.externalIds?.length) {
     const ids = query.externalIds.slice(0, query.limit ?? query.externalIds.length)
     const records: RawRecord[] = []
-    for (const userId of ids) {
-      const detail = await gateway.detail(userId)
-      if (!detail) continue
-      records.push(toRecord(await enrich(resolved, userId, query.window, detail), fetchedAt))
+    for (let i = at.index; i < ids.length; i += 1) {
+      const userId = ids[i]!
+      try {
+        const detail = await gateway.detail(userId)
+        if (!detail) continue
+        records.push(toRecord(await enrich(resolved, userId, query.window, detail), fetchedAt))
+      } catch (error) {
+        return interrupted(records, `@${i}`, error)
+      }
     }
     return { sourceMode: 'live', records, nextCursor: null }
   }
 
-  const pageNum = Math.max(1, Number(query.cursor) || 1)
+  const { pageNum, skip } = at
   const data = await gateway.list(query, pageNum)
   let kols = Array.isArray(data?.kols) ? (data!.kols as Json[]) : []
   if (query.limit) kols = kols.slice(0, Math.max(0, query.limit))
   const shouldEnrich = process.env.PGY_ENRICH === '1'
   const records: RawRecord[] = []
-  for (const kol of kols) {
+  for (let i = skip; i < kols.length; i += 1) {
+    const kol = kols[i]!
     const userId = String(kol.userId ?? '')
     if (!userId) continue
-    records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol) : kol, fetchedAt))
+    try {
+      records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol) : kol, fetchedAt))
+    } catch (error) {
+      return interrupted(records, `${pageNum}:${i}`, error)
+    }
   }
   // `total` on the 找博主 list is a paging ceiling (5000), not a hit count.
   const hasMore = kols.length === PAGE_SIZE && pageNum < 250
@@ -600,13 +649,14 @@ export const pugongyingAdapter: SourceAdapter = {
     'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'storeVisitUvMedian', 'storeVisitUnitPrice',
     'coopNoteCount', 'audience', 'lowActive', 'contentForm', 'platformRanks',
   ],
-  async fetch(query: SourceQuery): Promise<AdapterPage> {
-    const resolved = resolveGateway()
+  metered: true,
+  async fetch(query: SourceQuery, context?: FetchContext): Promise<AdapterPage> {
+    const resolved = resolveGateway(context)
     if (!resolved) {
       const page = fixturePage('pugongying', new URL('./fixtures/pugongying.json', import.meta.url), query)
       return filterFixturePage(page, query, normalizePugongying)
     }
-    return fetchLive(query, resolved)
+    return fetchPage(query, resolved)
   },
   normalize: normalizePugongying,
 }

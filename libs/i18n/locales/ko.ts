@@ -310,6 +310,7 @@ export const ko: Locale = {
         RECORD_INVALID: "이 크리에이터 정보를 읽을 수 없습니다",
         RECORD_WRITE_FAILED: "이 크리에이터 정보를 저장하지 못했습니다",
         QUOTA_EXHAUSTED: "오늘 이용 한도를 모두 사용했습니다. 내일 자동으로 이어집니다",
+        BUDGET_EXHAUSTED: "오늘 비용 한도에 도달했습니다. 내일 자동으로 이어집니다",
         CANCELLED: "수동으로 중단됨",
         UNKNOWN: "이번 수집이 끝나지 않았습니다. 다시 시도할 수 있습니다",
       },

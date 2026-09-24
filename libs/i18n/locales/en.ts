@@ -2177,6 +2177,7 @@ export const en: Locale = {
         RECORD_INVALID: "This creator's information could not be read",
         RECORD_WRITE_FAILED: "This creator's information could not be saved",
         QUOTA_EXHAUSTED: "Today's allowance is used up; continues tomorrow",
+        BUDGET_EXHAUSTED: "Today's spending limit is reached; continues tomorrow",
         CANCELLED: "Stopped manually",
         UNKNOWN: "This run did not finish; you can retry",
       },

@@ -13,7 +13,7 @@
  * 粉丝真实度 (authenticity), 爆文数 / 爆文率 (viralCount / viralRate),
  * 粉丝量级 (head ≥50万 / mid ≥5万 / junior ≥5千 / amateur ≥300 → CREATOR_TIERS).
  */
-import type { SourceAdapter, SourceQuery } from '@kcs/contract'
+import type { FetchContext, SourceAdapter, SourceQuery } from '@kcs/contract'
 import {
   fetchJsonPage,
   fieldMapFromEnv,
@@ -58,7 +58,8 @@ export const qianguaAdapter: SourceAdapter = {
   id: 'qiangua',
   supports: ['window', 'keyword', 'category', 'region', 'followersMin', 'followersMax', 'priceMin', 'priceMax', 'externalIds', 'cursor', 'limit'],
   provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpmRead', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
-  async fetch(query: SourceQuery): Promise<AdapterPage> {
+  metered: true,
+  async fetch(query: SourceQuery, context?: FetchContext): Promise<AdapterPage> {
     const token = process.env.QIANGUA_TOKEN
     if (!token) {
       const page = fixturePage('qiangua', new URL('./fixtures/qiangua.json', import.meta.url), query)
@@ -70,6 +71,7 @@ export const qianguaAdapter: SourceAdapter = {
       source: 'qiangua',
       url: `${base}${path}`,
       query,
+      context,
       headers: { authorization: `Bearer ${token}` },
     })
   },

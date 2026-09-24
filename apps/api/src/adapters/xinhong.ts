@@ -14,7 +14,7 @@
  * 新红-specific fields worth keeping: 新红指数 (vendorIndex), 互动粉丝比,
  * 品牌合作数据 (coopBrands), cpe from 投放分析.
  */
-import type { SourceAdapter, SourceQuery } from '@kcs/contract'
+import type { FetchContext, SourceAdapter, SourceQuery } from '@kcs/contract'
 import {
   fetchJsonPage,
   fieldMapFromEnv,
@@ -65,7 +65,8 @@ export const xinhongAdapter: SourceAdapter = {
   id: 'xinhong',
   supports: ['window', 'keyword', 'category', 'region', 'followersMin', 'followersMax', 'priceMin', 'priceMax', 'externalIds', 'cursor', 'limit'],
   provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'cpmRead', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health', 'fanInteractionRatio'],
-  async fetch(query: SourceQuery): Promise<AdapterPage> {
+  metered: true,
+  async fetch(query: SourceQuery, context?: FetchContext): Promise<AdapterPage> {
     const token = process.env.XINHONG_TOKEN
     if (!token) {
       const page = fixturePage('xinhong', new URL('./fixtures/xinhong.json', import.meta.url), query)
@@ -77,6 +78,7 @@ export const xinhongAdapter: SourceAdapter = {
       source: 'xinhong',
       url: `${base}${path}`,
       query,
+      context,
       // 新榜 data API authenticates with a `Key` header rather than Bearer.
       headers: { Key: token },
       encoding: 'form',
