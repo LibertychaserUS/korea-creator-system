@@ -1,12 +1,13 @@
 # 文档加密包
 
-仓库只保留必要文档（`AGENTS.md`、`README.md`、`deploy/README.md`、`CHANGELOG.md`、`inbox/`、`suites/`）。其余项目文档不再以明文进仓库，而是打成一个加密包随仓库保存：`kcs-docs-20260924.7z`。
+仓库只保留必要文档（`AGENTS.md`、`README.md`、`deploy/README.md`、`CHANGELOG.md`、`inbox/`、`suites/`）。其余项目文档不再以明文进仓库，而是打成一个加密包随仓库保存：`kcs-docs-20260924-2.7z`。
 
 - 生成时间：2026-09-24（UTC）
-- 来源：main `6ba4232` 上的文档；移出提交 `42b8f49`（`git rm --cached` + `.gitignore`，历史未改写）
+- 来源：main `6ba4232` 上的文档（移出提交 `42b8f49`，`git rm --cached` + `.gitignore`，历史未改写），在 main `35b74bb`（#24 合入后）按新的默认口径更新了 `docs/02`、`docs/03`、`docs/04`、`docs/HANDOFF.md`
+- 上一个包：`kcs-docs-20260924.7z`（已删除，内容与 `6ba4232` 的文档相同，可从 git 历史取回）
 - 格式：7z，AES-256，文件名也加密（打开包需要口令，不输入口令连文件名都看不到）
-- 大小：9,939,841 字节
-- sha256：`1506573d701d8d85962ba1f1bb113062a57acafae1a214608e327db10f681382`
+- 大小：9,943,889 字节
+- sha256：`a650166398111f736316d3339f18ca4461f3b34018346ec7fa4b8b93291b818f`
 
 ## 内容概览
 
@@ -24,14 +25,14 @@
 工作区里没有这些文档时（例如新 clone，或拉取移出提交后 git 删掉了本地文件），在仓库根目录运行：
 
 ```bash
-scripts/docs/restore-local-docs.sh                                   # 从 git 历史（6ba4232）恢复，不覆盖已有文件
-scripts/docs/restore-local-docs.sh --from-archive docs-archive/kcs-docs-20260924.7z   # 从本加密包恢复（交互输入口令）
+scripts/docs/restore-local-docs.sh                                   # 从 git 历史（6ba4232）恢复，不覆盖已有文件；比本包旧
+scripts/docs/restore-local-docs.sh --from-archive docs-archive/kcs-docs-20260924-2.7z   # 从本加密包恢复（交互输入口令）
 ```
 
 ## 手动解密
 
-- macOS：`brew install sevenzip` 后 `7zz x kcs-docs-20260924.7z`；或用 Keka / The Unarchiver 打开
-- Linux：`7z x kcs-docs-20260924.7z`（`p7zip-full` 或 `7zip` 包）
+- macOS：`brew install sevenzip` 后 `7zz x kcs-docs-20260924-2.7z`；或用 Keka / The Unarchiver 打开
+- Linux：`7z x kcs-docs-20260924-2.7z`（`p7zip-full` 或 `7zip` 包）
 - Windows：用 7-Zip 打开
 
 按提示输入口令。解出后把目录按原路径放回仓库根目录即可：这些文件已被 `.gitignore` 忽略，不会被再次提交。可用 `MANIFEST.txt` 里的 sha256 核对。
