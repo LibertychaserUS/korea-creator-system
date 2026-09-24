@@ -1,94 +1,50 @@
 /**
- * The select pool in SQL: filter, sort, page and rank on the publish snapshot
- * (`creators.metrics_locked`) without loading the pool into Node.
+ * The select pool: filter, sort and page on `creator_published` (migration
+ * 0023, written at publish / take-down by `published.ts`). Nothing here reads
+ * `creators` for the list or writes anything; percentiles are the columns the
+ * publish transaction stored (contract `cohort.ts`).
  *
- * Percentiles are the contract's cohort semantics (`percentileTenths`): cohort
- * = source × follower tier over every published, non-blacklisted creator; nulls
- * never ranked; fewer than two values → no percentile; low-is-better inverted.
- * Two ways to get the same integers:
- * - `rankedCte` — window functions over the whole published set, used when a
- *   saved query filters on a percentile (`percentileGte`) before paging;
- * - `withPercentiles` — grouped counts for just the rows on the page (and for
- *   detail / shortlist / project rows, which may no longer be in the pool).
+ * A snapshot older than 60 days still lists but shows no percentile and never
+ * passes a percentile filter, whatever the stored columns say until the next
+ * refresh.
  */
 import {
-  CREATOR_TIERS,
+  COHORT_RULES,
+  COST_METRIC_KEYS,
+  CURRENCIES,
   METRIC_KEYS,
   RANKED_METRIC_KEYS,
-  directedPercentileTenths,
-  bandOf,
+  currencyExponent,
   emptyMetrics,
-  metricField,
-  parsePaging,
+  isStale,
+  normalizeCurrency,
+  normalizeHealth,
+  parseCursorPaging,
   tierOf,
+  withServiceFee,
+  cohortGroupKey,
+  highlightFlags,
+  highlightKeys,
+  allFilters,
   type CreatorMetrics,
+  type MetricFilter,
   type MetricPercentiles,
   type NumericMetricKey,
   type Paging,
   type SavedQuery,
 } from '@kcs/contract'
-import type { Db } from '../db'
-import { asPublished, attachCreatorMeta, publicPoolRow } from './creators'
+import type { Db, Queryable } from '../db'
+import { asPublished, attachCreatorMeta, parseMetrics, publicPoolRow } from './creators'
+import { metricColumn, rankColumn, ranksFor } from './published'
+import { bytesToHex, CursorError, decodeCursor, encodeCursor, fingerprint, hexToFloat } from './cursor'
 
 const SNAPSHOT_KEYS = Object.keys(emptyMetrics())
 
-export const PUBLISHED_WHERE = `c.status = 'released' AND NOT EXISTS (
-  SELECT 1 FROM creator_categories bl WHERE bl.creator_id = c.id AND bl.category_slug = 'blacklist'
-)`
-
-/** A numeric metric from the publish snapshot; non-numbers read as null. */
-export function metricSql(key: NumericMetricKey, alias = 'c'): string {
-  if (!METRIC_KEYS.includes(key)) throw new Error(`unknown metric ${key}`)
-  return `(CASE WHEN jsonb_typeof(${alias}.metrics_locked->'${key}') = 'number'
-    THEN (${alias}.metrics_locked->>'${key}')::float8 END)`
-}
-
 /**
- * Several snapshot metrics at once: `jsonb_to_record` unpacks the (usually
- * compressed) jsonb once per row instead of once per metric.
- */
-export function snapshotValues(keys: readonly NumericMetricKey[], alias = 'c') {
-  const unique = [...new Set(keys)]
-  for (const key of unique) if (!METRIC_KEYS.includes(key)) throw new Error(`unknown metric ${key}`)
-  return {
-    lateral: `CROSS JOIN LATERAL jsonb_to_record(CASE WHEN jsonb_typeof(${alias}.metrics_locked) = 'object'
-      THEN ${alias}.metrics_locked ELSE '{}'::jsonb END) AS snap(${unique.map((key) => `"${key}" jsonb`).join(', ')})`,
-    col: (key: NumericMetricKey) =>
-      `(CASE WHEN jsonb_typeof(snap."${key}") = 'number' THEN (snap."${key}")::float8 END)`,
-  }
-}
-
-/** `tierOf` in SQL, generated from the same thresholds. */
-export function tierSql(followers: string): string {
-  const branches = CREATOR_TIERS.filter((tier) => tier.min > 0)
-    .map((tier) => `WHEN COALESCE(${followers}, 0) >= ${tier.min} THEN '${tier.id}'`)
-    .join(' ')
-  return `(CASE ${branches} ELSE 'unknown' END)`
-}
-
-const TIER = tierSql(metricSql('followers'))
-const HEALTH = `(c.metrics_locked->>'health')`
-
-class Params {
-  readonly values: unknown[] = []
-  add(value: unknown): string {
-    this.values.push(value)
-    return `$${this.values.length}`
-  }
-}
-
-function list(raw: string | undefined): string[] {
-  return raw ? raw.split(',') : []
-}
-
-/**
- * Every released row gets a complete, derived snapshot, so SQL can read
- * `metrics_locked` exactly as `asPublished` would. Publish and seed already
- * write one; this heals rows released before snapshots existed or written
- * straight to the table. `full` also re-checks every snapshot for missing keys
- * (it reads each jsonb, so it runs at startup and after seeding); the default
- * only looks for released rows with no snapshot at all, which is cheap enough
- * for every pool request.
+ * Every released row gets a complete, derived snapshot in `metrics_locked`.
+ * Publish and seed already write one; this heals rows released before
+ * snapshots existed or written straight to the table. Runs only at startup and
+ * after seeding (then `refreshPublished` rebuilds the pool table from it).
  */
 export async function ensurePublishedSnapshots(db: Db, options: { full?: boolean } = {}): Promise<number> {
   const { rows } = await db.query(
@@ -106,7 +62,9 @@ export async function ensurePublishedSnapshots(db: Db, options: { full?: boolean
     await db.query(
       `UPDATE creators
           SET metrics_locked = $2,
-              metrics_locked_at = COALESCE(metrics_locked_at, metrics_fetched_at, updated_at)
+              metrics_locked_at = COALESCE(metrics_locked_at, metrics_fetched_at, updated_at),
+              metrics_locked_fetched_at = COALESCE(metrics_locked_fetched_at,
+                LEAST(COALESCE(metrics_fetched_at, metrics_locked_at, updated_at), COALESCE(metrics_locked_at, updated_at)))
         WHERE id = $1 AND status = 'released'`,
       [item.id, JSON.stringify(asPublished(item).metrics)],
     )
@@ -114,166 +72,235 @@ export async function ensurePublishedSnapshots(db: Db, options: { full?: boolean
   return items.length
 }
 
-type Cohort = { source: string | null; tier: string; size: number } | null
+const EXPONENT_SQL = `(CASE p.price_currency ${CURRENCIES.map((code) => `WHEN '${code}' THEN ${10 ** currencyExponent(code)}`).join(' ')} ELSE 100 END)`
+const TO_CNY_SQL = `(CASE WHEN p.price_currency = 'CNY' THEN 1 ELSE p.price_fx END)`
 
-type CohortMode = {
-  /** Saved queries rank source-less rows as their own cohort; the plain pool does not rank them. */
-  nullSourceCohort: boolean
-  keys: readonly NumericMetricKey[]
-}
-
-/**
- * Percentiles and cohort for a handful of rows against the published pool,
- * via one grouped count per row. Each row's own snapshot values are compared,
- * so a row that has left the pool is ranked against who is still in it.
- */
-export async function withPercentiles<T extends Record<string, any>>(
-  db: Db,
-  items: T[],
-  mode: CohortMode,
-): Promise<Array<T & { tier: string; cohort: Cohort; percentiles: MetricPercentiles }>> {
-  if (!items.length) return []
-  const keys = mode.keys.filter((key) => RANKED_METRIC_KEYS.includes(key))
-  const input = items.map((item) => {
-    const metrics = item.metrics as CreatorMetrics
-    const source: string | null = item.source ?? null
-    return { source, tier: tierOf(metrics.followers), metrics, ranked: source != null || mode.nullSourceCohort }
-  })
-  const wanted = [...new Map(
-    input.filter((row) => row.ranked).map((row) => [`${row.source}\u0000${row.tier}`, { source: row.source, tier: row.tier }]),
-  ).values()]
-  const cohorts = new Map<string, { size: number; sorted: number[][] }>()
-  if (wanted.length) {
-    const snapshot = snapshotValues(['followers', ...keys])
-    // One sorted value list per (cohort, metric); the rows on the page are
-    // then counted against it by binary search instead of row-by-row in SQL.
-    const { rows } = await db.query(
-      `WITH base AS (
-         SELECT c.source, ${tierSql(snapshot.col('followers'))} AS tier
-                ${keys.map((key, i) => `, ${snapshot.col(key)} AS m${i}`).join('')}
-           FROM creators c ${snapshot.lateral}
-          WHERE ${PUBLISHED_WHERE}
-       ), wanted AS (
-         SELECT * FROM jsonb_to_recordset($1::jsonb) AS w(source text, tier text)
-       )
-       SELECT b.source, b.tier, count(*)::int AS size
-              ${keys.map((_, i) => `, array_agg(b.m${i} ORDER BY b.m${i}) FILTER (WHERE b.m${i} IS NOT NULL) AS a${i}`).join('')}
-         FROM base b JOIN wanted w ON b.source IS NOT DISTINCT FROM w.source AND b.tier = w.tier
-        GROUP BY b.source, b.tier`,
-      [JSON.stringify(wanted)],
-    )
-    for (const row of rows) {
-      cohorts.set(`${row.source}\u0000${row.tier}`, {
-        size: Number(row.size),
-        sorted: keys.map((_, i) => (row[`a${i}`] ?? []).map(Number)),
-      })
-    }
+class Params {
+  readonly values: unknown[] = []
+  add(value: unknown): string {
+    this.values.push(value)
+    return `$${this.values.length}`
   }
-  return items.map((item, idx) => {
-    const { source, tier, metrics, ranked } = input[idx]
-    const cohort = cohorts.get(`${source}\u0000${tier}`)
-    const percentiles: MetricPercentiles = {}
-    if (ranked && cohort) {
-      keys.forEach((key, i) => {
-        const value = metrics[key]
-        if (typeof value !== 'number') return
-        const sorted = cohort.sorted[i]
-        const below = firstIndex(sorted, (v) => v >= value)
-        const equal = firstIndex(sorted, (v) => v > value) - below
-        const tenths = directedPercentileTenths(key, below, equal, sorted.length)
-        if (tenths == null) return
-        percentiles[key] = { percentile: tenths / 10, band: bandOf(tenths / 10) }
-      })
-    }
-    return {
-      ...item,
-      followers: metrics.followers,
-      tier,
-      cohort: ranked ? { source, tier, size: cohort?.size ?? 0 } : null,
-      percentiles,
-    }
-  })
 }
 
-function firstIndex(sorted: number[], test: (value: number) => boolean): number {
-  let lo = 0
-  let hi = sorted.length
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (test(sorted[mid])) hi = mid
-    else lo = mid + 1
-  }
-  return lo
-}
-
-/**
- * Per-row directed percentile (tenths) for `keys` over the whole published
- * set, partitioned by source × tier (NULL source is its own partition).
- */
-function rankedCte(keys: readonly NumericMetricKey[]): string {
-  const snapshot = snapshotValues(['followers', ...keys])
-  const cols = keys.map((key, i) => {
-    if (!metricField(key).better) return `NULL::bigint AS p${i}`
-    const cohort = 'PARTITION BY source, tier'
-    const below = `(rank() OVER (${cohort} ORDER BY m${i}) - 1)`
-    const equal = `count(*) OVER (${cohort}, m${i})`
-    const n = `count(m${i}) OVER (${cohort})`
-    const tenths = `((1000 * (2 * ${below} + ${equal}) + ${n}) / (2 * ${n}))`
-    const low = metricField(key).better === 'low'
-    return `CASE WHEN m${i} IS NULL OR ${n} < 2 THEN NULL ELSE ${low ? `1000 - ${tenths}` : tenths} END AS p${i}`
-  })
-  return `ranked AS (
-    SELECT id ${cols.length ? `, ${cols.join(', ')}` : ''}
-      FROM (
-        SELECT c.id, c.source, ${tierSql(snapshot.col('followers'))} AS tier
-               ${keys.map((key, i) => `, ${snapshot.col(key)} AS m${i}`).join('')}
-          FROM creators c ${snapshot.lateral} WHERE ${PUBLISHED_WHERE}
-      ) published
-  )`
-}
-
-type PageResult<T> = { items: T[]; total: number; page: number; pageSize: number }
-
-async function runPage(
-  db: Db,
-  sql: { with?: string; join?: string; where: string[]; order: string },
-  params: Params,
-  paging: Paging,
-): Promise<{ ids: string[]; total: number }> {
-  const where = [PUBLISHED_WHERE, ...sql.where].join('\n AND ')
-  const from = `FROM creators c ${sql.join ?? ''} WHERE ${where}`
-  const prefix = sql.with ? `WITH ${sql.with}` : ''
-  const limit = params.add(paging.pageSize)
-  const offset = params.add(paging.offset)
-  const { rows } = await db.query(
-    `${prefix} SELECT c.id, count(*) OVER ()::int AS total ${from}
-      ORDER BY ${sql.order} LIMIT ${limit} OFFSET ${offset}`,
-    params.values,
-  )
-  if (rows.length || paging.offset === 0) {
-    return { ids: rows.map((row) => String(row.id)), total: rows[0]?.total ?? 0 }
-  }
-  const counted = await db.query(`${prefix} SELECT count(*)::int AS total ${from}`, params.values.slice(0, -2))
-  return { ids: [], total: counted.rows[0].total }
-}
-
-async function loadPublished(db: Db, ids: string[]) {
-  if (!ids.length) return []
-  const { rows } = await db.query('SELECT * FROM creators WHERE id = ANY($1)', [ids])
-  const byId = new Map((await attachCreatorMeta(db, rows, false)).map((item) => [item.id, item]))
-  return ids.map((id) => asPublished(byId.get(id)!))
+function list(raw: string | undefined): string[] {
+  return raw ? raw.split(',') : []
 }
 
 function numberParam(raw: string): number | null {
   const n = Number(raw)
-  return Number.isNaN(n) ? null : n
+  return Number.isFinite(n) ? n : null
 }
 
-function order(sortKey: NumericMetricKey, dir: 'ASC' | 'DESC', tail: string[]): string {
-  return [`${metricSql(sortKey)} ${dir} NULLS LAST`, ...tail, 'c.id COLLATE "C"'].join(', ')
+function num(value: unknown): number | null {
+  if (value == null) return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
 }
 
-const COLLAB_COUNT = '(SELECT count(*) FROM collaborations col WHERE col.creator_id = c.id)'
+function iso(value: unknown): string | null {
+  if (value == null) return null
+  return value instanceof Date ? value.toISOString() : String(value)
+}
+
+const col = (key: NumericMetricKey | 'followers') => `p.${metricColumn(key)}`
+
+function staleBefore(now: Date): Date {
+  return new Date(now.getTime() - COHORT_RULES.staleDays * 86_400_000)
+}
+
+type PageResult<T> = {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+  nextCursor: string | null
+  prevCursor: string | null
+}
+
+/** One float8 sort column; every list ends with `creator_id` (C collation) so the order is total. */
+type OrderCol = { expr: string; dir: 'ASC' | 'DESC' }
+
+function orderSql(cols: OrderCol[], reverse: boolean): string {
+  const flip = (dir: 'ASC' | 'DESC') => (reverse ? (dir === 'ASC' ? 'DESC' : 'ASC') : dir)
+  return [
+    ...cols.map((c) => `${c.expr} ${flip(c.dir)} NULLS ${reverse ? 'FIRST' : 'LAST'}`),
+    `p.creator_id COLLATE "C" ${flip('ASC')}`,
+  ].join(', ')
+}
+
+/**
+ * Rows strictly after (or before) the boundary row in `cols` order, NULLS
+ * LAST: position by position, "the earlier columns equal and this one past it".
+ * Nothing sorts after a null but more nulls, which the later columns settle.
+ */
+function keysetSql(cols: OrderCol[], keys: Array<number | null>, id: string, params: Params, side: 'after' | 'before'): string {
+  const parts: string[] = []
+  for (let i = 0; i <= cols.length; i += 1) {
+    if (side === 'after' && i < cols.length && keys[i] == null) continue
+    const equal = cols.slice(0, i).map((c, j) => (keys[j] == null ? `${c.expr} IS NULL` : `${c.expr} = ${params.add(String(keys[j]))}::float8`))
+    let step: string
+    if (i === cols.length) {
+      step = `p.creator_id COLLATE "C" ${side === 'after' ? '>' : '<'} ${params.add(id)}`
+    } else {
+      const { expr, dir } = cols[i]
+      const v = keys[i]
+      const past = (dir === 'ASC') === (side === 'after') ? '>' : '<'
+      if (side === 'after') step = `(${expr} ${past} ${params.add(String(v))}::float8 OR ${expr} IS NULL)`
+      else step = v == null ? `${expr} IS NOT NULL` : `${expr} ${past} ${params.add(String(v))}::float8`
+    }
+    parts.push(`(${[...equal, step].join(' AND ')})`)
+  }
+  return `(${parts.join(' OR ')})`
+}
+
+async function runPage(
+  db: Queryable,
+  where: string[],
+  cols: OrderCol[],
+  params: Params,
+  paging: Paging & { cursor: string | null },
+  listFingerprint: string,
+): Promise<{ rows: Array<Record<string, any>>; total: number; page: number; nextCursor: string | null; prevCursor: string | null }> {
+  const base = ['NOT p.blacklisted', ...where]
+  const countSql = `SELECT count(*)::int AS total FROM creator_published p WHERE ${base.join('\n AND ')}`
+  const countValues = [...params.values]
+  let page = paging.page
+  let offset = paging.offset
+  let reverse = false
+  let direction: 'offset' | 'n' | 'p' = 'offset'
+  const clause = [...base]
+  if (paging.cursor) {
+    const cursor = decodeCursor(paging.cursor, listFingerprint)
+    if (cursor.k.length !== cols.length) throw new CursorError('cursor_invalid')
+    clause.push(keysetSql(cols, cursor.k.map(hexToFloat), cursor.id, params, cursor.d === 'n' ? 'after' : 'before'))
+    direction = cursor.d
+    reverse = cursor.d === 'p'
+    page = cursor.d === 'n' ? cursor.page + 1 : Math.max(1, cursor.page - 1)
+    offset = 0
+  }
+  const values = [...params.values]
+  const keys = cols.map((c, i) => `float8send(${c.expr}) AS __k${i}`).join(', ')
+  // Both awaited together: a failing database rejects once, never leaving an unhandled rejection behind.
+  const [fetched, counted] = await Promise.all([
+    db.query(
+      `SELECT p.*, ${keys} FROM creator_published p WHERE ${clause.join('\n AND ')}
+        ORDER BY ${orderSql(cols, reverse)} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, paging.pageSize + 1, offset],
+    ),
+    db.query(countSql, countValues),
+  ])
+  const more = fetched.rows.length > paging.pageSize
+  const rows = fetched.rows.slice(0, paging.pageSize)
+  if (reverse) rows.reverse()
+  const cursorAt = (row: Record<string, any> | undefined, d: 'n' | 'p') =>
+    row ? encodeCursor({ v: 1, f: listFingerprint, d, k: cols.map((_, i) => bytesToHex(row[`__k${i}`])), id: String(row.creator_id), page }) : null
+  const hasNext = direction === 'p' ? rows.length > 0 : more
+  const hasPrev = direction === 'offset' ? page > 1 : direction === 'n' ? rows.length > 0 : more
+  const nextCursor = hasNext ? cursorAt(rows.at(-1), 'n') : null
+  const prevCursor = hasPrev ? cursorAt(rows[0], 'p') : null
+  for (const row of rows) for (let i = 0; i < cols.length; i += 1) delete row[`__k${i}`]
+  return { rows, total: counted.rows[0].total, page, nextCursor, prevCursor }
+}
+
+async function groupSizes(db: Queryable, keys: string[]): Promise<Map<string, number>> {
+  if (!keys.length) return new Map()
+  const { rows } = await db.query(
+    `SELECT group_key, count(*)::int AS n FROM creator_published
+      WHERE group_key = ANY($1) AND NOT blacklisted GROUP BY group_key`,
+    [[...new Set(keys)]],
+  )
+  return new Map(rows.map((row) => [String(row.group_key), Number(row.n)]))
+}
+
+/** Pool-table rows → the same shape `publicPoolRow` has always sent. */
+async function hydrate(db: Queryable, rows: Array<Record<string, any>>, now: Date) {
+  if (!rows.length) return []
+  const ids = rows.map((row) => String(row.creator_id))
+  const [sources, sizes] = await Promise.all([
+    db.query(
+      `SELECT creator_id, source, external_id, first_seen_at, last_seen_at
+         FROM creator_sources WHERE creator_id = ANY($1) ORDER BY first_seen_at`,
+      [ids],
+    ),
+    groupSizes(db, rows.map((row) => String(row.group_key))),
+  ])
+  return rows.map((row) => {
+    const metrics = parseMetrics(row.metrics, row.source) ?? emptyMetrics()
+    const stale = isStale(row.fetched_at, now)
+    const currency = row.price_currency == null ? null : String(row.price_currency)
+    const major = (value: unknown) => (value == null || currency == null ? null : Number(value) / 10 ** currencyExponent(currency))
+    return {
+      id: String(row.creator_id),
+      creatorKey: row.creator_key,
+      displayName: row.display_name,
+      followers: num(row.m_followers),
+      followersUnknown: Boolean(row.followers_unknown),
+      regions: row.regions ?? [],
+      verticals: row.verticals ?? [],
+      categories: row.categories ?? [],
+      hasCollaborated: Number(row.collab_count) > 0,
+      collabCount: Number(row.collab_count),
+      collabBrands: row.collab_brands ?? [],
+      price: currency
+        ? { amountMin: major(row.price_min_minor), amountMax: major(row.price_max_minor), currency, unit: row.price_unit, fxToCny: num(row.price_fx) }
+        : null,
+      source: row.source ?? null,
+      externalId: row.external_id ?? null,
+      xhsId: row.xhs_id ?? null,
+      sources: sources.rows
+        .filter((item) => item.creator_id === row.creator_id)
+        .map((item) => ({
+          source: item.source,
+          externalId: item.external_id,
+          firstSeenAt: iso(item.first_seen_at),
+          lastSeenAt: iso(item.last_seen_at),
+        })),
+      metricsFetchedAt: iso(row.latest_fetched_at),
+      snapshotFetchedAt: iso(row.fetched_at),
+      tier: String(row.tier),
+      cohort: {
+        source: row.source ?? null,
+        tier: String(row.tier),
+        size: sizes.get(String(row.group_key)) ?? 0,
+        window: Number(row.window),
+        contentForm: row.content_form ?? null,
+      },
+      metrics,
+      percentiles: stale ? {} : ((row.ranks ?? {}) as MetricPercentiles),
+      metricsLocked: metrics,
+      metricsLockedAt: iso(row.published_at),
+      stale,
+    }
+  })
+}
+
+function orderCols(sortKey: NumericMetricKey | 'followers', dir: 'ASC' | 'DESC', tail: OrderCol[]): OrderCol[] {
+  return [{ expr: col(sortKey), dir }, ...tail]
+}
+
+/** What a pool cursor is bound to: the list and every parameter but the paging ones. */
+function poolFingerprint(query: Record<string, string | undefined>): string {
+  const rest = Object.entries(query)
+    .filter(([key, value]) => value !== undefined && !['page', 'pageSize', 'cursor'].includes(key))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return fingerprint(['pool', rest])
+}
+
+function priceFilter(query: Record<string, string | undefined>, params: Params): string | null {
+  if (!query.priceMin && !query.priceMax) return null
+  const min = query.priceMin ? numberParam(query.priceMin) : 0
+  const max = query.priceMax ? numberParam(query.priceMax) : Number.MAX_SAFE_INTEGER
+  const currency = query.currency ? normalizeCurrency(query.currency) : null
+  if (min == null || max == null || (query.currency && !currency)) return 'false'
+  // With `currency`: that currency's own amounts. Without: 人民币, converting only
+  // quotes that carry a recorded rate — never comparing 원 with 元 as numbers.
+  const amount = (column: string) => `(p.${column}::numeric / ${EXPONENT_SQL})${currency ? '' : ` * ${TO_CNY_SQL}`}`
+  return `(p.price_currency IS NOT NULL
+    AND ${currency ? `p.price_currency = ${params.add(currency)}` : `${TO_CNY_SQL} IS NOT NULL`}
+    AND COALESCE(${amount('price_min_minor')}, ${amount('price_max_minor')}, 0) <= ${params.add(max)}::numeric
+    AND COALESCE(${amount('price_max_minor')}, ${amount('price_min_minor')}, 0) >= ${params.add(min)}::numeric)`
+}
 
 /**
  * GET /api/select/pool. Filters (all optional, lists comma-separated):
@@ -282,45 +309,37 @@ const COLLAB_COUNT = '(SELECT count(*) FROM collaborations col WHERE col.creator
  * `<metric>Min/Max`; `sort` (a metric or `followers`, default `cpe`) with
  * `dir` (alias `order`); `page` / `pageSize`.
  */
-export async function poolPage(db: Db, query: Record<string, string | undefined>): Promise<PageResult<Record<string, any>>> {
-  await ensurePublishedSnapshots(db)
+export async function poolPage(
+  db: Db,
+  query: Record<string, string | undefined>,
+  now = new Date(),
+): Promise<PageResult<Record<string, any>>> {
   const params = new Params()
   const where: string[] = []
 
-  if (query.hasCollaborated === 'true') where.push(`${COLLAB_COUNT} > 0`)
-  if (query.hasCollaborated === 'false') where.push(`${COLLAB_COUNT} = 0`)
-  if (query.priceMin || query.priceMax) {
-    const min = query.priceMin ? numberParam(query.priceMin) : 0
-    const max = query.priceMax ? numberParam(query.priceMax) : Number.MAX_SAFE_INTEGER
-    if (min == null || max == null) where.push('false')
-    else {
-      where.push(`EXISTS (
-        SELECT 1 FROM (SELECT * FROM prices pr WHERE pr.creator_id = c.id LIMIT 1) pr
-         WHERE COALESCE(pr.amount_min, pr.amount_max, 0) <= ${params.add(max)}::float8
-           AND COALESCE(pr.amount_max, pr.amount_min, 0) >= ${params.add(min)}::float8
-           ${query.currency ? `AND pr.currency = ${params.add(query.currency)}` : ''})`)
-    }
-  }
-  if (query.categories) {
-    where.push(`EXISTS (SELECT 1 FROM creator_categories cc WHERE cc.creator_id = c.id
-      AND cc.category_slug = ANY(${params.add(list(query.categories))}::text[]))`)
-  }
+  if (query.hasCollaborated === 'true') where.push('p.collab_count > 0')
+  if (query.hasCollaborated === 'false') where.push('p.collab_count = 0')
+  const price = priceFilter(query, params)
+  if (price) where.push(price)
+  if (query.categories) where.push(`p.categories && ${params.add(list(query.categories))}::text[]`)
   if (query.category) {
     const wanted = params.add(list(query.category))
-    where.push(`(EXISTS (SELECT 1 FROM creator_categories cc WHERE cc.creator_id = c.id
-      AND cc.category_slug = ANY(${wanted}::text[])) OR c.verticals && ${wanted}::text[])`)
+    where.push(`(p.categories && ${wanted}::text[] OR p.verticals && ${wanted}::text[])`)
   }
-  if (query.verticals) where.push(`c.verticals && ${params.add(list(query.verticals))}::text[]`)
+  if (query.verticals) where.push(`p.verticals && ${params.add(list(query.verticals))}::text[]`)
   for (const [param, op] of [['collabCountMin', '>='], ['collabCountMax', '<=']] as const) {
     if (!query[param]) continue
     const n = numberParam(query[param]!)
-    where.push(n == null ? 'false' : `${COLLAB_COUNT} ${op} ${params.add(n)}::float8`)
+    where.push(n == null ? 'false' : `p.collab_count ${op} ${params.add(n)}::float8`)
   }
-  if (query.tier) where.push(`${TIER} = ANY(${params.add(list(query.tier))}::text[])`)
-  if (query.health) where.push(`${HEALTH} = ANY(${params.add(list(query.health))}::text[])`)
-  if (query.source) where.push(`c.source = ANY(${params.add(list(query.source))}::text[])`)
+  if (query.tier) where.push(`p.tier = ANY(${params.add(list(query.tier))}::text[])`)
+  if (query.health) {
+    const grades = list(query.health).map((grade) => normalizeHealth(grade, null, null).health ?? grade)
+    where.push(`p.health = ANY(${params.add(grades)}::text[])`)
+  }
+  if (query.source) where.push(`p.source = ANY(${params.add(list(query.source))}::text[])`)
   if (query.region) {
-    where.push(`EXISTS (SELECT 1 FROM unnest(c.regions) r, unnest(${params.add(list(query.region))}::text[]) w
+    where.push(`EXISTS (SELECT 1 FROM unnest(p.regions) r, unnest(${params.add(list(query.region))}::text[]) w
       WHERE strpos(lower(r), lower(w)) > 0)`)
   }
   if (query.brand) {
@@ -328,17 +347,17 @@ export async function poolPage(db: Db, query: Record<string, string | undefined>
     if (!wanted.length) where.push('false')
     else {
       where.push(`EXISTS (SELECT 1 FROM unnest(${params.add(wanted)}::text[]) w WHERE strpos(lower(concat_ws(' ',
-        (SELECT string_agg(col.brand, ' ') FROM collaborations col WHERE col.creator_id = c.id),
-        NULLIF(array_to_string(c.verticals, ' '), ''),
-        c.display_name,
-        (SELECT string_agg(cc.category_slug, ' ') FROM creator_categories cc WHERE cc.creator_id = c.id)
+        NULLIF(array_to_string(p.collab_brands, ' '), ''),
+        NULLIF(array_to_string(p.verticals, ' '), ''),
+        p.display_name,
+        NULLIF(array_to_string(p.categories, ' '), '')
       )), lower(w)) > 0)`)
     }
   }
   if (query.q) {
-    where.push(`strpos(lower(concat_ws(' ', c.display_name, c.creator_key,
-      NULLIF(array_to_string(c.regions, ' '), ''), NULLIF(array_to_string(c.verticals, ' '), ''),
-      (SELECT string_agg(col.brand, ' ') FROM collaborations col WHERE col.creator_id = c.id)
+    where.push(`strpos(lower(concat_ws(' ', p.display_name, p.creator_key,
+      NULLIF(array_to_string(p.regions, ' '), ''), NULLIF(array_to_string(p.verticals, ' '), ''),
+      NULLIF(array_to_string(p.collab_brands, ' '), '')
     )), lower(${params.add(query.q)})) > 0`)
   }
   for (const key of METRIC_KEYS) {
@@ -346,7 +365,7 @@ export async function poolPage(db: Db, query: Record<string, string | undefined>
       const raw = query[`${key}${suffix}`]
       if (raw == null || raw === '') continue
       const n = numberParam(raw)
-      where.push(n == null ? 'false' : `${metricSql(key)} ${op} ${params.add(n)}::float8`)
+      where.push(n == null ? 'false' : `${col(key)} ${op} ${params.add(n)}::float8`)
     }
   }
 
@@ -354,88 +373,89 @@ export async function poolPage(db: Db, query: Record<string, string | undefined>
     ? query.sort
     : 'cpe') as NumericMetricKey
   const dir = (query.dir ?? query.order ?? (sortKey === 'cpe' ? 'asc' : 'desc')) === 'asc' ? 'ASC' : 'DESC'
-  const paging = parsePaging(query)
-  const { ids, total } = await runPage(
-    db,
-    { where, order: order(sortKey, dir, [`${metricSql('followers')} DESC NULLS LAST`]) },
-    params,
-    paging,
-  )
-  const items = await withPercentiles(db, await loadPublished(db, ids), {
-    nullSourceCohort: false,
-    keys: RANKED_METRIC_KEYS,
-  })
-  return { items: items.map(publicPoolRow), total, page: paging.page, pageSize: paging.pageSize }
+  const paging = parseCursorPaging(query)
+  const cols = orderCols(sortKey, dir, [{ expr: col('followers'), dir: 'DESC' }])
+  const { rows, total, page, nextCursor, prevCursor } = await runPage(db, where, cols, params, paging, poolFingerprint(query))
+  const items = await hydrate(db, rows, now)
+  return { items: items.map(publicPoolRow), total, page, pageSize: paging.pageSize, nextCursor, prevCursor }
 }
 
-/** Keys a saved query ranks: its columns, filters and highlights, in that order. */
+/** Keys a saved query shows: its columns, filters and highlights, in that order. */
 export function savedQueryKeys(spec: SavedQuery): NumericMetricKey[] {
-  return [...new Set([...spec.columns, ...spec.filters.map((f) => f.key), ...spec.highlights.map((h) => h.key)])]
+  return [...new Set([...spec.columns, ...allFilters(spec).map((f) => f.key), ...highlightKeys(spec.highlights)])]
 }
 
 /**
- * POST /api/select/queries/run — `applySavedQuery` in SQL, plus the page's
- * free-text `q` (name / creator key / 小红书号). Order: the spec's sort (nulls
- * last), then CPE ascending, then followers descending, then id.
+ * POST /api/select/queries/run — `applySavedQuery` over the pool table, plus
+ * the page's free-text `q` (name / creator key / 小红书号, on top of the spec's
+ * own saved `search`). Order: the spec's sort (nulls last), then CPE
+ * ascending, then followers descending, then id.
  */
 export async function savedQueryPage(
   db: Db,
   spec: SavedQuery,
   query: Record<string, string | undefined>,
+  now = new Date(),
 ): Promise<PageResult<Record<string, any>>> {
-  await ensurePublishedSnapshots(db)
   const params = new Params()
   const where: string[] = []
 
-  if (spec.sources.length) where.push(`c.source = ANY(${params.add(spec.sources)}::text[])`)
-  if (spec.tiers.length) where.push(`${TIER} = ANY(${params.add(spec.tiers)}::text[])`)
-  if (spec.health.length) where.push(`${HEALTH} = ANY(${params.add(spec.health)}::text[])`)
-  if (spec.regions.length) where.push(`c.regions && ${params.add(spec.regions)}::text[]`)
+  if (spec.sources.length) where.push(`p.source = ANY(${params.add(spec.sources)}::text[])`)
+  if (spec.tiers.length) where.push(`p.tier = ANY(${params.add(spec.tiers)}::text[])`)
+  if (spec.health.length) where.push(`p.health = ANY(${params.add(spec.health)}::text[])`)
+  if (spec.regions.length) where.push(`p.regions && ${params.add(spec.regions)}::text[]`)
   if (spec.brandsAny.length) {
     const brands = params.add(spec.brandsAny)
-    where.push(`(EXISTS (
-        SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(c.metrics_locked->'coopBrands') = 'array'
-          THEN c.metrics_locked->'coopBrands' ELSE '[]'::jsonb END) b WHERE b = ANY(${brands}::text[]))
-      OR EXISTS (SELECT 1 FROM collaborations col WHERE col.creator_id = c.id AND col.brand = ANY(${brands}::text[])))`)
+    where.push(`(p.coop_brands && ${brands}::text[] OR p.collab_brands && ${brands}::text[])`)
   }
-  const ranked = [...new Set(spec.filters.filter((f) => f.op === 'percentileGte').map((f) => f.key))]
-  for (const f of spec.filters) {
+  const fee = spec.serviceFee ?? 0
+  // Thresholds on cost fields are read with the chosen service fee added, as shown.
+  const valueSql = (key: NumericMetricKey) => (fee && COST_METRIC_KEYS.includes(key) ? `(${col(key)} * ${1 + fee})` : col(key))
+  let fresh: string | null = null
+  const filterSql = (f: MetricFilter): string => {
     if (f.op === 'percentileGte') {
-      where.push(`r.p${ranked.indexOf(f.key)}::float8 / 10 >= ${params.add(f.value)}::float8`)
-    } else if (f.op === 'between') {
-      where.push(`${metricSql(f.key)} BETWEEN ${params.add(f.value[0])}::float8 AND ${params.add(f.value[1])}::float8`)
-    } else {
-      where.push(`${metricSql(f.key)} ${f.op === 'gte' ? '>=' : '<='} ${params.add(f.value)}::float8`)
+      if (!RANKED_METRIC_KEYS.includes(f.key)) return 'false'
+      fresh ??= params.add(staleBefore(now))
+      return `((p.fetched_at IS NULL OR p.fetched_at >= ${fresh}::timestamptz) AND p.${rankColumn(f.key)} >= ${params.add(Math.round(f.value * 10))}::int)`
     }
+    if (f.op === 'between') {
+      return `${valueSql(f.key)} BETWEEN ${params.add(f.value[0])}::float8 AND ${params.add(f.value[1])}::float8`
+    }
+    return `${valueSql(f.key)} ${f.op === 'gte' ? '>=' : '<='} ${params.add(f.value)}::float8`
   }
+  for (const f of spec.filters) where.push(filterSql(f))
+  for (const group of spec.groups ?? []) {
+    if (!group.filters.length) continue
+    const terms = group.filters.map(filterSql)
+    // A missing value fails its condition (NULL → false), in both kinds of group.
+    if (group.mode === 'any') where.push(`COALESCE((${terms.join(' OR ')}), false)`)
+    else where.push(`NOT COALESCE((${terms.join(' AND ')}), false)`)
+  }
+  if (spec.categories?.length) where.push(`p.categories && ${params.add(spec.categories)}::text[]`)
+  if (spec.hasCollaborated != null) where.push(spec.hasCollaborated ? 'p.collab_count > 0' : 'p.collab_count = 0')
+  if (spec.collabCountMin != null) where.push(`p.collab_count >= ${params.add(spec.collabCountMin)}::int`)
+  if (spec.collabCountMax != null) where.push(`p.collab_count <= ${params.add(spec.collabCountMax)}::int`)
+  const searchSql = (text: string) =>
+    `strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${params.add(text)})) > 0`
+  if (spec.search?.trim()) where.push(searchSql(spec.search.trim()))
   const search = (query.q ?? '').trim()
-  if (search) {
-    where.push(`strpos(lower(concat_ws(' ', c.display_name, c.creator_key, c.xhs_id)), lower(${params.add(search)})) > 0`)
-  }
+  if (search) where.push(searchSql(search))
 
-  const paging = parsePaging(query)
-  const { ids, total } = await runPage(
-    db,
-    {
-      with: ranked.length ? rankedCte(ranked) : undefined,
-      join: ranked.length ? 'JOIN ranked r ON r.id = c.id' : undefined,
-      where,
-      order: order(spec.sort.key as NumericMetricKey, spec.sort.dir === 'asc' ? 'ASC' : 'DESC', [
-        `${metricSql('cpe')} ASC NULLS LAST`,
-        `${metricSql('followers')} DESC NULLS LAST`,
-      ]),
-    },
-    params,
-    paging,
+  const paging = parseCursorPaging(query)
+  const cols = orderCols(spec.sort.key, spec.sort.dir === 'asc' ? 'ASC' : 'DESC', [
+    { expr: col('cpe'), dir: 'ASC' },
+    { expr: col('followers'), dir: 'DESC' },
+  ])
+  const { rows, total, page, nextCursor, prevCursor } = await runPage(
+    db, where, cols, params, paging, fingerprint(['query', spec, search]),
   )
-  const rows = await withPercentiles(db, await loadPublished(db, ids), {
-    nullSourceCohort: true,
-    keys: savedQueryKeys(spec),
-  })
-  const items = rows.map((item) => {
-    const metrics = item.metrics as CreatorMetrics
+  const keys = savedQueryKeys(spec)
+  const items = (await hydrate(db, rows, now)).map((item) => {
+    const metrics = withServiceFee(item.metrics as CreatorMetrics, fee)
+    const percentiles: MetricPercentiles = {}
+    for (const key of keys) if (item.percentiles[key]) percentiles[key] = item.percentiles[key]
     return {
-      id: String(item.id),
+      id: item.id,
       creatorKey: String(item.creatorKey),
       displayName: String(item.displayName),
       source: item.source,
@@ -444,15 +464,50 @@ export async function savedQueryPage(
       metrics,
       tier: item.tier,
       cohort: item.cohort,
-      percentiles: item.percentiles,
-      flags: spec.highlights
-        .filter((h) => {
-          const v = metrics[h.key]
-          return v != null && (h.op === 'gte' ? v >= h.value : v <= h.value)
-        })
-        .map((h) => ({ key: h.key, tone: h.tone })),
+      percentiles,
+      flags: highlightFlags({ source: item.source, metrics, percentiles: item.percentiles }, spec.highlights),
       health: metrics.health,
+      stale: item.stale,
     }
   })
-  return { items, total, page: paging.page, pageSize: paging.pageSize }
+  return { items, total, page, pageSize: paging.pageSize, nextCursor, prevCursor }
+}
+
+/**
+ * Tier, cohort and percentiles for creators shown outside the list (detail,
+ * shortlist, project): the stored ranks when they are in the pool, otherwise
+ * ranked against their group as it stands. Read only.
+ */
+export async function withPercentiles<T extends Record<string, any>>(
+  db: Queryable,
+  items: T[],
+  keys: readonly NumericMetricKey[] = RANKED_METRIC_KEYS,
+  now = new Date(),
+): Promise<Array<T & { tier: string; cohort: Record<string, unknown>; percentiles: MetricPercentiles; stale: boolean }>> {
+  if (!items.length) return []
+  const input = items.map((item) => {
+    const metrics = item.metrics as CreatorMetrics
+    const source: string | null = item.source ?? null
+    const group = cohortGroupKey({ source, window: metrics.window, contentForm: metrics.contentForm ?? null })
+    return { id: String(item.id), source, metrics, group, stale: isStale(item.snapshotFetchedAt, now) }
+  })
+  const [ranks, sizes] = await Promise.all([
+    ranksFor(db, input, now),
+    groupSizes(db, input.map((row) => row.group)),
+  ])
+  return items.map((item, index) => {
+    const { metrics, source, group, stale } = input[index]
+    const all = ranks.get(input[index].id) ?? {}
+    const percentiles: MetricPercentiles = {}
+    for (const key of keys) if (all[key]) percentiles[key] = all[key]
+    const tier = tierOf(metrics.followers)
+    return {
+      ...item,
+      followers: metrics.followers,
+      tier,
+      cohort: { source, tier, size: sizes.get(group) ?? 0, window: metrics.window, contentForm: metrics.contentForm ?? null },
+      percentiles,
+      stale,
+    }
+  })
 }

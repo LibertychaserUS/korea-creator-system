@@ -115,7 +115,7 @@ describe('creator publish and visibility', () => {
         source: 'pugongying',
         regions: ['서울'],
         verticals: ['beauty'],
-        metrics: { window: 30, followers: 88_000, cpe: 2.5, health: 'excellent' },
+        metrics: { window: 30, followers: 88_000, cpe: 2.5, health: 'healthy' },
       }),
     })
     const { id } = await created.json()
@@ -126,7 +126,7 @@ describe('creator publish and visibility', () => {
     await ctx.app.request(`/api/ops/creators/${id}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${ops.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ metrics: { window: 30, followers: 90_000, cpe: 4.5, health: 'normal' } }),
+      body: JSON.stringify({ metrics: { window: 30, followers: 90_000, cpe: 4.5, health: 'abnormal' } }),
     })
     const selector = await ctx.loginJson('selector@kcs.local')
     const detail = await ctx.app.request(`/api/select/creators/${id}`, {
@@ -135,8 +135,8 @@ describe('creator publish and visibility', () => {
     const body = await detail.json()
     expect(body.metrics.cpe).toBe(2.5)
     expect(body.metricsLocked.cpe).toBe(2.5)
-    expect(body.metricsLocked.health).toBe('excellent')
+    expect(body.metricsLocked.health).toBe('healthy')
     expect(body.metricsLatest.cpe).toBe(4.5)
-    expect(body.metricsLatest.health).toBe('normal')
+    expect(body.metricsLatest.health).toBe('abnormal')
   })
 })

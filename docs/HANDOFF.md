@@ -52,6 +52,9 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `LOG_REQUESTS` | `0` 关闭请求日志；默认每个请求一行 JSON（`http.request`：method / path / status / ms），健康探针成功不记 |
 | `SHUTDOWN_TIMEOUT_MS` | 收到 SIGTERM / SIGINT 后最多等多久（默认 25000），要小于编排的宽限期（k8s `terminationGracePeriodSeconds: 30`） |
 | `KCS_VERSION` | `/api/health` 报的版本号，缺省读 `apps/api/package.json` |
+| `KCS_CURSOR_SECRET` | 选人池翻页游标的签名密钥，缺省用 `BETTER_AUTH_SECRET`；都没有时每个进程启动随机生成（记 `cursor.ephemeral_secret` 警告），多副本或重启后旧游标 400。**多副本必须配成同一个值** |
+| `KCS_PUBLISHED_FULL_REFRESH` | `1` 时启动全量重建选人池窄表并重估各来源目标人数（5 万人约 24 秒，期间不监听端口）；缺省只补写有变化的行、重排相关的组（约 1 秒内）。改了池行推导逻辑的版本上线时设一次 |
+| `KCS_PUBLISHED_REFRESH_MS` | 后台重排全部组的间隔，默认 21600000（6 小时）；快照超过 60 天要靠它失去排位 |
 | `INGEST_WORKER` | `0` 时该进程不参与抽水，只服务 HTTP（多副本时给额外副本用；抽水本身已由顾问锁保证全局只有一条） |
 | `INGEST_LEASE_MS` | 抓取任务租约，默认 60000；超过这个时间没续约的任务会被别的进程接手续跑 |
 | `RETENTION_RAW_PER_SOURCE` | 每个（博主，来源）保留最新几条平台原始 JSON，默认 10；`0` 全留 |

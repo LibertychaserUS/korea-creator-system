@@ -93,8 +93,8 @@
             </TableCell>
             <TableCell><TierBadge :tier="row.tier" /></TableCell>
             <TableCell><HealthBadge :health="row.metrics?.health ?? row.health" /></TableCell>
-            <TableCell class="text-right"><MetricValue metric-key="cpe" :value="row.metrics?.cpe" :band="row.percentiles?.cpe?.band" /></TableCell>
-            <TableCell class="hidden text-right md:table-cell"><MetricValue metric-key="engagementRate" :value="row.metrics?.engagementRate" :band="row.percentiles?.engagementRate?.band" /></TableCell>
+            <TableCell class="text-right"><MetricValue metric-key="cpe" :value="row.metrics?.cpe" :rank="row.percentiles?.cpe" :cohort="row.cohort" :stale="row.stale" /></TableCell>
+            <TableCell class="hidden text-right md:table-cell"><MetricValue metric-key="engagementRate" :value="row.metrics?.engagementRate" :rank="row.percentiles?.engagementRate" :cohort="row.cohort" :stale="row.stale" /></TableCell>
             <TableCell class="text-right tabular-nums">{{ formatNumber(row.followers) }}</TableCell>
             <TableCell class="hidden text-right tabular-nums sm:table-cell">
               {{ formatPrice(row.price?.amountMin, row.price?.currency) }}

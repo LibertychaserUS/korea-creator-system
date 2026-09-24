@@ -1,8 +1,11 @@
 import {
+  normalizeMetrics,
+  toMinorUnits,
   SOURCE_DEFAULTS,
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
   SEED_USERS,
+  type CreatorMetrics,
   type SavedQuery,
   type SourceId,
 } from '@kcs/contract'
@@ -11,6 +14,15 @@ import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
 import { ensurePublishedSnapshots } from './http/pool'
+import { refreshPublished } from './http/published'
+import { upsertSavedQuery } from './http/saved-queries'
+
+/** Until the 蒲公英 adapter fills `lowActive` itself, its `health` still means 低活跃. */
+function seedMetrics(metrics: CreatorMetrics, source: SourceId): CreatorMetrics {
+  const raw: Record<string, unknown> = { ...metrics }
+  if (source === 'pugongying' && raw.lowActive == null) delete raw.lowActive
+  return normalizeMetrics(raw, source)
+}
 
 const BASE_DATA_SQL = new URL('./migrations/0008_base_reference_data.sql', import.meta.url)
 
@@ -43,7 +55,7 @@ const SAVED_QUERIES: SavedQuery[] = [
     'seed_query_kbeauty_value',
     defaultSavedQuery({
       name: '韩妆性价比',
-      health: ['excellent'],
+      health: ['healthy'],
       filters: [{ key: 'cpe', op: 'lte', value: 3 }],
       sort: { key: 'cpe', dir: 'asc' },
       columns: [...DEFAULT_QUERY_COLUMNS],
@@ -55,7 +67,8 @@ const SAVED_QUERIES: SavedQuery[] = [
       name: '潜力新人',
       health: [],
       tiers: ['junior'],
-      filters: [{ key: 'readToFollowerRatio', op: 'percentileGte', value: 75 }],
+      // No percentile filter: a percentile needs ≥ 10 comparable creators, more than the demo has per group.
+      filters: [],
       sort: { key: 'readToFollowerRatio', dir: 'desc' },
       columns: [...DEFAULT_QUERY_COLUMNS],
     }),
@@ -97,7 +110,7 @@ async function seedCreators(db: Db) {
       const result = adapter.normalize(raw)
       if (!result.ok) continue
       index += 1
-      const creator = result.creator
+      const creator = { ...result.creator, metrics: seedMetrics(result.creator.metrics, adapter.id) }
       const sourceId = `seed_${adapter.id}_${creator.externalId}`
       const exact = await db.query('SELECT id FROM creators WHERE id = $1', [sourceId])
       const matched = exact.rows[0] || !creator.xhsId
@@ -108,7 +121,7 @@ async function seedCreators(db: Db) {
           )
       const id = matched.rows[0]?.id ?? sourceId
       canonicalIds.set(sourceId, id)
-      const isBad = creator.metrics.health === 'abnormal'
+      const isBad = creator.metrics.health === 'abnormal' || creator.metrics.lowActive === true
       const released = !isBad && index % 6 !== 0
       const status = released ? 'released' : 'draft'
       await db.query(
@@ -209,10 +222,11 @@ async function seedCreators(db: Db) {
       await db.query('DELETE FROM prices WHERE creator_id = $1', [id])
       if (creator.metrics.priceImage != null) {
         await db.query(
-          `INSERT INTO prices (id, creator_id, amount_min, amount_max, currency, unit)
+          `INSERT INTO prices (id, creator_id, amount_min_minor, amount_max_minor, currency, unit)
            VALUES ($1,$2,$3,$4,'CNY','per_post')
-           ON CONFLICT (id) DO UPDATE SET amount_min = EXCLUDED.amount_min, amount_max = EXCLUDED.amount_max`,
-          [`price_${id}`, id, creator.metrics.priceImage, creator.metrics.priceVideo],
+           ON CONFLICT (id) DO UPDATE SET
+             amount_min_minor = EXCLUDED.amount_min_minor, amount_max_minor = EXCLUDED.amount_max_minor`,
+          [`price_${id}`, id, toMinorUnits(creator.metrics.priceImage, 'CNY'), toMinorUnits(creator.metrics.priceVideo, 'CNY')],
         )
       }
     }
@@ -243,7 +257,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
   if (opts.reset) {
     await db.query(`
       TRUNCATE TABLE
-        audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
+        audit_logs, creator_events, reviews, shortlist_items, assignments, projects, saved_queries,
         creator_raw, creator_metrics_history, creator_sources, prices, collaborations, creator_categories, creators, assets,
         ingest_jobs, ingest_source_usage, ingest_sources, users, orgs, categories
       RESTART IDENTITY CASCADE
@@ -282,15 +296,9 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
   }
   const canonicalIds = await seedCreators(db)
   await ensurePublishedSnapshots(db, { full: true })
+  await refreshPublished(db, { full: true })
   await seedProjects(db, orgId, canonicalIds)
-  for (const spec of SAVED_QUERIES) {
-    await db.query(
-      `INSERT INTO saved_queries (id, org_id, name, version, spec, created_by)
-       VALUES ($1,$2,$3,1,$4,'user_selector')
-       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, version = 1, spec = EXCLUDED.spec, updated_at = now()`,
-      [spec.id, orgId, spec.name, JSON.stringify(spec)],
-    )
-  }
+  for (const spec of SAVED_QUERIES) await upsertSavedQuery(db, orgId, spec, 'user_selector')
 
   const [users, talents, unpublished, projects, assignments, ingestJobs] = await Promise.all([
     db.query('SELECT count(*)::int AS n FROM users WHERE email = ANY($1)', [SEED_USERS.map((u) => u.email)]),

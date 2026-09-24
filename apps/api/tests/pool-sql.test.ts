@@ -6,18 +6,20 @@ import {
   emptyMetrics,
   PAGE_SIZE_DEFAULT,
   PAGE_SIZE_MAX,
+  toMinorUnits,
   type SavedQuery,
 } from '@kcs/contract'
 import { createTestApp, type TestCtx } from './helpers'
 import { enrichPoolItems, legacyRun, queryPool } from './legacy-pool'
 import { publicPoolRow, asPublished, loadCreator } from '../src/http/creators'
 import { ensurePublishedSnapshots } from '../src/http/pool'
+import { loadTargets, refreshPublished } from '../src/http/published'
 
 /**
- * Break: the SQL pool drifts from the contract's cohort semantics — a tie,
- * a null, a source-less row or a blacklisted row ranked differently than
- * `cohortPercentiles` / `applySavedQuery` would, or a page boundary drops or
- * repeats a row.
+ * Break: the pool table drifts from `creators` or from the contract's cohort
+ * engine — a tie, a null, a source-less row or a blacklisted row ranked
+ * differently than `rankGroup` / `applySavedQuery` would, or a page boundary
+ * drops or repeats a row.
  */
 describe('select pool in SQL matches the in-memory contract evaluation', () => {
   let ctx: TestCtx
@@ -31,6 +33,14 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
   }
   function pick<T>(values: readonly T[]): T {
     return values[Math.floor(rand() * values.length)]
+  }
+
+  function minorPair(min: number | null, max: number | null, currency: 'CNY' | 'KRW') {
+    return [
+      min == null ? null : toMinorUnits(min, currency),
+      max == null ? null : toMinorUnits(max, currency),
+      currency,
+    ]
   }
 
   beforeAll(async () => {
@@ -52,7 +62,7 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
         viralCount: pick([null, 0, 2]),
         priceImage: pick([null, 1_000, 3_000, 3_000, 9_000]),
         cpe: pick([null, null, null, 2.5, 3]),
-        health: pick([null, 'excellent', 'normal', 'abnormal'] as const),
+        health: pick([null, 'healthy', 'healthy', 'abnormal'] as const),
         coopBrands: pick([[], ['兰芝'], ['雪花秀', '兰芝']]),
       }
       const legacy = i % 17 === 0
@@ -95,9 +105,9 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
       }
       if (i % 3 === 0) {
         await ctx.db.query(
-          `INSERT INTO prices (id, creator_id, amount_min, amount_max, currency)
+          `INSERT INTO prices (id, creator_id, amount_min_minor, amount_max_minor, currency)
            VALUES (gen_random_uuid()::text, $1, $2, $3, $4)`,
-          [id, pick([null, 800, 2_000]), pick([null, 5_000, 30_000]), pick(['CNY', 'KRW'])],
+          [id, ...minorPair(pick([null, 800, 2_000]), pick([null, 5_000, 30_000]), pick(['CNY', 'KRW'] as const))],
         )
       }
     }
@@ -143,14 +153,37 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     return [...rows].sort(cmp)
   }
 
-  it('heals released rows whose snapshot is missing or partial, and only once', async () => {
-    const missing = (await ctx.db.query(
-      "SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL",
-    )).rows[0].n
+  it('heals released rows whose snapshot is missing or partial, and only once; reads write nothing', async () => {
+    const count = async (sql: string) => (await ctx.db.query(sql)).rows[0].n
+    const missing = await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL")
+    const tableRows = await count('SELECT count(*)::int AS n FROM creator_published')
     expect(missing).toBeGreaterThan(0)
+    await get(`/api/select/pool?region=${tag}`)
+    await get(`/api/select/shortlist`)
+    expect(await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL")).toBe(missing)
+    expect(await count('SELECT count(*)::int AS n FROM creator_published')).toBe(tableRows)
     expect(await ensurePublishedSnapshots(ctx.db)).toBe(missing)
     expect(await ensurePublishedSnapshots(ctx.db, { full: true })).toBeGreaterThan(0)
     expect(await ensurePublishedSnapshots(ctx.db, { full: true })).toBe(0)
+    const refreshed = await refreshPublished(ctx.db)
+    expect(refreshed.written).toBeGreaterThan(0)
+    expect(await count("SELECT count(*)::int AS n FROM creator_published WHERE creator_key LIKE '" + tag + "%'"))
+      .toBe(await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND creator_key LIKE '" + tag + "%'"))
+    const again = await refreshPublished(ctx.db)
+    expect(again).toMatchObject({ written: 0, removed: 0, changed: 0 })
+
+    // Startup mode: nothing to do → no group re-ranked; a lost row comes back with the ranks it had.
+    expect(await refreshPublished(ctx.db, { regroup: 'touched', calibrate: false })).toEqual({ written: 0, removed: 0, groups: 0, changed: 0 })
+    const { rows: [lost] } = await ctx.db.query(
+      "SELECT creator_id, group_key, ranks FROM creator_published WHERE creator_key LIKE $1 AND ranks <> '{}'::jsonb ORDER BY creator_id LIMIT 1",
+      [`${tag}%`],
+    )
+    await ctx.db.query('DELETE FROM creator_published WHERE creator_id = $1', [lost.creator_id])
+    const healed = await refreshPublished(ctx.db, { regroup: 'touched', calibrate: false })
+    expect(healed).toMatchObject({ written: 1, removed: 0, changed: 1 })
+    expect(healed.groups).toBeGreaterThanOrEqual(1)
+    const { rows: [back] } = await ctx.db.query('SELECT group_key, ranks FROM creator_published WHERE creator_id = $1', [lost.creator_id])
+    expect(back).toEqual({ group_key: lost.group_key, ranks: lost.ranks })
   })
 
   const poolQueries: Array<Record<string, string>> = [
@@ -158,14 +191,15 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     { sort: 'readMedian', dir: 'asc' },
     { sort: 'followers', order: 'desc' },
     { sort: 'engagementRate' },
-    { tier: 'mid,junior', health: 'excellent' },
+    { tier: 'mid,junior', health: 'healthy' },
+    { health: 'excellent' },
     { source: 'qiangua', cpeMax: '3' },
     { region: '上' },
     { brand: '兰' },
     { brand: ',' },
     { q: '博主 1' },
     { hasCollaborated: 'true' },
-    { hasCollaborated: 'false', sort: 'cpv' },
+    { hasCollaborated: 'false', sort: 'cpr' },
     { priceMin: '1000', priceMax: '20000' },
     { priceMin: '1000', currency: 'KRW' },
     { categories: 'blacklist' },
@@ -199,9 +233,39 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     { filters: [{ key: 'cpe', op: 'percentileGte', value: 60 }, { key: 'readMedian', op: 'percentileGte', value: 12.5 }] },
     { filters: [{ key: 'engagementRate', op: 'between', value: [0.01, 0.05] }], sort: { key: 'engagementRate', dir: 'asc' } },
     { filters: [{ key: 'followers', op: 'percentileGte', value: 10 }] },
-    { health: ['excellent'], regions: ['上海'], brandsAny: ['兰芝'] },
+    { health: ['healthy'], regions: ['上海'], brandsAny: ['兰芝'] },
     { columns: ['followers', 'priceImage', 'cpm', 'viralRate'], sort: { key: 'viralRate', dir: 'asc' } },
     { filters: [{ key: 'cpe', op: 'lte', value: 3 }], highlights: [{ key: 'readMedian', op: 'gte', value: 1_000, tone: 'good' }] },
+    {
+      columns: ['followers'],
+      highlights: [
+        { key: 'health', op: 'eq', value: 'abnormal', tone: 'bad' },
+        { key: 'cpe', op: 'percentileGte', value: 50, tone: 'good' },
+        { key: 'readMedian', op: 'gte', value: 1_000, tone: 'good', sources: ['qiangua'] },
+        { key: 'interactionMedian', op: 'percentileLte', value: 40, tone: 'warn' },
+      ],
+    },
+    { groups: [{ mode: 'any', filters: [{ key: 'cpe', op: 'lte', value: 2 }, { key: 'readMedian', op: 'percentileGte', value: 80 }] }] },
+    {
+      groups: [
+        { mode: 'exclude', filters: [{ key: 'engagementRate', op: 'lte', value: 0.03 }, { key: 'followers', op: 'gte', value: 100_000 }] },
+        { mode: 'exclude', filters: [] },
+      ],
+      sort: { key: 'followers', dir: 'desc' },
+    },
+    {
+      filters: [{ key: 'followers', op: 'gte', value: 5_000 }],
+      groups: [
+        { mode: 'any', filters: [{ key: 'cpe', op: 'between', value: [0, 3] }, { key: 'viralRate', op: 'gte', value: 0.1 }] },
+        { mode: 'exclude', filters: [{ key: 'cpe', op: 'percentileGte', value: 90 }] },
+      ],
+      serviceFee: 0.1,
+    },
+    { categories: ['collaborated', 'never_collaborated'], hasCollaborated: true },
+    { categories: ['never_collaborated'] },
+    { hasCollaborated: false, sort: { key: 'readMedian', dir: 'desc' } },
+    { collabCountMin: 1, collabCountMax: 2 },
+    { search: 'XHS1', sources: ['pugongying', 'qiangua'] },
   ]
 
   for (const [index, overrides] of specs.entries()) {
@@ -252,16 +316,78 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
 
   it('detail percentiles equal the whole-pool evaluation without loading the pool', async () => {
     const pool = await queryPool(ctx.db, {})
+    const targets = await loadTargets(ctx.db)
     const sample = pool.filter((item) => String(item.creatorKey).startsWith(tag)).slice(0, 25)
     for (const item of sample) {
       const detail = await get(`/api/select/creators/${item.id}`)
       const published = asPublished((await loadCreator(ctx.db, item.id, false))!)
-      const expected = json(publicPoolRow(enrichPoolItems([published], pool)[0]))
-      expect({ ...detail, metricsLatest: undefined, rawAvailable: undefined }).toEqual({
+      const expected = json(publicPoolRow(enrichPoolItems([published], pool, targets)[0]))
+      expect({ ...detail, metricsLatest: undefined, rawAvailable: undefined, referenceLines: undefined }).toEqual({
         ...expected,
         metricsLatest: undefined,
         rawAvailable: undefined,
       })
+    }
+  })
+
+  const cursorQueries: Array<Record<string, string>> = [
+    {},
+    { sort: 'engagementRate' },
+    { sort: 'readMedian', dir: 'asc' },
+    { sort: 'readToFollowerRatio', dir: 'desc', health: 'healthy' },
+  ]
+  for (const query of cursorQueries) {
+    it(`GET pool ${JSON.stringify(query)} — cursor walk forward and back equals the page walk`, async () => {
+      const base = `/api/select/pool?${new URLSearchParams({ region: tag, ...query, pageSize: '23' })}`
+      const byPage = await allPages(`/api/select/pool?${new URLSearchParams({ region: tag, ...query })}`, 23)
+      const forward: any[] = []
+      const pages: number[] = []
+      let body = await get(base)
+      for (;;) {
+        forward.push(...body.items)
+        pages.push(body.page)
+        if (!body.nextCursor) break
+        body = await get(`${base}&cursor=${encodeURIComponent(body.nextCursor)}`)
+      }
+      expect(forward.map((row) => row.id)).toEqual(byPage.map((row: any) => row.id))
+      expect(pages).toEqual(pages.map((_, i) => i + 1))
+      const backward: any[] = [...body.items]
+      while (body.prevCursor) {
+        body = await get(`${base}&cursor=${encodeURIComponent(body.prevCursor)}`)
+        backward.unshift(...body.items)
+      }
+      expect(body.page).toBe(1)
+      expect(backward.map((row) => row.id)).toEqual(byPage.map((row: any) => row.id))
+    })
+  }
+
+  it('queries/run: a jump to page 3 then nextCursor is page 4; cursors are bound to their spec and signed', async () => {
+    const spec = defaultSavedQuery({ name: 'c', sort: { key: 'engagementRate', dir: 'desc' } })
+    const post = (qs: string, body: unknown = spec) => ctx.app.request(`/api/select/queries/run?${qs}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const third = await (await post('page=3&pageSize=20')).json()
+    const fourth = await (await post('page=4&pageSize=20')).json()
+    const viaCursor = await (await post(`pageSize=20&cursor=${encodeURIComponent(third.nextCursor)}`)).json()
+    expect(viaCursor.page).toBe(4)
+    expect(viaCursor.items.map((row: any) => row.id)).toEqual(fourth.items.map((row: any) => row.id))
+    const back = await (await post(`pageSize=20&cursor=${encodeURIComponent(fourth.prevCursor)}`)).json()
+    expect(back.items.map((row: any) => row.id)).toEqual(third.items.map((row: any) => row.id))
+
+    const other = await post(`pageSize=20&cursor=${encodeURIComponent(third.nextCursor)}`, { ...spec, sort: { key: 'cpe', dir: 'asc' } })
+    expect(other.status).toBe(400)
+    expect((await other.json()).error.message).toBe('cursor_mismatch')
+    const [body, mac] = String(third.nextCursor).split('.')
+    const forged = JSON.parse(Buffer.from(body, 'base64url').toString())
+    forged.page = 99
+    const tampered = await post(`cursor=${Buffer.from(JSON.stringify(forged)).toString('base64url')}.${mac}`)
+    expect(tampered.status).toBe(400)
+    expect((await tampered.json()).error.message).toBe('cursor_invalid')
+    for (const junk of ['x', 'a.b.c', 'a'.repeat(3_000)]) {
+      const res = await ctx.app.request(`/api/select/pool?cursor=${junk}`, { headers: { authorization: `Bearer ${token}` } })
+      expect(res.status, junk.slice(0, 10)).toBe(400)
     }
   })
 

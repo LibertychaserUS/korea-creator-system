@@ -39,8 +39,8 @@ test.describe('Selector assign journey', () => {
 
     // 方案栏：量级 / 健康等级快捷过滤 + 指标排序，都是同一份 SavedQuery
     await expect(page.getByTestId(tid.queryBar)).toBeVisible();
-    await page.getByTestId(tid.filterHealthExcellent).click();
-    await page.getByTestId(tid.filterHealthExcellent).click();
+    await page.getByTestId(tid.filterHealthHealthy).click();
+    await page.getByTestId(tid.filterHealthHealthy).click();
     await page.getByTestId(tid.sortKey).selectOption('followers');
     await page.getByTestId(tid.sortDir).click();
     await page.getByTestId(tid.sortKey).selectOption('cpe');

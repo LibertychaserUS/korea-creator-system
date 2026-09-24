@@ -46,8 +46,8 @@ describe('CreatorMetrics', () => {
       cpe: 1.23,
     })
     expect(m.engagementRate).toBe(0.04)
-    expect(m.cpv).toBe(0.15)
-    expect(m.cpm).toBe(150)
+    expect(m.cpr).toBe(0.15)
+    expect(m.cpm).toBeNull()
     expect(m.cpe).toBe(1.23)
     expect(m.collectLikeRatio).toBe(0.9)
     expect(m.readToFollowerRatio).toBe(0.2)
@@ -69,8 +69,12 @@ describe('CreatorMetrics', () => {
     const c = { ...emptyMetrics(), cpe: 10 }
     const p = cohortPercentiles(a, [a, b, c], ['cpe'])
     expect(p.cpe!.percentile).toBeGreaterThan(80)
-    expect(p.cpe!.band).toBe('top25')
+    expect(p.cpe!.band).toBe('front')
+    expect(p.cpe!.n).toBe(3)
     expect(bandOf(95)).toBe('top10')
+    expect(bandOf(95, 12)).toBe('front')
+    expect(bandOf(50, 12)).toBe('middle')
+    expect(bandOf(10, 12)).toBe('back')
     expect(bandOf(10)).toBe('bottom')
     expect(cohortPercentiles(a, [a], ['cpe'])).toEqual({})
   })
@@ -92,30 +96,41 @@ describe('transform helpers', () => {
 
 describe('SavedQuery replaces scoring', () => {
   const rows = [
-    row('a', { followers: 120_000, readMedian: 30_000, interactionMedian: 1_500, priceImage: 3_000, health: 'excellent', likeMedian: 900, collectMedian: 900 }),
-    row('b', { followers: 90_000, readMedian: 5_000, interactionMedian: 100, priceImage: 6_000, health: 'excellent', likeMedian: 80, collectMedian: 10 }),
+    row('a', { followers: 120_000, readMedian: 30_000, interactionMedian: 1_500, priceImage: 3_000, health: 'healthy', likeMedian: 900, collectMedian: 900 }),
+    row('b', { followers: 90_000, readMedian: 5_000, interactionMedian: 100, priceImage: 6_000, health: 'healthy', likeMedian: 80, collectMedian: 10 }),
     row('c', { followers: 150_000, readMedian: 40_000, interactionMedian: 3_000, priceImage: 2_000, health: 'abnormal', likeMedian: 2_000, collectMedian: 1_000 }),
-    row('d', { followers: 8_000, readMedian: 9_000, interactionMedian: 700, priceImage: 500, health: 'excellent' }),
+    row('d', { followers: 8_000, readMedian: 9_000, interactionMedian: 700, priceImage: 500, health: 'healthy' }),
   ]
 
   it('drops unhealthy accounts, applies metric filters, sorts by CPE ascending', () => {
-    const q = defaultSavedQuery({ name: 'q', health: ['excellent'], filters: [{ key: 'cpe', op: 'lte', value: 5 }] })
+    const q = defaultSavedQuery({
+      name: 'q',
+      health: ['healthy'],
+      filters: [{ key: 'cpe', op: 'lte', value: 5 }],
+      highlights: [
+        { key: 'cpe', op: 'lte', value: 3, tone: 'good' },
+        { key: 'collectLikeRatio', op: 'gte', value: 0.8, tone: 'good' },
+      ],
+    })
     const res = applySavedQuery(rows, q)
     expect(res.map((r) => r.id)).toEqual(['d', 'a'])
     expect(res[0]!.tier).toBe('junior')
     expect(res[1]!.flags.map((f) => f.key)).toEqual(expect.arrayContaining(['cpe', 'collectLikeRatio']))
   })
 
-  it('percentile filters see the whole tier, not the filtered subset', () => {
+  it('percentile filters rank against the whole group, not the filtered subset', () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      row(`m${i}`, { followers: 60_000 + i * 1_000, readMedian: 10_000, interactionMedian: 100 + i * 10, health: i % 2 ? 'healthy' : 'abnormal' }))
     const q = defaultSavedQuery({
       name: 'q',
-      health: [],
-      tiers: ['mid'],
+      health: ['healthy'],
       filters: [{ key: 'engagementRate', op: 'percentileGte', value: 50 }],
     })
-    const res = applySavedQuery(rows, q)
-    expect(res.map((r) => r.id).sort()).toEqual(['a', 'c'])
-    expect(res.every((r) => r.percentiles.engagementRate!.percentile >= 50)).toBe(true)
+    const res = applySavedQuery(many, q)
+    expect(res.every((r) => r.metrics.health === 'healthy' && r.percentiles.engagementRate!.percentile >= 50)).toBe(true)
+    expect(res.map((r) => r.id).sort()).toEqual(many.filter((_, i) => i % 2 && i >= 20).map((r) => r.id).sort())
+    expect(res[0]!.percentiles.engagementRate!.n).toBe(40)
+    expect(applySavedQuery(rows, q).every((r) => !r.percentiles.engagementRate)).toBe(true)
   })
 
   it('validates name, keys and between ranges', () => {

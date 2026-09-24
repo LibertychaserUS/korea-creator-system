@@ -41,7 +41,12 @@ export const API = {
   queryPatch: { method: 'PATCH', path: '/api/select/queries/:id', perm: 'select.write' },
   queryDelete: { method: 'DELETE', path: '/api/select/queries/:id', perm: 'select.write' },
   queryRun: { method: 'POST', path: '/api/select/queries/run', perm: 'select.read' },
+  queryRevisions: { method: 'GET', path: '/api/select/queries/:id/revisions', perm: 'select.read' },
+  queryRestore: { method: 'POST', path: '/api/select/queries/:id/restore', perm: 'select.write' },
   metricsPublic: { method: 'GET', path: '/api/metrics/fields', auth: false },
+  /** Filters: `source` (empty = no source), `window`, `contentForm`, `tier`, `key`. */
+  poolCategories: { method: 'GET', path: '/api/select/categories', perm: 'select.read' },
+  poolReferenceLines: { method: 'GET', path: '/api/select/reference-lines', perm: 'select.read' },
   poolCreator: { method: 'GET', path: '/api/select/creators/:id', perm: 'select.read' },
   poolCreatorHistory: { method: 'GET', path: '/api/select/creators/:id/history', perm: 'select.read' },
   projects: { method: 'GET', path: '/api/select/projects', perm: 'select.read' },
@@ -60,6 +65,8 @@ export const API = {
   devPipeline: { method: 'GET', path: '/api/dev/pipeline', perm: 'dev.read' },
   devAudit: { method: 'GET', path: '/api/dev/audit', perm: 'dev.read' },
   devI18n: { method: 'GET', path: '/api/dev/i18n-theme', perm: 'dev.read' },
+  /** Per-source bootstrap sample targets with their basis, group sizes, and 25/50/75 reference lines. */
+  devCohorts: { method: 'GET', path: '/api/dev/cohorts', perm: 'dev.read' },
   devDeadLetters: { method: 'GET', path: '/api/dev/dead-letters', perm: 'dev.read' },
   devDeadLetter: { method: 'GET', path: '/api/dev/dead-letters/:id', perm: 'dev.read' },
   devDeadLetterReplay: { method: 'POST', path: '/api/dev/dead-letters/:id/replay', perm: 'dev.retry' },

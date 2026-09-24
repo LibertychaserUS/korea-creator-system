@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   CREATOR_STAGES,
-  deriveMetrics,
-  emptyMetrics,
+  normalizeMetrics,
   parsePaging,
   type CreatorStage,
   type Permission,
@@ -30,6 +29,8 @@ import {
   saveRelations,
 } from '../http/creators'
 import { pageRows } from '../http/lists'
+import { recordEvents } from '../http/events'
+import { inTransaction, recomputeGroups, republish, syncPublished } from '../http/published'
 import { jsonError } from '../http/responses'
 import { categoryView, overviewJobView, reviewView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
@@ -156,12 +157,11 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (rejected) return rejected
     const id = randomUUID()
     const key = body.creatorKey || `ck_${id.slice(0, 8)}`
-    const metrics = deriveMetrics({
-      ...emptyMetrics(body.metrics?.window === 90 ? 90 : 30),
+    // A manual quote is folded in on read (`metricsFromRow`), where its currency is checked.
+    const metrics = normalizeMetrics({
       ...(body.metrics && typeof body.metrics === 'object' ? body.metrics : {}),
       followers: body.metrics?.followers ?? body.followers ?? null,
-      priceImage: body.metrics?.priceImage ?? body.price?.amountMin ?? null,
-    })
+    }, body.source ?? null)
     await env.db.query(
       `INSERT INTO creators
         (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals,
@@ -217,7 +217,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const rejected = await checkCategories(context, body.categories)
     if (rejected) return rejected
     const metrics = body.metrics && typeof body.metrics === 'object'
-      ? deriveMetrics({ ...emptyMetrics(body.metrics.window === 90 ? 90 : 30), ...body.metrics })
+      ? normalizeMetrics(body.metrics, null)
       : null
     const updated = await env.db.query(
       `UPDATE creators SET
@@ -260,6 +260,8 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (body.categories || body.collaborations || body.price) {
       await saveRelations(env.db, id, body)
     }
+    // Name, regions, quotes… follow by trigger; a blacklist change re-ranks the group.
+    await republish(env.db, [id])
     await audit(env.db, user!.id, 'creator.update', 'creator', id, 'update')
     return context.json({ ok: true })
   })
@@ -287,18 +289,27 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       })
     }
     // `item.metrics` is the latest record with followers / price folded in, so
-    // the snapshot stands on its own even if those columns change later.
-    const { rows } = await env.db.query(
-      `UPDATE creators SET status = 'released', needs_review = false,
-         metrics_locked = $2, metrics_locked_at = now(), updated_at = now()
-       WHERE id = $1 RETURNING metrics_locked_at`,
-      [id, JSON.stringify(item.metrics)],
-    )
-    await env.db.query(
-      "UPDATE reviews SET status = 'passed' WHERE creator_id = $1 AND status = 'pending'",
-      [id],
-    )
-    await env.db.query('UPDATE assignments SET pool_gone = false WHERE creator_id = $1', [id])
+    // the snapshot stands on its own even if those columns change later. The
+    // pool row and its group's percentiles are written in the same transaction.
+    const rows = await inTransaction(env.db, async (client) => {
+      const result = await client.query(
+        `UPDATE creators SET status = 'released', needs_review = false,
+           metrics_locked = $2, metrics_locked_at = now(),
+           metrics_locked_fetched_at = LEAST(COALESCE(metrics_fetched_at, now()), now()), updated_at = now()
+         WHERE id = $1 RETURNING metrics_locked_at`,
+        [id, JSON.stringify(item.metrics)],
+      )
+      await client.query(
+        "UPDATE reviews SET status = 'passed' WHERE creator_id = $1 AND status = 'pending'",
+        [id],
+      )
+      await client.query('UPDATE assignments SET pool_gone = false WHERE creator_id = $1', [id])
+      await recomputeGroups(client, await syncPublished(client, [id]))
+      await recordEvents(client, [{
+        kind: 'publish', creatorId: id, orgId: user!.orgId, actorId: user!.id, context: { republish: item.stage === 'withdrawn' },
+      }])
+      return result.rows
+    })
     await audit(
       env.db,
       user!.id,
@@ -321,12 +332,18 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { user, denied } = await helpers.requireAuth(context, 'ops.publish')
     if (denied) return denied
     const id = context.req.param('id')
-    const updated = await env.db.query(
-      "UPDATE creators SET status = 'ready', updated_at = now() WHERE id = $1 RETURNING id",
-      [id],
-    )
+    const updated = await inTransaction(env.db, async (client) => {
+      const result = await client.query(
+        "UPDATE creators SET status = 'ready', updated_at = now() WHERE id = $1 RETURNING id",
+        [id],
+      )
+      if (!result.rowCount) return result
+      await client.query('UPDATE assignments SET pool_gone = true WHERE creator_id = $1', [id])
+      await recomputeGroups(client, await syncPublished(client, [id]))
+      await recordEvents(client, [{ kind: 'unpublish', creatorId: id, orgId: user!.orgId, actorId: user!.id }])
+      return result
+    })
     if (!updated.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    await env.db.query('UPDATE assignments SET pool_gone = true WHERE creator_id = $1', [id])
     await audit(env.db, user!.id, 'creator.unpublish', 'creator', id, 'unpublish')
     return context.json({ ok: true, status: 'ready' })
   })
@@ -391,6 +408,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     await env.db.query("UPDATE creators SET needs_review = false, status = 'ready' WHERE id = $1", [
       rows[0].creator_id,
     ])
+    await republish(env.db, [String(rows[0].creator_id)])
     await audit(env.db, user!.id, 'review.pass', 'review', id, 'pass')
     return context.json({ ok: true })
   })

@@ -1,45 +1,80 @@
 /**
- * The in-memory pool the SQL replaced, kept verbatim as a test oracle: the
- * SQL paths must return the same rows, order, tiers, cohorts and percentiles.
+ * The pool evaluated in memory straight from `creators`, as a test oracle: the
+ * SQL paths (which read the `creator_published` projection) must return the
+ * same rows, order, tiers, cohorts and percentiles. Groups and ranks come from
+ * the contract engine (`rankGroup` / `rankAgainst`) with the stored per-source
+ * sample targets.
  */
 import {
   applySavedQuery,
-  cohortKey,
-  cohortPercentiles,
+  COHORT_RULES,
+  cohortGroupKey,
+  isStale,
   METRIC_KEYS,
+  normalizeHealth,
+  rankAgainst,
+  rankGroup,
   tierOf,
+  type CohortMember,
   type CreatorMetrics,
+  type MetricPercentiles,
   type NumericMetricKey,
   type SavedQuery,
   type SourceId,
 } from '@kcs/contract'
 import type { Db } from '../src/db'
 import { asPublished, attachCreatorMeta } from '../src/http/creators'
+import { loadTargets, sourceKey } from '../src/http/published'
+
+export type Targets = Map<string, number>
+
+function groupOf(item: Record<string, any>): string {
+  const metrics = item.metrics as CreatorMetrics
+  return cohortGroupKey({ source: item.source ?? null, window: metrics.window, contentForm: metrics.contentForm ?? null })
+}
+
+function memberOf(item: Record<string, any>, now: Date): CohortMember {
+  const metrics = item.metrics as CreatorMetrics
+  return { id: String(item.id), followers: metrics.followers, metrics, stale: isStale(item.snapshotFetchedAt, now) }
+}
+
+export function targetOf(targets: Targets) {
+  return (source: string | null) => targets.get(sourceKey(source)) ?? COHORT_RULES.analyticSample
+}
 
 export function enrichPoolItems(
   items: Array<Record<string, any>>,
-  cohortItems: Array<Record<string, any>> = items,
+  cohortItems: Array<Record<string, any>>,
+  targets: Targets,
+  now = new Date(),
 ): Array<Record<string, any>> {
-  const byCohort = new Map<string, CreatorMetrics[]>()
+  const groups = new Map<string, CohortMember[]>()
   for (const item of cohortItems) {
-    if (!item.source) continue
-    const metrics = item.metrics as CreatorMetrics
-    const tier = tierOf(metrics.followers)
-    const key = cohortKey(item.source as SourceId, tier)
-    byCohort.set(key, [...(byCohort.get(key) ?? []), metrics])
+    const key = groupOf(item)
+    groups.set(key, [...(groups.get(key) ?? []), memberOf(item, now)])
+  }
+  const target = targetOf(targets)
+  const ranked = new Map<string, MetricPercentiles>()
+  for (const members of groups.values()) {
+    const source = cohortItems.find((item) => item.id === members[0].id)?.source ?? null
+    for (const [id, ranks] of rankGroup(members, { target: target(source) })) ranked.set(id, ranks)
   }
   return items.map((item) => {
     const metrics = item.metrics as CreatorMetrics
     const tier = tierOf(metrics.followers)
-    const key = item.source ? cohortKey(item.source as SourceId, tier) : null
-    const cohort = key ? byCohort.get(key) ?? [] : []
+    const members = groups.get(groupOf(item)) ?? []
+    const member = memberOf(item, now)
+    const percentiles = member.stale
+      ? {}
+      : ranked.get(member.id) ?? rankAgainst(members, member, { target: target(item.source ?? null) })
     return {
       ...item,
       followers: metrics.followers,
       tier,
-      cohort: item.source ? { source: item.source, tier, size: cohort.length } : null,
+      cohort: { source: item.source ?? null, tier, size: members.length, window: metrics.window, contentForm: metrics.contentForm ?? null },
       metrics,
-      percentiles: cohortPercentiles(metrics, cohort),
+      percentiles,
+      stale: member.stale,
     }
   })
 }
@@ -55,12 +90,17 @@ export function queryRow(item: Record<string, any>) {
       ...(item.metrics.coopBrands ?? []),
       ...(item.collabBrands ?? []),
     ])] as string[],
+    categories: (item.categories ?? []) as string[],
+    collabCount: Number(item.collabCount ?? 0),
+    xhsId: (item.xhsId ?? null) as string | null,
     metrics: item.metrics as CreatorMetrics,
+    stale: isStale(item.snapshotFetchedAt, new Date()),
   }
 }
 
 export function publicQueryResultRow(item: Record<string, any>) {
-  return { ...item, health: item.metrics.health }
+  const { categories: _categories, collabCount: _collabCount, xhsId: _xhsId, ...rest } = item
+  return { ...rest, health: item.metrics.health, stale: Boolean(item.stale) }
 }
 
 export async function queryPool(db: Db, query: Record<string, string>) {
@@ -68,7 +108,7 @@ export async function queryPool(db: Db, query: Record<string, string>) {
   const visible = (await attachCreatorMeta(db, rows, false))
     .filter((item) => !item.categories.includes('blacklist'))
     .map(asPublished)
-  let items = enrichPoolItems(visible, visible)
+  let items = enrichPoolItems(visible, visible, await loadTargets(db))
   if (query.hasCollaborated === 'true') items = items.filter((item) => item.hasCollaborated)
   if (query.hasCollaborated === 'false') items = items.filter((item) => !item.hasCollaborated)
   if (query.priceMin || query.priceMax) {
@@ -78,8 +118,13 @@ export async function queryPool(db: Db, query: Record<string, string>) {
       if (!item.price) return false
       const low = item.price.amountMin ?? item.price.amountMax ?? 0
       const high = item.price.amountMax ?? item.price.amountMin ?? low
-      if (query.currency && item.price.currency !== query.currency) return false
-      return low <= max && high >= min
+      if (query.currency) {
+        if (item.price.currency !== query.currency) return false
+        return low <= max && high >= min
+      }
+      const rate = item.price.currency === 'CNY' ? 1 : item.price.fxToCny
+      if (rate == null) return false
+      return low * rate <= max && high * rate >= min
     })
   }
   for (const field of ['categories', 'category', 'verticals'] as const) {
@@ -102,6 +147,7 @@ export async function queryPool(db: Db, query: Record<string, string>) {
   for (const field of ['tier', 'health', 'source'] as const) {
     if (!query[field]) continue
     const wanted = query[field].split(',')
+      .map((value) => (field === 'health' ? normalizeHealth(value, null, null).health ?? value : value))
     items = items.filter((item) => {
       const value = field === 'health' ? item.metrics.health : item[field]
       return value != null && wanted.includes(value)
@@ -170,5 +216,6 @@ function compareFollowersDesc(left: Record<string, any>, right: Record<string, a
 
 export async function legacyRun(db: Db, spec: SavedQuery) {
   const pool = await queryPool(db, {})
-  return applySavedQuery(pool.map(queryRow), spec).map(publicQueryResultRow)
+  const targets = await loadTargets(db)
+  return applySavedQuery(pool.map(queryRow), spec, { target: targetOf(targets) }).map(publicQueryResultRow)
 }

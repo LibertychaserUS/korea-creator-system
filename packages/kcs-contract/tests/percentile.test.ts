@@ -48,7 +48,7 @@ describe('integer percentile (SQL-reproducible)', () => {
     expect(directedPercentileTenths('cpe', 3, 1, 4)).toBe(125)
     expect(directedPercentileTenths('followers', 3, 1, 4)).toBeNull()
     expect(directedPercentileTenths('readMedian', 0, 1, 1)).toBeNull()
-    expect(percentileFromCounts('cpe', 0, 1, 4)).toEqual({ percentile: 87.5, band: 'top25' })
+    expect(percentileFromCounts('cpe', 0, 1, 4)).toEqual({ percentile: 87.5, band: 'front', n: 4 })
     expect(RANKED_METRIC_KEYS).not.toContain('followers')
     expect(RANKED_METRIC_KEYS).toContain('cpe')
   })
