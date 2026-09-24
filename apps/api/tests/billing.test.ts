@@ -260,9 +260,91 @@ describe('reading TikHub answers', () => {
     })))
     const job = await refreshJob(context, ['u1'])
     const retry = await processJob(context.env, job.id)
-    expect(retry).toMatchObject({ status: 'queued', quotaUsed: 1 })
+    expect(retry).toMatchObject({ status: 'queued', quotaUsed: 1, errorCode: 'VENDOR_TIMEOUT' })
     expect(retry!.error).toBe('pugongying timeout after 150ms (may have been billed)')
     expect(await usage(context)).toMatchObject({ calls: 1, maybe_billed: 1 })
+  })
+})
+
+describe('what each vendor answer means for the queue', () => {
+  async function devToken(context: TestCtx) {
+    return (await context.loginJson('devops@kcs.local')).token
+  }
+
+  it('402: the job is parked, the source pauses with an audit entry and a home-page alert, and resumes by hand', async () => {
+    const context = await setup()
+    stubVendor(() => ({ status: 402, body: { detail: 'Insufficient balance', request_id: 'req-402' } }))
+    const job = await refreshJob(context, ['u1'])
+    const waiting = await refreshJob(context, ['u2'])
+    const failed = await processJob(context.env, job.id)
+    expect(failed).toMatchObject({ status: 'failed', errorCode: 'BALANCE_EXHAUSTED', attempts: 1, quotaUsed: 0 })
+    const parked = await context.db.query("SELECT kind, state, code, cursor FROM ingest_dead_letters WHERE job_id = $1", [job.id])
+    expect(parked.rows).toEqual([{ kind: 'job', state: 'open', code: 'BALANCE_EXHAUSTED', cursor: '@0' }])
+    const trail = await context.db.query("SELECT actor_id, summary FROM audit_logs WHERE action = 'source.paused' AND entity_id = 'pugongying'")
+    expect(trail.rows).toEqual([{ actor_id: null, summary: 'BALANCE_EXHAUSTED: pugongying HTTP 402' }])
+
+    // Nothing else of the source runs while it is paused.
+    expect(await processJob(context.env, waiting.id)).toMatchObject({ status: 'queued', quotaUsed: 0 })
+    const token = await devToken(context)
+    const health = await (await context.app.request('/api/dev/health', { headers: { authorization: `Bearer ${token}` } })).json()
+    expect(health.pausedSources).toMatchObject([{ id: 'pugongying', code: 'BALANCE_EXHAUSTED', detail: 'pugongying HTTP 402' }])
+    const pipeline = (await pipelineReport(context.env)).sources.find((s) => s.id === 'pugongying')!
+    expect(pipeline.pausedCode).toBe('BALANCE_EXHAUSTED')
+
+    const opsToken = (await context.loginJson('ops@kcs.local')).token
+    const forbidden = await context.app.request('/api/dev/sources/pugongying/resume', { method: 'POST', headers: { authorization: `Bearer ${opsToken}` } })
+    expect(forbidden.status).toBe(403)
+    const resumed = await context.app.request('/api/dev/sources/pugongying/resume', { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+    expect(await resumed.json()).toMatchObject({ id: 'pugongying', resumed: true, pausedSources: [] })
+    const again = await context.app.request('/api/dev/sources/pugongying/resume', { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+    expect(await again.json()).toMatchObject({ resumed: false })
+    const missing = await context.app.request('/api/dev/sources/nope/resume', { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+    expect(missing.status).toBe(404)
+    const resumedTrail = await context.db.query("SELECT count(*)::int AS n FROM audit_logs WHERE action = 'source.resumed'")
+    expect(resumedTrail.rows[0].n).toBe(1)
+
+    // Topped up: the parked run replays from its cursor, the waiting one runs.
+    healthyVendor()
+    const entry = (await context.db.query("SELECT id FROM ingest_dead_letters WHERE job_id = $1", [job.id])).rows[0]
+    const replay = await context.app.request(`/api/dev/dead-letters/${entry.id}/replay`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+    expect(replay.status).toBe(200)
+    expect(await processJob(context.env, waiting.id)).toMatchObject({ status: 'ok', writtenCount: 1 })
+  })
+
+  it('401: the credential is wrong — permanent, not retried, and the source keeps running', async () => {
+    const context = await setup()
+    const sent = stubVendor(() => ({ status: 401, body: { detail: 'Invalid token' } }))
+    const job = await refreshJob(context, ['u1'])
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'failed', errorCode: 'CREDENTIAL_INVALID', attempts: 1 })
+    expect(sent).toHaveLength(1)
+    const paused = await context.db.query("SELECT paused_at FROM ingest_sources WHERE id = 'pugongying'")
+    expect(paused.rows[0].paused_at).toBeNull()
+  })
+
+  it('400: sent once more (free on TikHub); a second 400 is permanent', async () => {
+    const context = await setup()
+    let n = 0
+    const sent = stubVendor((path, body) => {
+      if (path.endsWith('get_blogger_detail') && n++ === 0) return { status: 400, body: { detail: 'bad request' } }
+      return path.endsWith('get_blogger_detail') ? tikhubOk(DETAIL(String(body.user_id))) : tikhubOk({ noteNumber: 1 })
+    })
+    const job = await refreshJob(context, ['u1'])
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', writtenCount: 1, quotaUsed: 5, vendorRequests: 6 })
+    expect(sent.filter((c) => c.path.endsWith('get_blogger_detail'))).toHaveLength(2)
+
+    const always = stubVendor(() => ({ status: 400, body: { detail: 'bad request' } }))
+    const second = await refreshJob(context, ['u2'])
+    expect(await processJob(context.env, second.id)).toMatchObject({ status: 'failed', errorCode: 'VENDOR_REJECTED', attempts: 1 })
+    expect(always).toHaveLength(2)
+  })
+
+  it('429 honours Retry-After as the earliest retry and is free', async () => {
+    const context = await setup()
+    stubVendor(() => ({ status: 429, body: { detail: 'rate limited' }, headers: { 'retry-after': '30' } }))
+    const job = await refreshJob(context, ['u1'])
+    const retry = await processJob(context.env, job.id)
+    expect(retry).toMatchObject({ status: 'queued', errorCode: 'SOURCE_UNAVAILABLE', quotaUsed: 0 })
+    expect(new Date(retry!.nextRunAt!).getTime()).toBeGreaterThanOrEqual(Date.now() + 25_000)
   })
 })
 

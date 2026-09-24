@@ -7,6 +7,39 @@
       </Button>
     </template>
 
+    <Card
+      v-for="p in health.pausedSources ?? []"
+      :key="p.id"
+      role="alert"
+      class="gap-3 border-destructive/40 bg-destructive/5 p-4 shadow-xs sm:flex-row sm:items-start sm:justify-between"
+      data-testid="paused-source"
+      :data-source-id="p.id"
+    >
+      <div class="flex min-w-0 gap-3">
+        <PauseCircle class="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
+        <div class="min-w-0 space-y-1">
+          <h2 class="text-sm font-semibold text-foreground">{{ t('kcs.console.health.paused.title', { name: pausedName(p) }) }}</h2>
+          <p class="text-sm text-foreground/90">{{ reason(p.code) }}</p>
+          <p class="text-xs text-muted-foreground">
+            {{ t('kcs.console.health.paused.since', { time: formatDate(p.pausedAt) }) }} · {{ t('kcs.console.health.paused.hint') }}
+          </p>
+        </div>
+      </div>
+      <Button
+        v-if="canRetry"
+        size="sm"
+        variant="outline"
+        class="shrink-0 self-start"
+        data-testid="btn-source-resume"
+        :disabled="busy === `resume:${p.id}`"
+        @click="resume(p.id)"
+      >
+        <Loader2 v-if="busy === `resume:${p.id}`" class="size-3.5 animate-spin" />
+        <PlayCircle v-else class="size-3.5" />
+        {{ t('kcs.console.health.paused.resume') }}
+      </Button>
+    </Card>
+
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <KpiTile :label="t('kcs.console.health.database')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
         <span class="flex items-center gap-2 text-xl md:text-2xl">
@@ -205,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, Database, Inbox, ListChecks, Loader2, Plug, RefreshCw, RotateCcw } from 'lucide-vue-next'
+import { AlertTriangle, Database, Inbox, ListChecks, Loader2, PauseCircle, PlayCircle, Plug, RefreshCw, RotateCcw } from 'lucide-vue-next'
 import { API, apiPath, DEAD_LETTER_MAX_REPLAYS, SOURCE_IDS, can } from '@kcs/contract'
 
 const MAX_REPLAYS = DEAD_LETTER_MAX_REPLAYS
@@ -311,6 +344,20 @@ async function replay(id: string) {
     await request(apiPath(API.devDeadLetterReplay, { id }), { method: 'POST' })
   } catch {
     // 还是不行就留在列表里，次数加一
+  } finally {
+    busy.value = ''
+    await loadAll()
+  }
+}
+
+function pausedName(p: { id: string; name?: string }): string {
+  return isSource(p.id) ? t(`kcs.source.${p.id}`) : p.name || p.id
+}
+
+async function resume(id: string) {
+  busy.value = `resume:${id}`
+  try {
+    await request(apiPath(API.devSourceResume, { id }), { method: 'POST' })
   } finally {
     busy.value = ''
     await loadAll()

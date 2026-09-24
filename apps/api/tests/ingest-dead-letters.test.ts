@@ -98,6 +98,10 @@ describe('failure classification', () => {
       permanent: false,
     })
     expect(classifyIngestFailure('qiangua HTTP 401')).toEqual({
+      code: 'CREDENTIAL_INVALID',
+      permanent: true,
+    })
+    expect(classifyIngestFailure('qiangua HTTP 403')).toEqual({
       code: 'VENDOR_REJECTED',
       permanent: true,
     })
@@ -226,7 +230,7 @@ describe('dead letters — records', () => {
 describe('dead letters — whole runs', () => {
   it('a permanent failure parks on the first attempt: no backoff, no wasted calls', async () => {
     const { context, ops, devops } = await setup(
-      pickyAdapter({ fail: new Error('qiangua HTTP 401 unauthorized') }),
+      pickyAdapter({ fail: new Error('qiangua HTTP 403 forbidden') }),
     )
     const { job } = await (await enqueue(context, ops, { keyword: 'permanent' })).json()
     const failed = await processJob(context.env, job.id)

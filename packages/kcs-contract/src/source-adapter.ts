@@ -288,7 +288,11 @@ export const INGEST_FAILURE_CODES = [
   'CONFIG_MISSING',
   'QUOTA_EXHAUSTED',
   'BUDGET_EXHAUSTED',
+  'BALANCE_EXHAUSTED',
+  'CREDENTIAL_INVALID',
   'VENDOR_INNER_ERROR',
+  'VENDOR_TIMEOUT',
+  'SOURCE_PAUSED',
   'CANCELLED',
   'RECORD_INVALID',
   'RECORD_WRITE_FAILED',
@@ -296,6 +300,16 @@ export const INGEST_FAILURE_CODES = [
 ] as const
 export type IngestFailureCode = (typeof INGEST_FAILURE_CODES)[number]
 
+/**
+ * Vendor answers by what they mean for the queue:
+ *   402                 → the account cannot pay: permanent, and the source is paused
+ *   401                 → the credential is wrong: permanent
+ *   400                 → our request is wrong (the adapter already tried it twice): permanent
+ *   403 / 404 / 422 …   → rejected: permanent
+ *   429 / 408 / 5xx     → come back later: transient, `Retry-After` honoured
+ *   timeout             → transient; the call may have been billed
+ *   200 + inner failure → permanent (billed, and the same request fails the same way)
+ */
 export function classifyIngestFailure(message: string): {
   code: IngestFailureCode
   permanent: boolean
@@ -304,19 +318,23 @@ export function classifyIngestFailure(message: string): {
   if (/unsupported adapter|missing credential|no record list|field map/.test(text)) {
     return { code: 'CONFIG_MISSING', permanent: true }
   }
-  // A 200 whose body says "failed": billed, and the same request fails the same way.
   if (/ inner error /.test(text)) return { code: 'VENDOR_INNER_ERROR', permanent: true }
+  if (/http 402\b|balance exhausted/.test(text)) return { code: 'BALANCE_EXHAUSTED', permanent: true }
+  if (/http 401\b|credential invalid/.test(text)) return { code: 'CREDENTIAL_INVALID', permanent: true }
+  if (/ timeout after /.test(text)) return { code: 'VENDOR_TIMEOUT', permanent: false }
+  if (/request rejected/.test(text)) return { code: 'VENDOR_REJECTED', permanent: true }
   const http = text.match(/http (\d{3})/)
   if (http) {
     const status = Number(http[1])
-    // 401/403/404/422 → our request or our credentials are wrong; retrying is noise.
-    // 429 and 5xx are the vendor asking us to come back later.
     if (status >= 400 && status < 500 && status !== 429 && status !== 408) {
       return { code: 'VENDOR_REJECTED', permanent: true }
     }
   }
   return { code: 'SOURCE_UNAVAILABLE', permanent: false }
 }
+
+/** Failures that take the whole source offline until a human resumes it (运维端首页提醒). */
+export const SOURCE_PAUSING_FAILURES: readonly IngestFailureCode[] = ['BALANCE_EXHAUSTED']
 
 /**
  * Dead letters. Nothing that failed is thrown away: a job that ran out of

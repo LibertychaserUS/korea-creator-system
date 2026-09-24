@@ -13,6 +13,7 @@ import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import { camelDeadLetters, scrub } from '../ingest/dead-letters'
 import { retryJob } from '../ingest/jobs'
+import { pausedSources, resumeSource } from '../ingest/pause'
 import { enqueueIngestJob, replayRecord } from '../ingest/worker'
 
 async function resolveDeadLetter(
@@ -55,6 +56,7 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     )
     return context.json({
       ok: true,
+      pausedSources: await pausedSources(env),
       jobs: jobs.rows,
       sourcesEnabled: sources.rows[0].enabled,
       jobCount: Number(total.rows[0].n),
@@ -69,6 +71,16 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         leaseExpiresAt: row.lease_expires_at,
       })),
     })
+  })
+
+  app.post('/api/dev/sources/:id/resume', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'dev.retry')
+    if (denied) return denied
+    const id = context.req.param('id')
+    const exists = await env.db.query('SELECT 1 FROM ingest_sources WHERE id = $1', [id])
+    if (!exists.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    const resumed = await resumeSource(env, id, user!.id)
+    return context.json({ id, resumed, pausedSources: await pausedSources(env) })
   })
 
   app.get('/api/dev/jobs', async (context) => {

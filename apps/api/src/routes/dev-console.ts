@@ -43,7 +43,7 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
         (SELECT count(*) FROM creators WHERE needs_review)::int AS review,
         (SELECT count(*) FROM creators WHERE status = 'released')::int AS released
     `),
-    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz, daily_budget_usd FROM ingest_sources ORDER BY id'),
+    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz, daily_budget_usd, paused_at, paused_code FROM ingest_sources ORDER BY id'),
     // Zones are at most a day apart, so this window covers every source's last 7 days.
     env.db.query(
       `SELECT source, to_char(day, 'YYYY-MM-DD') AS day, calls, cost_micros, requests, maybe_billed, empty_results, unpriced_calls
@@ -89,6 +89,8 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
       name: row.name,
       adapterType: row.adapter_type,
       enabled: Boolean(row.enabled),
+      pausedAt: iso(row.paused_at),
+      pausedCode: row.paused_code ?? null,
       rateLimit: row.rate_limit == null ? null : Number(row.rate_limit),
       quota,
       quotaTimeZone: tz,

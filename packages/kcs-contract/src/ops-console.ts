@@ -10,6 +10,9 @@ export type PipelineSourceView = {
   name: string
   adapterType: string
   enabled: boolean
+  /** Set when the queue took the source offline (vendor balance ran out); a human resumes it. */
+  pausedAt: string | null
+  pausedCode: string | null
   /** Calls per minute the drainer allows itself. */
   rateLimit: number | null
   /** Calls per quota day; `null` = not set. */

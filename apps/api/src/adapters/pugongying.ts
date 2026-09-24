@@ -171,6 +171,7 @@ function tikhub(token: string, base: string, context?: FetchContext): Gateway {
       },
       rule: 'tikhub',
       timeoutMs: pgyTimeoutMs(),
+      retryOn400: true,
       read: readTikhub,
     })
     return value

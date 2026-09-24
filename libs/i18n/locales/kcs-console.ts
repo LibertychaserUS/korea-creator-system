@@ -54,6 +54,7 @@ const zhCN = {
       weekDay: "{day}：{n} 次",
       weekDayCost: "{day}：{n} 次 · {cost}",
       noBudget: "没有设金额上限",
+      paused: "已暂停",
       budgetFromEnv: "金额上限由部署配置设定",
       requests: "今天发出 {n} 次请求，其中 {free} 次平台没收费",
       emptyResults: "{n} 次查无结果（照样收费）",
@@ -377,6 +378,12 @@ const zhCN = {
     },
     health: {
       database: "数据库连接",
+      paused: {
+        title: "{name}已暂停抓取",
+        since: "从 {time} 起",
+        hint: "处理好（比如充值）后点「恢复」；停下的那次抓取在下方搁置记录里，可以再试一次。",
+        resume: "恢复",
+      },
     },
     capacity: {
       title: "存储",
@@ -492,6 +499,7 @@ const en = {
       weekDay: "{day}: {n} calls",
       weekDayCost: "{day}: {n} calls · {cost}",
       noBudget: "No spending limit set",
+      paused: "Paused",
       budgetFromEnv: "Spending limit set in the deployment settings",
       requests: "{n} requests sent today, {free} of them not charged by the platform",
       emptyResults: "{n} came back empty (still charged)",
@@ -815,6 +823,12 @@ const en = {
     },
     health: {
       database: "Database link",
+      paused: {
+        title: "{name} collection is paused",
+        since: "Since {time}",
+        hint: "Once it is sorted out (for example the balance topped up), press Resume; the run that stopped is under Set aside below and can be tried again.",
+        resume: "Resume",
+      },
     },
     capacity: {
       title: "Storage",
@@ -930,6 +944,7 @@ const ko = {
       weekDay: "{day}: {n}회",
       weekDayCost: "{day}: {n}회 · {cost}",
       noBudget: "금액 한도 없음",
+      paused: "일시 중지",
       budgetFromEnv: "금액 한도는 배포 설정에서 정함",
       requests: "오늘 요청 {n}회, 그중 {free}회는 플랫폼이 과금하지 않음",
       emptyResults: "결과 없음 {n}회(과금됨)",
@@ -1253,6 +1268,12 @@ const ko = {
     },
     health: {
       database: "데이터베이스 연결",
+      paused: {
+        title: "{name} 수집이 일시 중지됨",
+        since: "{time}부터",
+        hint: "문제를 해결(예: 잔액 충전)한 뒤 「재개」를 누르세요. 멈춘 수집은 아래 보류 기록에 있으며 다시 시도할 수 있습니다.",
+        resume: "재개",
+      },
     },
     capacity: {
       title: "저장 공간",

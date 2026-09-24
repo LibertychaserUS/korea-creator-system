@@ -52,7 +52,8 @@
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-1.5">
-            <Badge v-if="!s.enabled" variant="outline" class="text-muted-foreground">{{ t('kcs.console.pipeline.off') }}</Badge>
+            <Badge v-if="s.pausedAt" variant="destructive" data-testid="pipeline-paused">{{ t('kcs.console.pipeline.paused') }}</Badge>
+            <Badge v-else-if="!s.enabled" variant="outline" class="text-muted-foreground">{{ t('kcs.console.pipeline.off') }}</Badge>
             <SourceBadge v-else-if="isSource(s.id)" :source="s.id" :mode="s.lastMode ?? undefined" class="h-5" />
           </div>
         </div>

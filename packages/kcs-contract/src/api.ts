@@ -84,6 +84,8 @@ export const API = {
   devDeadLetter: { method: 'GET', path: '/api/dev/dead-letters/:id', perm: 'dev.read' },
   devDeadLetterReplay: { method: 'POST', path: '/api/dev/dead-letters/:id/replay', perm: 'dev.retry' },
   devDeadLetterDismiss: { method: 'POST', path: '/api/dev/dead-letters/:id/dismiss', perm: 'dev.retry' },
+  /** Take a source the queue paused (vendor balance ran out) back online. */
+  devSourceResume: { method: 'POST', path: '/api/dev/sources/:id/resume', perm: 'dev.retry' },
   ingestSources: { method: 'GET', path: '/api/ingest/sources', perm: 'ingest.read' },
   ingestAdapters: { method: 'GET', path: '/api/ingest/adapters', perm: 'ingest.read' },
   ingestFetch: { method: 'POST', path: '/api/ingest/fetch', perm: 'ingest.write' },

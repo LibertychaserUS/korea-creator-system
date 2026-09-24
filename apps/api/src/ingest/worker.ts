@@ -6,6 +6,7 @@ import {
   INGEST_LEASE_MS,
   INGEST_MAX_ATTEMPTS,
   INGEST_QUEUE_LOCK,
+  SOURCE_PAUSING_FAILURES,
   type SourceAdapter,
   type SourceId,
   type SourcePage,
@@ -18,6 +19,7 @@ import type { AppEnv } from '../http/types'
 import { recordRefreshMisses } from './data-status'
 import { deadLetterJob, failureOf } from './dead-letters'
 import { createMeter, dailyBudgetUsd } from './meter'
+import { isSourcePaused, pauseSource } from './pause'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
 import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
@@ -139,6 +141,8 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
   }
   const source = String(job.source_id)
   const lease = WORKER_ID
+  // A paused source runs nothing; its jobs wait where they are until someone resumes it.
+  if (await isSourcePaused(env, source)) return camelJobs([job])[0]
   try {
     /**
      * Claim, single-flight, in one statement:
@@ -324,7 +328,7 @@ async function stopAtLimit(
   return readJob(env, jobId)
 }
 
-const LIMIT_CODES = { quota: 'QUOTA_EXHAUSTED', budget: 'BUDGET_EXHAUSTED', paused: 'QUOTA_EXHAUSTED' } as const
+const LIMIT_CODES = { quota: 'QUOTA_EXHAUSTED', budget: 'BUDGET_EXHAUSTED', paused: 'SOURCE_PAUSED' } as const
 const LIMIT_SUMMARIES = {
   quota: 'daily source quota exhausted',
   budget: 'daily source budget exhausted',
@@ -393,6 +397,7 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
     retryAfterMs,
     message,
   })
+  if (exhausted && SOURCE_PAUSING_FAILURES.includes(code)) await pauseSource(env, source, code, message)
   if (exhausted) {
     await deadLetterJob(env, {
       jobId,
@@ -480,11 +485,12 @@ export function startIngestWorker(
       if (stopped) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
-         WHERE (status = 'queued' AND (next_run_at IS NULL OR next_run_at <= now()))
+         WHERE ((status = 'queued' AND (next_run_at IS NULL OR next_run_at <= now()))
             OR (status = 'partial' AND next_run_at IS NOT NULL AND next_run_at <= now())
             -- A run left mid-page by a drainer that died: its lease has lapsed,
             -- so picking it up continues from the cursor instead of stalling forever.
-            OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= now())
+            OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= now()))
+           AND NOT EXISTS (SELECT 1 FROM ingest_sources s WHERE s.id = ingest_jobs.source_id AND s.paused_at IS NOT NULL)
          ORDER BY created_at
          LIMIT 1`,
       )

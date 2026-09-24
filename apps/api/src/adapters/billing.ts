@@ -102,6 +102,8 @@ export type BilledRequest<T> = {
   init: RequestInit
   rule: BillingRule
   timeoutMs: number
+  /** Send once more after an HTTP 400 (TikHub: free, and sometimes a hiccup on their side). */
+  retryOn400?: boolean
   /**
    * Reads a 2xx body into the value the adapter wants and says whether it was
    * empty. Throws for a vendor-level refusal inside a 2xx; the call stays billed.
@@ -117,6 +119,15 @@ export type BilledResult<T> = { value: T; empty: boolean; status: number; reques
  * `context` it is a plain request, for callers outside the queue.
  */
 export async function billedCall<T>(context: FetchContext | undefined, req: BilledRequest<T>): Promise<BilledResult<T>> {
+  try {
+    return await billedOnce(context, req)
+  } catch (error) {
+    if (!req.retryOn400 || !(error instanceof VendorHttpError) || error.status !== 400) throw error
+    return billedOnce(context, req)
+  }
+}
+
+async function billedOnce<T>(context: FetchContext | undefined, req: BilledRequest<T>): Promise<BilledResult<T>> {
   const ticket = context?.meter ? await context.meter.acquire(req.endpoint) : null
   const started = Date.now()
   const settle = async (outcome: BillingOutcome, status: number | null, requestId: string | null, empty = false) => {
