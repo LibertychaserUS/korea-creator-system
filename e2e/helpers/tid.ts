@@ -23,7 +23,7 @@ export const tid = {
   queryEditor: 'query-editor',
   queryAddFilter: 'query-add-filter',
   filterTierMid: 'filter-tier-mid',
-  filterHealthExcellent: 'filter-health-excellent',
+  filterHealthHealthy: 'filter-health-healthy',
   poolSearch: 'pool-search',
   poolCount: 'pool-count',
   sortKey: 'sort-key',

@@ -55,7 +55,7 @@ const SAVED_QUERIES: SavedQuery[] = [
     'seed_query_kbeauty_value',
     defaultSavedQuery({
       name: '韩妆性价比',
-      health: ['excellent'],
+      health: ['healthy'],
       filters: [{ key: 'cpe', op: 'lte', value: 3 }],
       sort: { key: 'cpe', dir: 'asc' },
       columns: [...DEFAULT_QUERY_COLUMNS],
@@ -67,7 +67,8 @@ const SAVED_QUERIES: SavedQuery[] = [
       name: '潜力新人',
       health: [],
       tiers: ['junior'],
-      filters: [{ key: 'readToFollowerRatio', op: 'percentileGte', value: 75 }],
+      // No percentile filter: a percentile needs ≥ 10 comparable creators, more than the demo has per group.
+      filters: [],
       sort: { key: 'readToFollowerRatio', dir: 'desc' },
       columns: [...DEFAULT_QUERY_COLUMNS],
     }),
