@@ -2,6 +2,20 @@ import { parsePaging, SOURCE_IDS, type SourceQuery } from '@kcs/contract'
 import { adapterDescriptions } from '../adapters'
 import { retryJob } from '../ingest/jobs'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
+import { dailyTaskStatus, runDailyTaskNow } from '../ingest/daily'
+import { readSchedulerState, schedulerConfig } from '../ingest/scheduler'
+import {
+  creatorDataStatus,
+  DATA_STATUS_KINDS,
+  dataStatusConfig,
+  dataStatusCounts,
+  decideMissing,
+  listDataStatus,
+  type DataStatusKind,
+} from '../ingest/data-status'
+import { creatorTrends } from '../ingest/trends'
+import { searchCreatorNames } from '../ingest/name-search'
+import { randomUUID } from 'node:crypto'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { z } from 'zod'
@@ -26,6 +40,139 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
         quota: row.quota,
       })),
     })
+  })
+
+  app.get('/api/ingest/daily', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    return context.json({ items: await dailyTaskStatus(env) })
+  })
+
+  app.post('/api/ingest/daily/:task/run', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.retry')
+    if (denied) return denied
+    const task = context.req.param('task')
+    const outcome = await runDailyTaskNow(env, task)
+    if (!outcome) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    await audit(env.db, user!.id, 'ingest.daily_run', 'daily_task', task, `${outcome.day} ${outcome.ok ? 'ok' : 'failed'}`)
+    return context.json(outcome)
+  })
+
+  app.get('/api/ingest/scheduler', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const { samples: _samples, ...config } = schedulerConfig()
+    const due = await env.db.query(
+      `SELECT source, count(*)::int AS due, count(*) FILTER (WHERE next_refresh_at IS NULL)::int AS never,
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY refresh_interval_days) AS median_interval_days
+         FROM creator_sources WHERE next_refresh_at IS NULL OR next_refresh_at <= $1 GROUP BY source`,
+      [env.now()],
+    )
+    return context.json({
+      lastPlan: await readSchedulerState(env),
+      config,
+      due: due.rows.map((row) => ({
+        source: row.source,
+        due: row.due,
+        neverRefreshed: row.never,
+        medianIntervalDays: row.median_interval_days == null ? null : Number(row.median_interval_days),
+      })),
+    })
+  })
+
+  app.get('/api/ingest/discovery-searches', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const { rows } = await env.db.query('SELECT * FROM ingest_discovery_searches ORDER BY created_at, id')
+    return context.json({ items: rows.map(discoverySearchView) })
+  })
+
+  app.post('/api/ingest/discovery-searches', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { data, invalid } = await readJson(context, DISCOVERY_SEARCH_BODY)
+    if (invalid) return invalid
+    const query = data.query as SourceQuery & { sourceUrl?: unknown; url?: unknown }
+    if (!SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
+      return jsonError(context, 400, 'SOURCE-INVALID', 'invalid_source_query')
+    }
+    if (query.sourceUrl != null || query.url != null) return jsonError(context, 400, 'SOURCE-INVALID', 'adhoc_url_forbidden')
+    const { externalIds: _ids, cursor: _cursor, ...saved } = pickSourceQuery(query)
+    const id = randomUUID()
+    const { rows } = await env.db.query(
+      `INSERT INTO ingest_discovery_searches (id, source, name, query, enabled, max_pages, every_hours, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [id, query.source, data.name, JSON.stringify(saved), data.enabled ?? true, data.maxPages ?? 1, data.everyHours ?? 24, user!.id],
+    )
+    await audit(env.db, user!.id, 'ingest.discovery_create', 'discovery_search', id, data.name)
+    return context.json(discoverySearchView(rows[0]), 201)
+  })
+
+  app.patch('/api/ingest/discovery-searches/:id', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { data, invalid } = await readJson(context, DISCOVERY_SEARCH_PATCH)
+    if (invalid) return invalid
+    const { rows } = await env.db.query(
+      `UPDATE ingest_discovery_searches SET
+         name = COALESCE($2, name), enabled = COALESCE($3, enabled),
+         max_pages = COALESCE($4, max_pages), every_hours = COALESCE($5, every_hours), updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [context.req.param('id'), data.name ?? null, data.enabled ?? null, data.maxPages ?? null, data.everyHours ?? null],
+    )
+    if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    await audit(env.db, user!.id, 'ingest.discovery_update', 'discovery_search', rows[0].id, JSON.stringify(data))
+    return context.json(discoverySearchView(rows[0]))
+  })
+
+  app.get('/api/ingest/data-status', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const query = context.req.query()
+    if (!query.kind) return context.json({ counts: await dataStatusCounts(env), config: dataStatusConfig() })
+    if (!DATA_STATUS_KINDS.includes(query.kind as DataStatusKind)) {
+      return jsonError(context, 400, 'VALIDATION', 'unknown_kind')
+    }
+    return context.json(await listDataStatus(env, query.kind as DataStatusKind, parsePaging(query)))
+  })
+
+  app.get('/api/ingest/data-status/:creatorId', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const status = await creatorDataStatus(env, context.req.param('creatorId'))
+    if (!status) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json(status)
+  })
+
+  app.post('/api/ingest/data-status/:creatorId/missing', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { data, invalid } = await readJson(context, MISSING_DECISION_BODY)
+    if (invalid) return invalid
+    const outcome = await decideMissing(env, context.req.param('creatorId'), data.decision, user!.id)
+    if (!outcome.found) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    if (!outcome.flagged) return jsonError(context, 409, 'STATE', 'not_flagged_missing')
+    return context.json(outcome.status)
+  })
+
+  app.get('/api/ingest/trends/:creatorId', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const trends = await creatorTrends(env, context.req.param('creatorId'), context.req.query())
+    if (!trends) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json(trends)
+  })
+
+  app.get('/api/ingest/name-search', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const query = context.req.query()
+    const q = String(query.q ?? '').slice(0, 100)
+    const items = await searchCreatorNames(env.db, q, {
+      limit: Number(query.limit) || 20,
+      statuses: csv(query.status),
+    })
+    return context.json({ q, items })
   })
 
   app.get('/api/ingest/adapters', async (context) => {
@@ -59,8 +206,10 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (denied) return denied
     const limit = Math.max(1, Math.min(100, Number(context.req.query('limit') || 30)))
     const { rows } = await env.db.query(
-      `SELECT id, creator_id, source, external_id, fetched_at, payload
-       FROM creator_raw WHERE creator_id = $1 ORDER BY fetched_at DESC, id DESC LIMIT $2`,
+      `SELECT r.id, r.creator_id, r.source, r.external_id, r.fetched_at,
+              COALESCE(r.payload, p.payload) AS payload, encode(r.payload_hash, 'hex') AS content_hash
+       FROM creator_raw r LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
+       WHERE r.creator_id = $1 ORDER BY r.fetched_at DESC, r.id DESC LIMIT $2`,
       [context.req.param('creatorId'), limit],
     )
     if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
@@ -71,6 +220,8 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
       externalId: row.external_id,
       fetchedAt: row.fetched_at instanceof Date ? row.fetched_at.toISOString() : row.fetched_at,
       payload: row.payload,
+      /** Fetches with the same content share one stored body; equal hashes = identical JSON. */
+      contentHash: row.content_hash ?? null,
     }))
     // Top-level fields stay the newest record, as before; `items` is every record, newest first.
     return context.json({ ...items[0], items })
@@ -169,6 +320,33 @@ const SOURCE_QUERY_KEYS = [
 ] as const satisfies readonly (keyof SourceQuery)[]
 
 /** The stored `query` holds exactly the SourceQuery fields, nothing the client tacked on. */
+const MISSING_DECISION_BODY = z.object({ decision: z.enum(['keep', 'gone']) })
+
+const DISCOVERY_SEARCH_BODY = z.object({
+  name: z.string().trim().min(1).max(120),
+  query: z.record(z.string(), z.unknown()),
+  enabled: z.boolean().optional(),
+  maxPages: z.number().int().min(1).max(100).optional(),
+  everyHours: z.number().int().min(1).max(8760).optional(),
+})
+
+const DISCOVERY_SEARCH_PATCH = DISCOVERY_SEARCH_BODY.omit({ query: true }).partial()
+
+function discoverySearchView(row: Record<string, unknown>) {
+  const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : (value as string | null) ?? null)
+  return {
+    id: row.id,
+    source: row.source,
+    name: row.name,
+    query: row.query,
+    enabled: row.enabled,
+    maxPages: row.max_pages,
+    everyHours: row.every_hours,
+    lastEnqueuedAt: iso(row.last_enqueued_at),
+    createdAt: iso(row.created_at),
+  }
+}
+
 function pickSourceQuery(input: SourceQuery): SourceQuery {
   const out: Record<string, unknown> = {}
   for (const key of SOURCE_QUERY_KEYS) if (input[key] !== undefined) out[key] = input[key]

@@ -8,7 +8,7 @@
  *   资料   GET  /api/solar/cooperator/user/blogger/{userId}    → data
  *   数据概览 GET  /api/solar/kol/dataV3/dataSummary?userId&business=0
  *   粉丝概览 GET  /api/solar/kol/dataV3/fansSummary?userId
- *   笔记表现 GET  /api/solar/kol/dataV3/notesRate?userId&business=0&noteType=3&dateType=1|2&advertiseSwitch=1
+ *   笔记表现 GET  /api/solar/kol/dataV3/notesRate?userId&business=0&noteType=3&dateType=…&advertiseSwitch=1
  *   粉丝画像 GET  /api/solar/kol/data/{userId}/fans_profile
  *
  * RawRecord.payload is the kol item (or the 资料 object) with the four data
@@ -24,19 +24,29 @@ import {
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  emptySignals,
+  healthFromLevel,
+  PLATFORM_RANK_KEYS,
+  SHARE_METRIC_KEYS,
+  isPlaceholder,
+  normalizeXhsId,
+  parseRatio,
   pickPath,
+  toCount,
   toNumber,
-  toRatio,
   type AudienceProfile,
   type CreatorMetrics,
-  type HealthGrade,
   type NormalizeResult,
+  type NumericMetricKey,
   type PgyGateway,
+  type PlatformRankKey,
+  type RatioUnit,
   type RawRecord,
   type SourceAdapter,
   type SourceQuery,
+  type SourceSignals,
 } from '@kcs/contract'
-import { filterFixturePage, fixturePage, type AdapterPage } from './common'
+import { filterFixturePage, fixturePage, readVendorJson, vendorHttpError, type AdapterPage } from './common'
 
 type Json = Record<string, unknown>
 
@@ -52,8 +62,38 @@ type Gateway = {
   detail(userId: string): Promise<Json | null>
   dataSummary(userId: string): Promise<Json | null>
   fansSummary(userId: string): Promise<Json | null>
-  notesRate(userId: string, window: SourceQuery['window']): Promise<Json | null>
+  notesRate(userId: string, dateType: DateType): Promise<Json | null>
   fansProfile(userId: string): Promise<Json | null>
+}
+
+type DateType = number | string
+
+/**
+ * notesRate `dateType` per window. TikHub documents 1 ≈ 7 天 / 2 = 30 天 /
+ * 3 = 90 天 and relays the solar value unchanged, so `official` follows it;
+ * JustOneAPI takes string enums. None of this has been checked against a live
+ * account yet (待实测: same creator, dateType 1/2/3, compare noteNumber), so
+ * `PGY_DATE_TYPES` (JSON, e.g. `{"30":1,"90":2}`) overrides the table and the
+ * value actually sent is stored in the payload as `kcsDateType`.
+ */
+export const PGY_DATE_TYPES: Record<PgyGateway, Record<SourceQuery['window'], DateType>> = {
+  official: { 30: 2, 90: 3 },
+  tikhub: { 30: 2, 90: 3 },
+  justoneapi: { 30: 'DAY_30', 90: 'DAY_90' },
+}
+
+export function dateTypeFor(gateway: PgyGateway, window: SourceQuery['window']): DateType {
+  const raw = process.env.PGY_DATE_TYPES
+  if (raw) {
+    try {
+      const override = JSON.parse(raw) as Record<string, unknown>
+      const value = override[String(window)]
+      if (typeof value === 'number' || (typeof value === 'string' && value)) return value
+    } catch {
+      // A broken override falls back to the documented table.
+    }
+  }
+  return PGY_DATE_TYPES[gateway][window]
 }
 
 async function http(url: string, init: RequestInit): Promise<Json> {
@@ -61,8 +101,8 @@ async function http(url: string, init: RequestInit): Promise<Json> {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const response = await fetch(url, { ...init, signal: controller.signal })
-    if (!response.ok) throw new Error(`pugongying HTTP ${response.status}`)
-    return (await response.json()) as Json
+    if (!response.ok) throw vendorHttpError('pugongying', response)
+    return await readVendorJson(response)
   } finally {
     clearTimeout(timer)
   }
@@ -117,8 +157,8 @@ function tikhub(token: string, base: string): Gateway {
     detail: (userId) => call('get_blogger_detail', { user_id: userId }),
     dataSummary: (userId) => call('get_blogger_data_summary', { user_id: userId, business: 0 }),
     fansSummary: (userId) => call('get_blogger_fans_summary', { user_id: userId }),
-    notesRate: (userId, window) =>
-      call('get_blogger_notes_rate', { user_id: userId, business: 0, note_type: 3, date_type: window === 90 ? 2 : 1, advertise_switch: 1 }),
+    notesRate: (userId, dateType) =>
+      call('get_blogger_notes_rate', { user_id: userId, business: 0, note_type: 3, date_type: dateType, advertise_switch: 1 }),
     fansProfile: (userId) => call('get_blogger_fans_profile', { user_id: userId }),
   }
 }
@@ -152,8 +192,8 @@ function justoneapi(token: string, base: string): Gateway {
     detail: (userId) => call('cooperator/user/blogger/userId/v1', { userId }),
     dataSummary: (userId) => call('kol/dataV3/dataSummary/v1', { userId, business: 0 }),
     fansSummary: (userId) => call('kol/dataV3/fansSummary/v1', { userId }),
-    notesRate: (userId, window) =>
-      call('kol/dataV3/notesRate/v1', { userId, business: 0, noteType: 3, dateType: window === 90 ? 2 : 1, advertiseSwitch: 1 }),
+    notesRate: (userId, dateType) =>
+      call('kol/dataV3/notesRate/v1', { userId, business: 0, noteType: 3, dateType, advertiseSwitch: 1 }),
     fansProfile: (userId) => call('kol/data/userId/fans_profile/v1', { userId }),
   }
 }
@@ -196,8 +236,8 @@ function official(token: string, base: string): Gateway {
     detail: (userId) => get(`/api/solar/cooperator/user/blogger/${encodeURIComponent(userId)}`),
     dataSummary: (userId) => get('/api/solar/kol/dataV3/dataSummary', { userId, business: 0 }),
     fansSummary: (userId) => get('/api/solar/kol/dataV3/fansSummary', { userId }),
-    notesRate: (userId, window) =>
-      get('/api/solar/kol/dataV3/notesRate', { userId, business: 0, noteType: 3, dateType: window === 90 ? 2 : 1, advertiseSwitch: 1 }),
+    notesRate: (userId, dateType) =>
+      get('/api/solar/kol/dataV3/notesRate', { userId, business: 0, noteType: 3, dateType, advertiseSwitch: 1 }),
     fansProfile: (userId) => get(`/api/solar/kol/data/${encodeURIComponent(userId)}/fans_profile`),
   }
 }
@@ -208,7 +248,9 @@ const GATEWAY_BASE: Record<PgyGateway, string> = {
   justoneapi: 'https://api.justoneapi.com',
 }
 
-export function resolveGateway(): { name: PgyGateway; gateway: Gateway } | null {
+type ResolvedGateway = { name: PgyGateway; gateway: Gateway }
+
+export function resolveGateway(): ResolvedGateway | null {
   const token = process.env.PGY_ACCESS_TOKEN
   if (!token) return null
   const name = (process.env.PGY_GATEWAY || 'tikhub') as PgyGateway
@@ -222,7 +264,9 @@ export function resolveGateway(): { name: PgyGateway; gateway: Gateway } | null 
 // Fetch
 // ---------------------------------------------------------------------------
 
-async function enrich(gateway: Gateway, userId: string, window: SourceQuery['window'], base: Json): Promise<Json> {
+async function enrich(resolved: ResolvedGateway, userId: string, window: SourceQuery['window'], base: Json): Promise<Json> {
+  const { gateway } = resolved
+  const dateType = dateTypeFor(resolved.name, window)
   const settle = async (p: Promise<Json | null>) => {
     try {
       return await p
@@ -233,18 +277,39 @@ async function enrich(gateway: Gateway, userId: string, window: SourceQuery['win
   const [dataSummary, fansSummary, notesRate, fansProfile] = await Promise.all([
     settle(gateway.dataSummary(userId)),
     settle(gateway.fansSummary(userId)),
-    settle(gateway.notesRate(userId, window)),
+    settle(gateway.notesRate(userId, dateType)),
     settle(gateway.fansProfile(userId)),
   ])
-  // notesRate carries no dateType back, so remember which window we asked for.
-  return { ...base, dataSummary, fansSummary, notesRate, fansProfile, kcsWindow: window }
+  // notesRate carries no dateType back, so remember what we asked for; if the
+  // table above turns out wrong, stored payloads can still be re-read correctly.
+  return { ...base, dataSummary, fansSummary, notesRate, fansProfile, kcsWindow: window, kcsDateType: dateType }
 }
 
 function toRecord(payload: Json, fetchedAt: string): RawRecord {
   return { source: 'pugongying', platform: 'xhs', externalId: String(payload.userId ?? ''), fetchedAt, payload }
 }
 
-async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterPage> {
+/** Every gateway method call is one billed request (paid gateways charge 200s, empty or not). */
+function counting(gateway: Gateway): { gateway: Gateway; calls: () => number } {
+  let calls = 0
+  const wrapped = Object.fromEntries(Object.entries(gateway).map(([name, method]) => [
+    name,
+    (...args: unknown[]) => {
+      calls += 1
+      return (method as (...a: unknown[]) => Promise<Json | null>)(...args)
+    },
+  ])) as Gateway
+  return { gateway: wrapped, calls: () => calls }
+}
+
+async function fetchLive(query: SourceQuery, live: ResolvedGateway): Promise<AdapterPage> {
+  const counter = counting(live.gateway)
+  const page = await fetchPage(query, { ...live, gateway: counter.gateway })
+  return { ...page, calls: counter.calls() }
+}
+
+async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise<AdapterPage> {
+  const { gateway } = resolved
   const fetchedAt = new Date().toISOString()
   if (query.externalIds?.length) {
     const ids = query.externalIds.slice(0, query.limit ?? query.externalIds.length)
@@ -252,7 +317,7 @@ async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterP
     for (const userId of ids) {
       const detail = await gateway.detail(userId)
       if (!detail) continue
-      records.push(toRecord(await enrich(gateway, userId, query.window, detail), fetchedAt))
+      records.push(toRecord(await enrich(resolved, userId, query.window, detail), fetchedAt))
     }
     return { sourceMode: 'live', records, nextCursor: null }
   }
@@ -266,7 +331,7 @@ async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterP
   for (const kol of kols) {
     const userId = String(kol.userId ?? '')
     if (!userId) continue
-    records.push(toRecord(shouldEnrich ? await enrich(gateway, userId, query.window, kol) : kol, fetchedAt))
+    records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol) : kol, fetchedAt))
   }
   // `total` on the 找博主 list is a paging ceiling (5000), not a hit count.
   const hasMore = kols.length === PAGE_SIZE && pageNum < 250
@@ -277,11 +342,11 @@ async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterP
 // Normalize
 // ---------------------------------------------------------------------------
 
-/** First non-empty value among paths; medians/prices reported as 0 mean "not shown". */
+/** First usable value among paths; a placeholder ("-", "暂无") counts as missing. */
 function pick(payload: Json, paths: readonly string[]): unknown {
   for (const path of paths) {
     const value = pickPath(payload, path)
-    if (value !== undefined && value !== null && value !== '') return value
+    if (value !== undefined && value !== null && value !== '' && !isPlaceholder(value)) return value
   }
   return undefined
 }
@@ -294,27 +359,83 @@ function positive(payload: Json, paths: readonly string[]): number | null {
   return null
 }
 
-/** 蒲公英 percent strings ("4.2" = 4.2%) → ratio. */
-function percent(payload: Json, paths: readonly string[]): number | null {
-  const value = pick(payload, paths)
-  if (value === undefined) return null
-  return toRatio(value, true)
-}
-
-/** Fractions already in 0..1 (pagePercentVo, fans_profile). */
-function fraction(payload: Json, paths: readonly string[]): number | null {
-  const value = pick(payload, paths)
-  return value === undefined ? null : toNumber(value)
-}
-
-function healthOf(payload: Json): HealthGrade | null {
-  const lowActive = payload.lowActive
-  if (lowActive === true) return 'abnormal'
-  if (lowActive === false) {
-    const active = pickPath(payload, 'dataSummary.isActive')
-    return active === false ? 'normal' : 'excellent'
+/** Same as `positive`, for whole-number counts (rounded, within the integer column). */
+function positiveCount(payload: Json, paths: readonly string[]): number | null {
+  for (const path of paths) {
+    const n = toCount(pickPath(payload, path)).value
+    if (n != null && n > 0) return n
   }
   return null
+}
+
+/**
+ * A ratio metric read with the unit the field is documented in: 蒲公英 writes
+ * most rates as percent strings ("4.2" = 4.2%), pagePercentVo and fans_profile
+ * as fractions. Unusable values leave a `<key>.<issue>` warning.
+ */
+function ratioMetric(
+  key: NumericMetricKey | 'completionRate' | 'read3sRate',
+  payload: Json,
+  paths: readonly string[],
+  unit: RatioUnit,
+  warnings: string[],
+): number | null {
+  const value = pick(payload, paths)
+  if (value === undefined) return null
+  const share = key === 'completionRate' || key === 'read3sRate' || SHARE_METRIC_KEYS.includes(key)
+  const parsed = parseRatio(value, unit, { share })
+  if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
+  return parsed.value
+}
+
+function flag(value: unknown): boolean | null {
+  if (value === true || value === 1 || value === '1' || value === 'true') return true
+  if (value === false || value === 0 || value === '0' || value === 'false') return false
+  return null
+}
+
+/** 「超过 X% 同类博主」fields; the notesRate one matches the window we asked for. */
+const RANK_PATHS: Record<PlatformRankKey, readonly string[]> = {
+  impressionMedian: ['notesRate.impMedianBeyondRate'],
+  readMedian: ['notesRate.readMedianBeyondRate', 'dataSummary.readMedianBeyondRate'],
+  interactionMedian: ['notesRate.interactionMedianBeyondRate'],
+  interactionRate: ['notesRate.interactionBeyondRate', 'dataSummary.interactionBeyondRate'],
+  followerGrowth: ['fansSummary.fansGrowthBeyondRate'],
+  activeFanRatio: ['fansSummary.activeFansBeyondRate'],
+  engagedFanRatio: ['fansSummary.engageFansBeyondRate'],
+  readFanRatio: ['fansSummary.readFansBeyondRate'],
+  completionRate: ['notesRate.videoFullViewBeyondRate'],
+}
+
+/**
+ * Everything 蒲公英 says that the shared metrics cannot hold as-is. There is
+ * no documented 健康等级 field in the solar responses we relay, so
+ * `healthLevel` stays null until one is confirmed (待实测); 低活跃 is its own flag.
+ */
+function signalsOf(p: Json, warnings: string[]): SourceSignals {
+  const signals = emptySignals()
+  signals.lowActive = flag(p.lowActive)
+  signals.recentlyActive = flag(pickPath(p, 'dataSummary.isActive'))
+  signals.completionRate = ratioMetric('completionRate', p, ['notesRate.videoFullViewRate', 'videoFinishRate'], 'percent', warnings)
+  signals.read3sRate = ratioMetric('read3sRate', p, ['notesRate.picture3sViewRate'], 'percent', warnings)
+  signals.coopNoteCountTotal = positiveCount(p, ['businessNoteCount'])
+  // 外溢进店: field names from relayed responses, not yet seen on a live account (待实测).
+  signals.storeVisitUvMedian = positiveCount(p, ['notesRate.mCpuvNum', 'dataSummary.mCpuvNum', 'mCpuvNum'])
+  signals.storeVisitUnitPrice = positive(p, ['notesRate.estimateCpuv', 'dataSummary.estimateCpuv30d', 'estimateCpuv30d', 'estimateCpuv'])
+  for (const key of PLATFORM_RANK_KEYS) {
+    const value = pick(p, RANK_PATHS[key])
+    if (value === undefined) continue
+    const parsed = parseRatio(value, 'percent', { share: true })
+    if (parsed.issue) warnings.push(`platformRanks.${key}.${parsed.issue}`)
+    else if (parsed.value != null) signals.platformRanks[key] = parsed.value
+  }
+  // Field names carry the window: activeFansL28 / engageFansL30 / readFansIn30.
+  if (pickPath(p, 'fansSummary.activeFansRate') != null) signals.windowDays.activeFanRatio = 28
+  if (pickPath(p, 'fansSummary.engageFansRate') != null) signals.windowDays.engagedFanRatio = 30
+  if (pickPath(p, 'fansSummary.readFansRate') != null) signals.windowDays.readFanRatio = 30
+  signals.windowDays.coopNoteCount = 30
+  if (signals.storeVisitUvMedian != null || signals.storeVisitUnitPrice != null) signals.windowDays.storeVisit = 30
+  return signals
 }
 
 function verticalsOf(payload: Json): string[] {
@@ -373,26 +494,30 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   if (!externalId || !displayName) return { ok: false, errors: [!externalId ? 'externalId.missing' : 'displayName.missing'] }
 
   const m: CreatorMetrics = emptyMetrics(toNumber(p.kcsWindow) === 90 ? 90 : 30)
-  m.followers = positive(p, ['fansNum', 'fansCount', 'fansSummary.fansNum'])
-  m.followerGrowth = toNumber(pick(p, ['fansSummary.fansIncreaseNum', 'fans30GrowthNum']))
-  m.followerGrowthRate = percent(p, ['fansSummary.fansGrowthRate', 'fans30GrowthRate', 'dataSummary.fans30GrowthRate'])
-  m.readFanRatio = percent(p, ['fansSummary.readFansRate'])
-  m.activeFanRatio = percent(p, ['fansSummary.activeFansRate'])
-  m.engagedFanRatio = percent(p, ['fansSummary.engageFansRate'])
+  const issues: string[] = []
+  const percent = (key: NumericMetricKey, paths: readonly string[]) => ratioMetric(key, p, paths, 'percent', issues)
+  const fraction = (key: NumericMetricKey, paths: readonly string[]) => ratioMetric(key, p, paths, 'ratio', issues)
+  m.followers = positiveCount(p, ['fansNum', 'fansCount', 'fansSummary.fansNum'])
+  m.followerGrowth = toCount(pick(p, ['fansSummary.fansIncreaseNum', 'fans30GrowthNum']), { signed: true }).value
+  m.followerGrowthRate = percent('followerGrowthRate', ['fansSummary.fansGrowthRate', 'fans30GrowthRate', 'dataSummary.fans30GrowthRate'])
+  m.readFanRatio = percent('readFanRatio', ['fansSummary.readFansRate'])
+  m.activeFanRatio = percent('activeFanRatio', ['fansSummary.activeFansRate'])
+  m.engagedFanRatio = percent('engagedFanRatio', ['fansSummary.engageFansRate'])
 
-  m.impressionMedian = positive(p, ['notesRate.impMedian', 'dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])
-  m.readMedian = positive(p, ['notesRate.readMedian', 'dataSummary.readMedian', 'clickMidNum'])
-  m.interactionMedian = positive(p, ['notesRate.interactionMedian', 'dataSummary.interactionMedian', 'interMidNum', 'mEngagementNum'])
-  m.likeMedian = positive(p, ['notesRate.likeMedian'])
-  m.collectMedian = positive(p, ['notesRate.collectMedian'])
-  m.commentMedian = positive(p, ['notesRate.commentMedian'])
-  m.coopReadMedian = positive(p, ['readMidCoop30'])
-  m.coopInteractionMedian = positive(p, ['interMidCoop30'])
-  m.engagementRate = percent(p, ['notesRate.interactionRate'])
-  m.retentionRate = percent(p, ['notesRate.videoFullViewRate', 'videoFinishRate'])
-  m.noteCount = positive(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
+  m.impressionMedian = positiveCount(p, ['notesRate.impMedian', 'dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])
+  m.readMedian = positiveCount(p, ['notesRate.readMedian', 'dataSummary.readMedian', 'clickMidNum'])
+  m.interactionMedian = positiveCount(p, ['notesRate.interactionMedian', 'dataSummary.interactionMedian', 'interMidNum', 'mEngagementNum'])
+  m.likeMedian = positiveCount(p, ['notesRate.likeMedian'])
+  m.collectMedian = positiveCount(p, ['notesRate.collectMedian'])
+  m.commentMedian = positiveCount(p, ['notesRate.commentMedian'])
+  m.coopReadMedian = positiveCount(p, ['readMidCoop30'])
+  m.coopInteractionMedian = positiveCount(p, ['interMidCoop30'])
+  m.engagementRate = percent('engagementRate', ['notesRate.interactionRate'])
+  // Still the video completion rate; the 3-second read rate is kept apart in signals.
+  m.retentionRate = percent('retentionRate', ['notesRate.videoFullViewRate', 'videoFinishRate'])
+  m.noteCount = positiveCount(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
   // 千赞笔记比例 is the platform's own "爆文" ratio; no absolute count is exposed.
-  m.viralRate = percent(p, ['notesRate.thousandLikePercent', 'thousandLikePercent30'])
+  m.viralRate = percent('viralRate', ['notesRate.thousandLikePercent', 'thousandLikePercent30'])
 
   m.priceImage = positive(p, ['picturePrice'])
   m.priceVideo = positive(p, ['videoPrice'])
@@ -400,31 +525,35 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.cpe = positive(p, ['estimatePictureEngageCost', 'dataSummary.estimatePictureEngageCost'])
   m.cpm = positive(p, ['estimatePictureCpm', 'dataSummary.estimatePictureCpm'])
 
-  m.trafficSearchRatio = fraction(p, ['notesRate.pagePercentVo.readSearchPercent'])
-  m.trafficRecommendRatio = fraction(p, ['notesRate.pagePercentVo.readHomefeedPercent'])
-  m.trafficFollowRatio = fraction(p, ['notesRate.pagePercentVo.readFollowPercent'])
+  m.trafficSearchRatio = fraction('trafficSearchRatio', ['notesRate.pagePercentVo.readSearchPercent'])
+  m.trafficRecommendRatio = fraction('trafficRecommendRatio', ['notesRate.pagePercentVo.readHomefeedPercent'])
+  m.trafficFollowRatio = fraction('trafficFollowRatio', ['notesRate.pagePercentVo.readFollowPercent'])
 
-  m.health = healthOf(p)
-  m.coopNoteCount = positive(p, ['coopNoteNum30d', 'businessNoteCount'])
+  const signals = signalsOf(p, issues)
+  m.health = healthFromLevel(signals.healthLevel)
+  // Recent window only; the all-time count (businessNoteCount) is signals.coopNoteCountTotal.
+  m.coopNoteCount = positiveCount(p, ['coopNoteNum30d'])
   m.audience = audienceOf(p)
 
   const metrics = deriveMetrics(m)
-  const warnings = (['followers', 'readMedian', 'interactionMedian', 'priceImage', 'cpe', 'health'] as const)
+  const warnings = (['followers', 'readMedian', 'interactionMedian', 'priceImage', 'cpe'] as const)
     .filter((key) => metrics[key] == null)
     .map((key) => `${key}.missing`)
+    .concat(issues)
 
   return {
     ok: true,
     creator: {
-      creatorKey: creatorKeyFor('xhs', externalId),
+      creatorKey: creatorKeyFor('pugongying', externalId),
       externalId,
       platform: 'xhs',
       displayName,
-      xhsId: String(p.redId ?? '') || null,
+      xhsId: normalizeXhsId(p.redId),
       avatarUrl: String(p.headPhoto ?? '') || null,
       regions: regionsOf(p),
       verticals: verticalsOf(p),
       metrics,
+      signals,
       warnings,
     },
   }
@@ -442,7 +571,7 @@ export const pugongyingAdapter: SourceAdapter = {
     'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
     'coopReadMedian', 'coopInteractionMedian', 'engagementRate', 'retentionRate', 'noteCount', 'viralRate',
     'priceImage', 'priceVideo', 'cpv', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio',
-    'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'health', 'coopNoteCount', 'audience',
+    'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'coopNoteCount', 'audience',
   ],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const resolved = resolveGateway()
@@ -450,7 +579,7 @@ export const pugongyingAdapter: SourceAdapter = {
       const page = fixturePage('pugongying', new URL('./fixtures/pugongying.json', import.meta.url), query)
       return filterFixturePage(page, query, normalizePugongying)
     }
-    return fetchLive(query, resolved.gateway)
+    return fetchLive(query, resolved)
   },
   normalize: normalizePugongying,
 }

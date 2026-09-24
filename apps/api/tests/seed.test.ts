@@ -58,8 +58,8 @@ describe('usable demo seed', () => {
     expect(items.some((row) => (row.followers ?? 0) > 0)).toBe(true)
     expect(items.some((row) => row.hasCollaborated && row.collabBrands.length > 0)).toBe(true)
     expect(new Set(items.map((row) => row.source))).toEqual(new Set(['pugongying', 'qiangua', 'xinhong']))
-    // Two grades since 2024-09 (docs/03); 蒲公英's 低活跃 is its own flag, not a grade.
-    expect(items.some((row) => row.metrics.health === 'healthy')).toBe(true)
+    expect(items.some((row) => row.metrics.health === 'excellent')).toBe(false)
+    expect(items.some((row) => row.metrics.health === 'normal')).toBe(true)
     expect(items.some((row) => row.metrics.health === 'abnormal')).toBe(true)
     expect(items.every((row) => row.metrics.health == null || ['healthy', 'abnormal'].includes(row.metrics.health))).toBe(true)
     expect(items.some((row) => row.source === 'pugongying' && row.metrics.lowActive === true)).toBe(true)

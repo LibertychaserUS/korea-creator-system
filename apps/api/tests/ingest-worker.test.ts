@@ -153,6 +153,65 @@ describe('ingest worker', () => {
     })
   })
 
+  it('counts the quota by the vendor day: Beijing midnight (16:00 UTC) resets it', async () => {
+    const { context, token } = await setup()
+    await context.db.query("UPDATE ingest_sources SET quota = 1 WHERE id = 'qiangua'")
+    let clock = new Date('2026-09-24T15:59:00.000Z') // 23:59 in Beijing, same UTC day as below
+    context.env.now = () => clock
+    const { job } = await (await enqueue(context, token)).json()
+    const partial = await processJob(context.env, job.id)
+    expect(partial).toMatchObject({ status: 'partial', cursor: '2', quotaUsed: 1 })
+    expect(new Date(partial!.nextRunAt!).toISOString()).toBe('2026-09-24T16:00:00.000Z')
+
+    clock = new Date('2026-09-24T16:01:00.000Z') // 00:01 the next Beijing day
+    await context.db.query('UPDATE ingest_jobs SET next_run_at = now() WHERE id = $1', [job.id])
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', pagesDone: 2, quotaUsed: 2 })
+    const usage = await context.db.query(
+      "SELECT day::text AS day, calls FROM ingest_source_usage WHERE source = 'qiangua' ORDER BY day",
+    )
+    expect(usage.rows).toEqual([{ day: '2026-09-24', calls: 1 }, { day: '2026-09-25', calls: 1 }])
+  })
+
+  it('a source can keep its quota in another zone; an unknown zone falls back to Beijing', async () => {
+    const { context, token } = await setup()
+    await context.db.query("UPDATE ingest_sources SET quota = 1, quota_tz = 'Asia/Seoul' WHERE id = 'qiangua'")
+    context.env.now = () => new Date('2026-09-24T15:30:00.000Z') // already the 25th in Seoul
+    const { job } = await (await enqueue(context, token)).json()
+    const partial = await processJob(context.env, job.id)
+    expect(new Date(partial!.nextRunAt!).toISOString()).toBe('2026-09-25T15:00:00.000Z')
+
+    await context.db.query("UPDATE ingest_sources SET quota_tz = 'Mars/Olympus' WHERE id = 'qiangua'")
+    await context.db.query("UPDATE ingest_jobs SET status = 'queued', next_run_at = now() WHERE id = $1", [job.id])
+    // Beijing is still on the 24th, whose call has not been spent yet.
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', pagesDone: 2 })
+    const usage = await context.db.query(
+      "SELECT day::text AS day, calls FROM ingest_source_usage WHERE source = 'qiangua' ORDER BY day",
+    )
+    expect(usage.rows).toEqual([{ day: '2026-09-24', calls: 1 }, { day: '2026-09-25', calls: 1 }])
+  })
+
+  it('charges every vendor call a page reports (detail enrichment), not just one per page', async () => {
+    const adapter = pagedAdapter()
+    const billed: SourceAdapter = {
+      ...adapter,
+      async fetch(query) {
+        return { ...(await adapter.fetch(query)), calls: 5 }
+      },
+    }
+    const context = await createTestApp({ getAdapter: (source) => source === billed.id ? billed : undefined })
+    contexts.push(context)
+    const token = (await context.loginJson('ops@kcs.local')).token
+    await context.db.query("UPDATE ingest_sources SET quota = 7 WHERE id = 'qiangua'")
+    const { job } = await (await enqueue(context, token)).json()
+    // Page 1 costs 5 of 7; page 2 fits the reservation check (5 < 7) and brings the day to 10.
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', pagesDone: 2, quotaUsed: 10 })
+    const usage = await context.db.query("SELECT sum(calls)::int AS calls FROM ingest_source_usage WHERE source = 'qiangua'")
+    expect(usage.rows[0].calls).toBe(10)
+
+    const again = (await (await enqueue(context, token)).json()).job
+    expect(await processJob(context.env, again.id)).toMatchObject({ status: 'partial', pagesDone: 0, errorCode: 'QUOTA_EXHAUSTED' })
+  })
+
   it('does not charge quota for demo-data pages', async () => {
     const adapter = pagedAdapter()
     const fixtureAdapter: SourceAdapter = {

@@ -102,10 +102,10 @@ const params = (label: string, extra: Record<string, unknown> = {}) => ({
 const ms = (iso: string | null) => (iso ? new Date(iso).getTime() : Number.NaN)
 
 async function todayUsage(): Promise<number> {
-  const day = new Date().toISOString().slice(0, 10)
   const rows = await sqlRead<{ calls: number }>(
-    'SELECT calls FROM ingest_source_usage WHERE source = $1 AND day = $2',
-    [SOURCE, day],
+    `SELECT u.calls FROM ingest_source_usage u JOIN ingest_sources s ON s.id = u.source
+      WHERE u.source = $1 AND u.day = (now() AT TIME ZONE s.quota_tz)::date`,
+    [SOURCE],
   )
   return Number(rows[0]?.calls ?? 0)
 }
@@ -279,17 +279,27 @@ describe('队列 — worker 自动处理', () => {
     expect(Number(history[0].n)).toBe(job.writtenCount + job.skippedDupes)
   })
 
-  it('同一批博主再抓一次：全部算「已有」而不是新写入，历史快照照样多一份', async () => {
+  it('同一批博主当天再抓一次：全部算「已有」而不是新写入，当天的历史快照被新的一份覆盖、原文各留一条', async () => {
     const body = params('dupes', { maxPages: 1 })
     const first = await fetchJob(ops, body, true)
     const again = await fetchJob(ops, body, true)
     expect(again.job.writtenCount).toBe(0)
     expect(again.job.skippedDupes).toBe(first.job.writtenCount + first.job.skippedDupes)
-    const snapshots = await sqlRead<{ n: string }>(
-      'SELECT count(*) AS n FROM creator_metrics_history WHERE job_id = ANY($1::text[])',
+    const snapshots = await sqlRead<{ job_id: string; n: string }>(
+      'SELECT job_id, count(*) AS n FROM creator_metrics_history WHERE job_id = ANY($1::text[]) GROUP BY job_id',
       [[first.job.id, again.job.id]],
     )
-    expect(Number(snapshots[0].n)).toBe(2 * again.job.skippedDupes)
+    const count = (id: string) => Number(snapshots.find((row) => row.job_id === id)?.n ?? 0)
+    expect(count(again.job.id)).toBe(again.job.skippedDupes)
+    expect(count(first.job.id)).toBe(0)
+    const raws = await sqlRead<{ n: string }>(
+      `SELECT min(n) AS n FROM (
+         SELECT count(*) AS n FROM creator_raw
+          WHERE source = $2 AND creator_id IN (SELECT creator_id FROM creator_metrics_history WHERE job_id = $1)
+          GROUP BY creator_id) per_creator`,
+      [again.job.id, SOURCE],
+    )
+    expect(Number(raws[0].n)).toBeGreaterThanOrEqual(2)
   })
 
   it('演示数据（无凭证）不消耗日配额：quotaUsed 为 0，当日用量不变', async (ctx) => {
@@ -340,7 +350,7 @@ describe('队列 — 多页翻页、配额与限速（需要替身供应商）',
     expect(calls.every((c) => c.status === 200)).toBe(true)
   })
 
-  it('日配额用完 → partial：保留游标、记录 QUOTA_EXHAUSTED、续跑时间落在次日 00:00（UTC）', async (ctx) => {
+  it('日配额用完 → partial：保留游标、记录 QUOTA_EXHAUSTED、续跑时间落在来源时区（北京）的次日 00:00', async (ctx) => {
     if (!live) return ctx.skip(skipReason)
     const kw = keyword('bb-pages-4-quota')
     const used = await todayUsage()
@@ -356,7 +366,8 @@ describe('队列 — 多页翻页、配额与限速（需要替身供应商）',
       expect(stopped.errorCode).toBe('QUOTA_EXHAUSTED')
       expect(stopped.endedAt).not.toBeNull()
       const next = new Date(stopped.nextRunAt!)
-      expect(next.getUTCHours()).toBe(0)
+      // Beijing midnight = 16:00 UTC.
+      expect(next.getUTCHours()).toBe(16)
       expect(next.getUTCMinutes()).toBe(0)
       expect(next.getTime()).toBeGreaterThan(Date.now())
       expect(next.getTime() - Date.now()).toBeLessThanOrEqual(24 * 3_600_000)
@@ -488,7 +499,7 @@ describe('队列 — 失败、退避与取消（需要替身供应商）', () =>
     expect(devView.json.status).toBe('failed')
   }, 60_000)
 
-  it('退避时间递增：第 1 次失败约 2 秒后再试，第 2 次约 4 秒', async (ctx) => {
+  it('退避带随机抖动：第 1 次失败后 0–2 秒内再试，第 2 次 0–4 秒（再加 2 秒轮询）', async (ctx) => {
     if (!live) return ctx.skip(skipReason)
     const kw = keyword('bb-fail-backoff')
     const { job } = await fetchJob(ops, { source: SOURCE, window: 30, keyword: kw, maxPages: 1 })
@@ -497,11 +508,23 @@ describe('队列 — 失败、退避与取消（需要替身供应商）', () =>
     expect(calls.length).toBe(3)
     const gap1 = calls[1].at - calls[0].at
     const gap2 = calls[2].at - calls[1].at
-    // Backoff 2 s / 4 s, observed through a 2 s worker tick: 2–4.5 s then 4–6.5 s.
-    expect(gap1).toBeGreaterThanOrEqual(1_800)
+    // Full jitter: uniform in [0, 2 s) then [0, 4 s), observed through a 2 s worker tick.
     expect(gap1).toBeLessThan(4_800)
-    expect(gap2).toBeGreaterThanOrEqual(3_800)
-    expect(gap2).toBeLessThan(7_000)
+    expect(gap2).toBeLessThan(6_800)
+  }, 60_000)
+
+  it('供应商回 429 带 Retry-After：至少等它说的秒数再试，然后成功', async (ctx) => {
+    if (!live) return ctx.skip(skipReason)
+    const kw = keyword('bb-429-6')
+    const { job } = await fetchJob(ops, { source: SOURCE, window: 30, keyword: kw, maxPages: 1 })
+    const done = await waitFor(job.id, settled, 30_000)
+    expect(done.status).toBe('ok')
+    expect(done.attempts).toBe(1)
+    const calls = await vendorCalls(kw)
+    expect(calls.map((c) => c.status)).toEqual([429, 200])
+    // Retry-After 6 s is a floor over the ≤2 s jitter; plus one 2 s tick at most.
+    expect(calls[1].at - calls[0].at).toBeGreaterThanOrEqual(5_800)
+    expect(calls[1].at - calls[0].at).toBeLessThan(9_000)
   }, 60_000)
 
   it('供应商抖一下就恢复：第一次失败后自动重试成功 → ok，attempts 记 1，错误字段清空', async (ctx) => {

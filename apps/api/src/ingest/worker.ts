@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import type { PoolClient } from 'pg'
 import {
+  DEFAULT_QUOTA_TIME_ZONE,
   INGEST_LEASE_MS,
   INGEST_MAX_ATTEMPTS,
   INGEST_QUEUE_LOCK,
@@ -13,18 +14,53 @@ import {
 import { getAdapter } from '../adapters'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
+import { recordRefreshMisses } from './data-status'
 import { deadLetterJob, failureOf } from './dead-letters'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
-import { retentionConfig, runRetention, type RetentionConfig } from './retention'
+import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
+import { dailyConfig, runDueDailyTasks, type DailyConfig } from './daily'
+import './daily-tasks'
+import { WORKBOOK_SOURCE, ingestSheetRow } from './workbook'
 import { errorMessage, logEvent } from '../log'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
 const WORKER_ID = `${hostname()}:${process.pid}`
 const LEASE_SECONDS = Number(process.env.INGEST_LEASE_MS || INGEST_LEASE_MS) / 1_000
 
-const buckets = new Map<string, TokenBucket>()
+/**
+ * Retry delay after a transient failure: "full jitter" — a uniform draw in
+ * [0, min(cap, base · 2^attempt)] — so retries from many jobs spread out
+ * instead of arriving together. A vendor `Retry-After` is a floor (capped at
+ * `retryAfterCapMs`), never ignored.
+ */
+export type BackoffConfig = { baseMs: number; capMs: number; retryAfterCapMs: number }
 
+export function backoffConfig(source: NodeJS.ProcessEnv = process.env): BackoffConfig {
+  const pick = (value: string | undefined, fallback: number) => {
+    const n = Number(value)
+    return value !== undefined && value !== '' && Number.isFinite(n) && n >= 0 ? n : fallback
+  }
+  return {
+    baseMs: pick(source.INGEST_BACKOFF_BASE_MS, 1_000),
+    capMs: pick(source.INGEST_BACKOFF_CAP_MS, 5 * 60_000),
+    retryAfterCapMs: pick(source.INGEST_RETRY_AFTER_CAP_MS, 60 * 60_000),
+  }
+}
+
+export function backoffDelayMs(
+  attempt: number,
+  retryAfterMs: number | null,
+  config: BackoffConfig = backoffConfig(),
+  random: () => number = Math.random,
+): number {
+  const ceiling = Math.min(config.capMs, config.baseMs * 2 ** Math.max(0, attempt))
+  const jitter = Math.floor(random() * ceiling)
+  if (retryAfterMs == null) return jitter
+  return Math.max(jitter, Math.min(retryAfterMs, config.retryAfterCapMs))
+}
+
+/** Pure token-bucket arithmetic (the live bucket is `takePgToken`, same maths in SQL). */
 export class TokenBucket {
   private tokens: number
   private updatedAt: number
@@ -125,14 +161,12 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     const adapter = resolveAdapter(env, source)
     if (!adapter) throw new Error(`unsupported adapter: ${source}`)
     const sourceRow = await env.db.query(
-      'SELECT rate_limit, quota FROM ingest_sources WHERE id = $1',
+      'SELECT rate_limit, quota, quota_tz FROM ingest_sources WHERE id = $1',
       [source],
     )
+    const quotaTz = quotaTimeZone(sourceRow.rows[0]?.quota_tz)
     const rateLimit = Math.max(1, Number(sourceRow.rows[0]?.rate_limit ?? 60))
     const quota = Math.max(0, Number(sourceRow.rows[0]?.quota ?? 1000))
-    const bucketKey = `${source}:${rateLimit}`
-    const bucket = buckets.get(bucketKey) ?? new TokenBucket(rateLimit, env.now().getTime())
-    buckets.set(bucketKey, bucket)
 
     const baseQuery = parseQuery(claimed.rows[0].query, source as SourceId)
     let cursor = claimed.rows[0].cursor ?? baseQuery.cursor ?? null
@@ -143,6 +177,9 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     let failed = Number(claimed.rows[0].failed_count ?? 0)
     let quotaUsed = Number(claimed.rows[0].quota_used ?? 0)
     let sourceMode = claimed.rows[0].source_mode ?? 'live'
+    const requestedIds = baseQuery.externalIds?.length
+      ? baseQuery.externalIds.slice(0, baseQuery.limit ?? baseQuery.externalIds.length).map(String)
+      : null
 
     while (pagesDone < maxPages) {
       // Cancelled between pages, or the lease was taken over while we were slow:
@@ -154,18 +191,18 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       if (current.rows[0]?.status !== 'running' || current.rows[0]?.locked_by !== lease) {
         return readJob(env, jobId)
       }
-      if (options.shouldStop?.() || !(await takeRateToken(bucket, env, options.shouldStop))) {
+      if (options.shouldStop?.() || !(await takeRateToken(env, source, rateLimit, options.shouldStop))) {
         return requeueJob(env, jobId, lease, source, cursor, pagesDone)
       }
-      const reserved = await reserveQuota(env, source, quota)
-      if (!reserved) {
+      const reserved = await reserveQuota(env, source, quota, quotaTz)
+      if (!reserved.ok) {
         await env.db.query(
           `UPDATE ingest_jobs SET status = 'partial', cursor = $2, next_run_at = $3,
            error = 'quota_exhausted', error_code = 'QUOTA_EXHAUSTED',
            error_summary = 'daily source quota exhausted', ended_at = now(),
            locked_by = NULL, lease_expires_at = NULL, updated_at = now()
            WHERE id = $1`,
-          [jobId, cursor, nextUtcMidnight(env.now())],
+          [jobId, cursor, reserved.resetsAt],
         )
         logEvent('warn', 'ingest.job_partial', { jobId, source, code: 'QUOTA_EXHAUSTED', pages: pagesDone })
         return readJob(env, jobId)
@@ -174,9 +211,12 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       sourceMode = (page as SourcePage & { sourceMode?: string }).sourceMode ?? sourceMode
       if (sourceMode === 'fixture') {
         // No vendor was called (demo data) — give the reserved call back, 04 §fixture 模式「不计配额」.
-        await releaseQuota(env, source)
+        await releaseQuota(env, source, reserved.day)
       } else {
-        quotaUsed += 1
+        // Enrichment inside one page (蒲公英 detail + 4 data calls per creator) is billed too.
+        const calls = Math.max(1, Math.floor(Number(page.calls ?? 1)) || 1)
+        if (calls > 1) await chargeQuota(env, source, reserved.day, calls - 1)
+        quotaUsed += calls
       }
       const counts = await persistPage(env, adapter, page, jobId, source as SourceId)
       written += counts.written
@@ -190,12 +230,22 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
         `UPDATE ingest_jobs SET cursor = $2, pages_done = $3, quota_used = $4,
          written_count = $5, skipped_dupes = $6, failed_count = $7, source_mode = $8,
          lease_expires_at = now() + make_interval(secs => $9::float8),
+         seen_external_ids = CASE WHEN $10::text[] IS NULL THEN seen_external_ids
+           ELSE ARRAY(SELECT DISTINCT unnest(COALESCE(seen_external_ids, '{}') || $10::text[])) END,
          updated_at = now() WHERE id = $1`,
-        [jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS],
+        [
+          jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS,
+          requestedIds ? page.records.map((record) => String(record.externalId)) : null,
+        ],
       )
       if (!cursor) break
     }
 
+    // Only a refresh that went through every page can say an id was not there.
+    if (requestedIds && !cursor && sourceMode !== 'fixture') {
+      const seen = await env.db.query('SELECT seen_external_ids FROM ingest_jobs WHERE id = $1', [jobId])
+      await recordRefreshMisses(env, source, requestedIds, seen.rows[0]?.seen_external_ids ?? [], jobId)
+    }
     await env.db.query(
       `UPDATE ingest_jobs SET status = 'ok', cursor = $2, error = NULL,
        locked_by = NULL, lease_expires_at = NULL,
@@ -242,7 +292,7 @@ async function requeueJob(
  * silently lost and a replay continues rather than restarts.
  */
 async function failJob(env: AppEnv, jobId: string, source: string, error: unknown) {
-  const { code, permanent, message } = failureOf(error)
+  const { code, permanent, message, retryAfterMs } = failureOf(error)
   const row = await env.db.query(
     'SELECT attempts, max_attempts, cursor, query FROM ingest_jobs WHERE id = $1',
     [jobId],
@@ -255,13 +305,13 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
     `UPDATE ingest_jobs SET attempts = $2::int, attempt = $2::int,
        status = CASE WHEN $3::boolean THEN 'failed' ELSE 'queued' END,
        next_run_at = CASE WHEN $3::boolean THEN NULL
-         ELSE now() + make_interval(secs => power(2, $2::int)::int) END,
+         ELSE now() + make_interval(secs => $6::float8 / 1000) END,
        error = $4, error_code = $5, error_summary = $4,
        ended_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
        dead_lettered_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
        locked_by = NULL, lease_expires_at = NULL,
        updated_at = now() WHERE id = $1 RETURNING *`,
-    [jobId, attempts, exhausted, message, code],
+    [jobId, attempts, exhausted, message, code, backoffDelayMs(attempts, retryAfterMs)],
   )
   logEvent(exhausted ? 'error' : 'warn', 'ingest.job_failed', {
     jobId,
@@ -270,6 +320,7 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
     attempt: attempts,
     permanent,
     willRetry: !exhausted,
+    retryAfterMs,
     message,
   })
   if (exhausted) {
@@ -295,17 +346,21 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
  * - it takes one due job per tick and finishes it before looking again. Vendor
  *   calls are billed per request and capped per minute, so concurrency would
  *   only raise the bill and the 429 rate;
- * - the same holder runs the retention sweep once per `retention.intervalMs`
- *   (first time right after it wins the lock), so exactly one process deletes;
+ * - the same holder runs the registered daily tasks (`./daily`, once per
+ *   local day) between jobs;
+ * - the same holder runs the optional retention sweep once per
+ *   `retention.intervalMs` (first time right after it wins the lock), so at
+ *   most one process deletes — and only when ops turned a kind on explicitly;
  * - `INGEST_WORKER=0` opts a process out entirely (e.g. a replica that should
  *   only serve HTTP).
  */
 export function startIngestWorker(
   env: AppEnv,
-  options: { intervalMs?: number; retention?: RetentionConfig } = {},
+  options: { intervalMs?: number; retention?: RetentionConfig; daily?: DailyConfig } = {},
 ) {
   const intervalMs = options.intervalMs ?? 2_000
   const retention = options.retention ?? retentionConfig()
+  const daily = options.daily ?? dailyConfig()
   if (process.env.INGEST_WORKER === '0') {
     return async () => undefined
   }
@@ -316,7 +371,7 @@ export function startIngestWorker(
   let sweptAt = 0
 
   const sweep = async () => {
-    if (retention.intervalMs <= 0 || Date.now() - sweptAt < retention.intervalMs) return
+    if (!retentionEnabled(retention) || Date.now() - sweptAt < retention.intervalMs) return
     sweptAt = Date.now()
     try {
       const deleted = await runRetention(env.db, retention, env.now())
@@ -350,6 +405,8 @@ export function startIngestWorker(
     try {
       if (!(await acquire())) return
       await sweep()
+      if (stopped) return
+      await runDueDailyTasks(env, daily)
       if (stopped) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
@@ -410,8 +467,13 @@ export function startIngestWorker(
  */
 export async function replayRecord(
   env: AppEnv,
-  input: { source: SourceId; jobId: string | null; externalId: string; payload: Record<string, unknown> },
+  input: { source: SourceId | typeof WORKBOOK_SOURCE; jobId: string | null; externalId: string; payload: Record<string, unknown> },
 ) {
+  if (input.source === WORKBOOK_SOURCE) {
+    // A parked workbook row: its cells are the payload, re-read them the same way.
+    const { __file: _file, ...row } = input.payload as Record<string, string>
+    return ingestSheetRow(env, input.jobId, row)
+  }
   const adapter = resolveAdapter(env, input.source)
   if (!adapter) throw new Error(`unsupported adapter: ${input.source}`)
   const page: SourcePage = {
@@ -429,9 +491,33 @@ export async function replayRecord(
   return persistPage(env, adapter, page, input.jobId, input.source)
 }
 
-async function reserveQuota(env: AppEnv, source: string, quota: number) {
-  if (quota <= 0) return false
-  const day = env.now().toISOString().slice(0, 10)
+function quotaTimeZone(value: unknown): string {
+  if (typeof value !== 'string' || !value) return DEFAULT_QUOTA_TIME_ZONE
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return value
+  } catch {
+    return DEFAULT_QUOTA_TIME_ZONE
+  }
+}
+
+/**
+ * The quota day is the vendor's calendar day in `tz`, and the wall resets at
+ * its next midnight — 16:00 UTC for Beijing — so one vendor day never gets
+ * two UTC days' worth of calls.
+ */
+async function quotaDay(env: AppEnv, tz: string): Promise<{ day: string; resetsAt: Date }> {
+  const { rows } = await env.db.query(
+    `SELECT ($1::timestamptz AT TIME ZONE $2)::date::text AS day,
+            (date_trunc('day', $1::timestamptz AT TIME ZONE $2) + interval '1 day') AT TIME ZONE $2 AS resets_at`,
+    [env.now(), tz],
+  )
+  return { day: rows[0].day, resetsAt: new Date(rows[0].resets_at) }
+}
+
+async function reserveQuota(env: AppEnv, source: string, quota: number, tz: string) {
+  const { day, resetsAt } = await quotaDay(env, tz)
+  if (quota <= 0) return { ok: false, day, resetsAt }
   await env.db.query(
     `INSERT INTO ingest_source_usage (source, day, calls) VALUES ($1,$2,0)
      ON CONFLICT (source, day) DO NOTHING`,
@@ -442,25 +528,65 @@ async function reserveQuota(env: AppEnv, source: string, quota: number) {
      WHERE source = $1 AND day = $2 AND calls < $3 RETURNING calls`,
     [source, day, quota],
   )
-  return Boolean(result.rowCount)
+  return { ok: Boolean(result.rowCount), day, resetsAt }
 }
 
-async function releaseQuota(env: AppEnv, source: string) {
-  const day = env.now().toISOString().slice(0, 10)
+/** Gives a call back to the day it was taken from, even if midnight passed in between. */
+async function releaseQuota(env: AppEnv, source: string, day: string) {
   await env.db.query(
     `UPDATE ingest_source_usage SET calls = GREATEST(0, calls - 1) WHERE source = $1 AND day = $2`,
     [source, day],
   )
 }
 
+/** Calls a page made beyond the one reserved before it; may run past the quota, the next page stops. */
+async function chargeQuota(env: AppEnv, source: string, day: string, extra: number) {
+  await env.db.query(
+    `INSERT INTO ingest_source_usage (source, day, calls) VALUES ($1, $2, $3)
+     ON CONFLICT (source, day) DO UPDATE SET calls = ingest_source_usage.calls + EXCLUDED.calls`,
+    [source, day, extra],
+  )
+}
+
+/**
+ * One token from the source's bucket in Postgres, or how long until the next
+ * one. Capacity = `rate_limit` per minute, refilled continuously; a changed
+ * rate limit starts a fresh, full bucket (as ops would expect after raising it).
+ */
+export async function takePgToken(env: AppEnv, source: string, ratePerMinute: number): Promise<{ ok: boolean; waitMs: number }> {
+  const capacity = Math.max(1, ratePerMinute)
+  const now = env.now()
+  const refill = `CASE WHEN b.capacity <> EXCLUDED.capacity THEN EXCLUDED.capacity
+      ELSE LEAST(EXCLUDED.capacity, b.tokens
+        + GREATEST(0, EXTRACT(EPOCH FROM (EXCLUDED.updated_at - b.updated_at))) * EXCLUDED.capacity / 60.0) END`
+  const { rows } = await env.db.query(
+    `INSERT INTO ingest_rate_buckets AS b (source, capacity, tokens, updated_at) VALUES ($1, $2::float8, $2::float8 - 1, $3::timestamptz)
+     ON CONFLICT (source) DO UPDATE SET
+       tokens = ${refill} - 1,
+       capacity = EXCLUDED.capacity,
+       updated_at = EXCLUDED.updated_at
+     WHERE ${refill} >= 1
+     RETURNING tokens`,
+    [source, capacity, now],
+  )
+  if (rows[0]) return { ok: true, waitMs: 0 }
+  const state = await env.db.query(
+    `SELECT LEAST(capacity, tokens + GREATEST(0, EXTRACT(EPOCH FROM ($2::timestamptz - updated_at))) * capacity / 60.0) AS tokens
+       FROM ingest_rate_buckets WHERE source = $1`,
+    [source, now],
+  )
+  const tokens = Number(state.rows[0]?.tokens ?? 0)
+  return { ok: false, waitMs: Math.max(1, Math.ceil((1 - tokens) / (capacity / 60_000))) }
+}
+
 /** Waits for a rate token; false if asked to stop while waiting. */
-async function takeRateToken(bucket: TokenBucket, env: AppEnv, shouldStop?: () => boolean) {
-  while (!bucket.tryTake(env.now().getTime())) {
+async function takeRateToken(env: AppEnv, source: string, ratePerMinute: number, shouldStop?: () => boolean) {
+  for (;;) {
+    const taken = await takePgToken(env, source, ratePerMinute)
+    if (taken.ok) return true
     if (shouldStop?.()) return false
-    const wait = Math.min(500, bucket.waitMs(env.now().getTime()))
-    await new Promise((resolve) => setTimeout(resolve, wait))
+    await new Promise((resolve) => setTimeout(resolve, Math.min(500, taken.waitMs)))
   }
-  return true
 }
 
 function resolveAdapter(env: AppEnv, source: string): SourceAdapter | undefined {
@@ -474,14 +600,6 @@ function parseQuery(value: unknown, source: SourceId): SourceQuery {
     source,
     window: (input as Partial<SourceQuery> | null)?.window === 90 ? 90 : 30,
   }
-}
-
-function nextUtcMidnight(now: Date) {
-  return new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + 1,
-  ))
 }
 
 async function readJob(env: AppEnv, id: string) {

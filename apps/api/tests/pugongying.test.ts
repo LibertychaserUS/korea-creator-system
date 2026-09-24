@@ -15,7 +15,7 @@ describe('蒲公英 normalize (solar field names)', () => {
     if (!result.ok) return
     const { creator } = result
     expect(creator.externalId).toBe('pgy_001')
-    expect(creator.creatorKey).toBe('xhs:pgy_001')
+    expect(creator.creatorKey).toBe('pugongying:pgy_001')
     expect(creator.xhsId).toBe('cheongdam_skin')
     expect(creator.regions).toEqual(['上海', '上海', '徐汇区'])
     expect(creator.verticals).toEqual(expect.arrayContaining(['护肤', '面部保养', '美妆', '测评']))
@@ -49,7 +49,7 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.trafficSearchRatio).toBe(0.18)
     expect(m.trafficRecommendRatio).toBe(0.75)
     expect(m.trafficFollowRatio).toBe(0.03)
-    expect(m.health).toBe('excellent')
+    expect(m.health).toBeNull()
     expect(m.authenticity).toBeNull()
     expect(m.coopNoteCount).toBe(6)
     expect(m.audience?.femaleRatio).toBe(0.86)
@@ -71,18 +71,47 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.noteCount).toBeNull()
     expect(m.engagementRate).toBeCloseTo(4100 / 61000, 4)
     expect(m.cpe).toBe(2.39)
-    expect(m.health).toBe('excellent')
+    expect(m.health).toBeNull()
     expect(m.audience).toBeNull()
   })
 
-  it('maps lowActive / isActive onto the health gate', () => {
-    const abnormal = normalizePugongying(record(7))
-    const normal = normalizePugongying(record(2))
-    expect(abnormal.ok && abnormal.creator.metrics.health).toBe('abnormal')
-    expect(normal.ok && normal.creator.metrics.health).toBe('normal')
+  it('keeps 低活跃 as its own flag instead of turning it into a health grade', () => {
+    const low = normalizePugongying(record(7))
+    const active = normalizePugongying(record(0))
+    expect(low.ok && low.creator.metrics.health).toBeNull()
+    expect(low.ok && low.creator.signals?.lowActive).toBe(true)
+    expect(active.ok && active.creator.signals).toMatchObject({ lowActive: false, recentlyActive: true, healthLevel: null })
     const bare = normalizePugongying({ ...record(1), payload: { userId: 'x', name: 'y' } })
     expect(bare.ok && bare.creator.metrics.health).toBeNull()
+    expect(bare.ok && bare.creator.signals?.lowActive).toBeNull()
     expect(bare.ok && bare.creator.warnings).toContain('followers.missing')
+  })
+
+  it('keeps 完播率 and 3 秒阅读率 apart, and the 30-day and all-time 合作笔记 apart', () => {
+    const result = normalizePugongying(record(0))
+    if (!result.ok) throw new Error(result.errors.join())
+    const { metrics, signals } = result.creator
+    expect(metrics.retentionRate).toBeCloseTo(0.412, 10)
+    expect(signals?.completionRate).toBeCloseTo(0.412, 10)
+    expect(signals?.read3sRate).toBeCloseTo(0.7, 10)
+    expect(metrics.coopNoteCount).toBe(6)
+    expect(signals?.coopNoteCountTotal).toBe(241)
+    expect(signals?.windowDays).toMatchObject({ activeFanRatio: 28, engagedFanRatio: 30, coopNoteCount: 30 })
+  })
+
+  it('reads the platform\'s own 「超过 X% 同类博主」ranks', () => {
+    const result = normalizePugongying(record(0))
+    if (!result.ok) throw new Error(result.errors.join())
+    expect(result.creator.signals?.platformRanks).toMatchObject({
+      readMedian: 0.9, impressionMedian: 0.9, interactionRate: 0.85, followerGrowth: 0.8,
+      activeFanRatio: 0.6, engagedFanRatio: 0.7, readFanRatio: 0.65, completionRate: 0.5,
+    })
+  })
+
+  it('reads 外溢进店 UV and 单价 when the response carries them (field names 待实测)', () => {
+    const result = normalizePugongying({ ...record(1), payload: { userId: 'x', name: 'y', notesRate: { mCpuvNum: '1,200', estimateCpuv: '3.5' } } })
+    if (!result.ok) throw new Error(result.errors.join())
+    expect(result.creator.signals).toMatchObject({ storeVisitUvMedian: 1200, storeVisitUnitPrice: 3.5 })
   })
 })
 
@@ -96,6 +125,7 @@ describe('蒲公英 gateways', () => {
     delete process.env.PGY_BASE_URL
     delete process.env.PGY_BRAND_USER_ID
     delete process.env.PGY_ENRICH
+    delete process.env.PGY_DATE_TYPES
   })
   afterEach(() => {
     process.env = { ...env }
@@ -122,6 +152,7 @@ describe('蒲公英 gateways', () => {
     expect(page.records[0]!.externalId).toBe('pgy_002')
     expect(page.nextCursor).toBeNull()
     expect(calls).toHaveLength(1)
+    expect(page.calls).toBe(1)
     expect(calls[0]!.url).toBe('https://api.tikhub.io/api/v1/xiaohongshu/pgy/get_blogger_list')
     expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe('Bearer test-token')
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
@@ -144,15 +175,39 @@ describe('蒲公英 gateways', () => {
     })
     const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 90, externalIds: ['pgy_002'] })
     expect(calls).toHaveLength(5)
+    // Every one of them is billed, and the page says so for the quota ledger.
+    expect(page.calls).toBe(5)
     const notesCall = calls.find((c) => c.url.endsWith('get_blogger_notes_rate'))!
-    expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 2, business: 0, note_type: 3 })
+    // TikHub: 1 ≈ 7 天, 2 = 30 天, 3 = 90 天 (待实测).
+    expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 3, business: 0, note_type: 3 })
     const raw = page.records[0]!
     expect(raw.payload.kcsWindow).toBe(90)
+    expect(raw.payload.kcsDateType).toBe(3)
     const result = pugongyingAdapter.normalize(raw)
     expect(result.ok && result.creator.metrics.window).toBe(90)
     expect(result.ok && result.creator.metrics.readFanRatio).toBeCloseTo(0.29, 3)
     expect(result.ok && result.creator.metrics.noteCount).toBe(18)
     expect(result.ok && result.creator.metrics.engagementRate).toBeCloseTo(0.067, 3)
+  })
+
+  it('dateType: 30 天 is 2 on TikHub / official, a string enum on JustOneAPI, and PGY_DATE_TYPES overrides both', async () => {
+    const detail = record(1).payload
+    const notesParams = async (gateway: string, window: 30 | 90) => {
+      calls = []
+      process.env.PGY_GATEWAY = gateway
+      stubFetch((url) => (/detail|user\/blogger/.test(url) ? { data: { data: detail, ...detail } } : { data: { data: null } }))
+      const page = await pugongyingAdapter.fetch({ source: 'pugongying', window, externalIds: ['pgy_002'] })
+      const call = calls.find((c) => /notes_?[rR]ate/.test(c.url))!
+      const sent = call.init.body ? JSON.parse(String(call.init.body)).date_type : new URL(call.url).searchParams.get('dateType')
+      return { sent, stored: page.records[0]?.payload.kcsDateType }
+    }
+    expect(await notesParams('tikhub', 30)).toEqual({ sent: 2, stored: 2 })
+    expect(await notesParams('official', 90)).toEqual({ sent: '3', stored: 3 })
+    expect(await notesParams('justoneapi', 30)).toEqual({ sent: 'DAY_30', stored: 'DAY_30' })
+    process.env.PGY_DATE_TYPES = '{"30":1,"90":2}'
+    expect(await notesParams('tikhub', 30)).toEqual({ sent: 1, stored: 1 })
+    process.env.PGY_DATE_TYPES = 'not json'
+    expect(await notesParams('tikhub', 90)).toEqual({ sent: 3, stored: 3 })
   })
 
   it('justoneapi: GET with token query and one-layer data', async () => {

@@ -160,7 +160,7 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | 3 pages → ok, cursors null/2/3, quotaUsed 3, usage +3, 6 creators written | 04 §速率与配额「每页计 1」 | poll + vendor call log |
 | `maxPages=2` on a 5-page source stops at 2 and keeps cursor `3` | 04 §任务状态 ok「到 max_pages」 | poll |
 | vendor Bearer token is forwarded (stand-in answers 401 without it) | 03 适配器 | vendor call log |
-| quota wall → `partial`, cursor kept, `QUOTA_EXHAUSTED`, `nextRunAt` = next UTC 00:00; when due, worker resumes from page 3 to ok on its own | 04 §任务状态 partial「自动续跑」 | poll (+ SQL: quota, `next_run_at = now()`) |
+| quota wall → `partial`, cursor kept, `QUOTA_EXHAUSTED`, `nextRunAt` = next 00:00 in the source's `quota_tz` (Beijing → 16:00 UTC); when due, worker resumes from page 3 to ok on its own | 04 §任务状态 partial「自动续跑」 | poll (+ SQL: quota, `next_run_at = now()`) |
 | partial + manual retry → queued, attempts 0, resumes from cursor `2` | 04 §任务状态 partial「可立刻重试」 | `POST /api/ingest/jobs/:id/retry` |
 | quota 0 = paused source: immediate partial, no vendor call | 04 §速率与配额 | poll + vendor call log |
 | same source runs one job at a time, FIFO (no overlap of startedAt/endedAt) | 04 §速率与配额「并发」 | poll |
@@ -171,7 +171,8 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | case | spec | HTTP |
 |------|------|------|
 | vendor 500 ×3 → failed, attempts 3, `SOURCE_UNAVAILABLE`, endedAt set, nextRunAt null; visible in `/api/dev/failures` | 04 队列图「3 次后 failed」 | poll `GET /api/dev/failures` `GET /api/dev/jobs/:id` |
-| backoff 2 s then 4 s between attempts | 04 队列图「指数退避」 | vendor call log timestamps |
+| backoff full jitter under 2 s then 4 s between attempts | 04 队列图「指数退避」 | vendor call log timestamps |
+| 429 + `Retry-After: 6` → next call ≥ 6 s later, then ok | 04 §失败「Retry-After 是下限」 | vendor call log timestamps (`bb-429-6`) |
 | one hiccup then ok: attempts 1, error fields cleared | 04 队列图 | poll |
 | failed → retry → attempts 0, queued; fails again after 3 more | 04 §任务状态 failed「可重试」 | `POST /api/ingest/jobs/:id/retry` |
 | cancel a running job: 200 failed/cancelled, worker stops at the page boundary, no further vendor calls | 04 §任务状态 running「可取消」 | `POST /api/ingest/jobs/:id/cancel` |

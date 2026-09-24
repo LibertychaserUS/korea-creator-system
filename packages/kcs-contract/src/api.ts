@@ -82,6 +82,19 @@ export const API = {
   ingestSample: { method: 'GET', path: '/api/ingest/jobs/:id/sample', perm: 'ingest.read' },
   ingestJobRetry: { method: 'POST', path: '/api/ingest/jobs/:id/retry', perm: 'ingest.retry' },
   ingestJobCancel: { method: 'POST', path: '/api/ingest/jobs/:id/cancel', perm: 'ingest.write' },
+  /** Registered daily tasks and their last run. */
+  ingestDaily: { method: 'GET', path: '/api/ingest/daily', perm: 'ingest.read' },
+  ingestDailyRun: { method: 'POST', path: '/api/ingest/daily/:task/run', perm: 'ingest.retry' },
+  /** Last refresh / discovery plan, its numbers and current settings. */
+  ingestScheduler: { method: 'GET', path: '/api/ingest/scheduler', perm: 'ingest.read' },
+  ingestDiscoverySearches: { method: 'GET', path: '/api/ingest/discovery-searches', perm: 'ingest.read' },
+  ingestDiscoverySearchCreate: { method: 'POST', path: '/api/ingest/discovery-searches', perm: 'ingest.write' },
+  ingestDiscoverySearchUpdate: { method: 'PATCH', path: '/api/ingest/discovery-searches/:id', perm: 'ingest.write' },
+  ingestDataStatus: { method: 'GET', path: '/api/ingest/data-status', perm: 'ingest.read' },
+  ingestCreatorDataStatus: { method: 'GET', path: '/api/ingest/data-status/:creatorId', perm: 'ingest.read' },
+  ingestMissingDecision: { method: 'POST', path: '/api/ingest/data-status/:creatorId/missing', perm: 'ingest.write' },
+  ingestTrends: { method: 'GET', path: '/api/ingest/trends/:creatorId', perm: 'ingest.read' },
+  ingestNameSearch: { method: 'GET', path: '/api/ingest/name-search', perm: 'ingest.read' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
   /** multipart `file` (image, ≤ 5 MB). */
   assetUpload: { method: 'POST', path: '/api/assets', perm: 'ops.write' },
