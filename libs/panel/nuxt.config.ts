@@ -152,17 +152,8 @@ export default defineNuxtConfig({
       // Parent domain shared by the apps and the API (`.example.com`), same value
       // as AUTH_COOKIE_DOMAIN; empty = host-only cookies.
       cookieDomain: '',
-      captchaEnabled: String(appConfig.captcha.enabled),
-      turnstileSiteKey: appConfig.captcha.cloudflare.siteKey || '0x4AAAAAAABkMYinukNdH9ly',
-      wechatAppId: appConfig.auth.socialProviders.wechat.appId || '',
-      // Social login buttons: only "configured?" booleans go public — never secrets.
-      // Unconfigured providers render disabled with 未配置.
-      socialLogin: {
-        wechat: Boolean(process.env.WECHAT_APP_ID || ''),
-        google: Boolean(process.env.GOOGLE_CLIENT_ID || ''),
-        apple: Boolean(process.env.APPLE_CLIENT_ID || ''),
-      },
-      paymentPlans: JSON.parse(JSON.stringify(appConfig.payment.plans)),
+      // Every public key is inlined into each page's HTML, so the TinyShip
+      // captcha / social-login / payment-plan keys stay in apps/nuxt-app.
     },
   },
 
