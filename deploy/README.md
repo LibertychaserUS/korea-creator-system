@@ -333,7 +333,7 @@ curl -sS https://api.example.com/api/health                 # version 应为新 
 
 **回滚**：迁移只进不退。新版本只是加表 / 加列时（绝大多数情况），把 `KCS_TAG` 改回旧值再 `dc up -d` 即可。
 如果新版本改了身份库表结构，旧版 init 会因「要删列」拒绝启动——这种情况回滚 = 旧 `KCS_TAG` + 用升级前那份备份做 §11 的正式恢复。
-改了选人池推导逻辑的版本，发版说明会要求上线时设一次 `KCS_PUBLISHED_FULL_REFRESH=1`（见 `docs/HANDOFF.md`）。
+改了选人池推导逻辑的版本，发版说明会要求上线时设一次 `KCS_PUBLISHED_FULL_REFRESH=1`（见本地文档 `docs/HANDOFF.md`，不在仓库里）。
 
 ## 13. 运维速查
 

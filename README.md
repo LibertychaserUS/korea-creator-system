@@ -20,7 +20,7 @@
 
 ## 怎么跑
 
-Node ≥ 22、pnpm 9、本地 Postgres 16。完整步骤与环境变量见 [`docs/HANDOFF.md`](docs/HANDOFF.md)。
+Node ≥ 22、pnpm 9、本地 Postgres 16。完整步骤与环境变量见本地文档 `docs/HANDOFF.md`（不在仓库里）。
 
 ```bash
 pnpm install
@@ -43,10 +43,12 @@ pnpm test:blackbox     # 对运行中 API 的 HTTP 黑盒
 pnpm test:e2e          # Playwright 浏览器旅程
 ```
 
-清单见 [`docs/07_测试与验收清单.md`](docs/07_测试与验收清单.md)。
+清单见本地文档 `docs/07_测试与验收清单.md`。
 
 ## 文档
 
-从 [`docs/00_项目总览.md`](docs/00_项目总览.md) 开始；`docs/archive/` 是重建前的历史，不描述当前系统。
+项目文档保存在本地、不进仓库（`docs/` 等已被 `.gitignore` 忽略）。从本地文档 `docs/00_项目总览.md` 开始；`docs/archive/` 是重建前的历史，不描述当前系统。
+
+仓库里只留必要文档：本文件、`AGENTS.md`、`deploy/README.md`（上线手册）、`CHANGELOG.md`（forge 用它核对 pin）、`inbox/` 与 `suites/`（overlay 用例）。
 
 TinyShip 来源：`TinyshipCN/tinyship` @ `v2.2.0` / `54ddc7a`（`git archive` 导入，排除 `docs/` `archive/`）。

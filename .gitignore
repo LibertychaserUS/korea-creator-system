@@ -89,3 +89,12 @@ data/*.sqlite-*
 venv/
 __pycache__/
 *.pyc
+
+# Project docs stay local, not in the repo. Kept in git on purpose (none of these rules match them):
+# AGENTS.md, README.md, deploy/README.md, CHANGELOG.md (forge pin check), inbox/*.md + suites/**/cases.md (overlay),
+# apps/docs-app/content/**/*.mdx (template docs app content).
+/docs/
+/tests/**/*.md
+/e2e/**/*.md
+/libs/**/*.md
+/apps/**/*.md
