@@ -10,7 +10,8 @@ export function useApi() {
    */
   const token = useCookie<string | null>('kcs_session', { sameSite: 'lax', path: '/' })
   const localePath = useLocalePath()
-  const { t, te } = useI18n()
+  // useSession 在路由中间件里调这里，useI18n() 只能在组件 setup 顶层用
+  const { t, te } = useNuxtApp().$i18n
 
   /**
    * `origin: 'self'` 打本端源站（账号管理 `/api/kcs-admin/**` 就在 TinyShip 这边），
