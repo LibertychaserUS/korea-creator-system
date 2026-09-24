@@ -16,7 +16,7 @@ import type { AppEnv } from '../http/types'
 import { deadLetterJob, failureOf } from './dead-letters'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
-import { retentionConfig, runRetention, type RetentionConfig } from './retention'
+import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
 import { errorMessage, logEvent } from '../log'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
@@ -295,8 +295,9 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
  * - it takes one due job per tick and finishes it before looking again. Vendor
  *   calls are billed per request and capped per minute, so concurrency would
  *   only raise the bill and the 429 rate;
- * - the same holder runs the retention sweep once per `retention.intervalMs`
- *   (first time right after it wins the lock), so exactly one process deletes;
+ * - the same holder runs the optional retention sweep once per
+ *   `retention.intervalMs` (first time right after it wins the lock), so at
+ *   most one process deletes — and only when ops turned a kind on explicitly;
  * - `INGEST_WORKER=0` opts a process out entirely (e.g. a replica that should
  *   only serve HTTP).
  */
@@ -316,7 +317,7 @@ export function startIngestWorker(
   let sweptAt = 0
 
   const sweep = async () => {
-    if (retention.intervalMs <= 0 || Date.now() - sweptAt < retention.intervalMs) return
+    if (!retentionEnabled(retention) || Date.now() - sweptAt < retention.intervalMs) return
     sweptAt = Date.now()
     try {
       const deleted = await runRetention(env.db, retention, env.now())

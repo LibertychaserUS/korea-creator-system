@@ -1,24 +1,27 @@
 import type { Queryable } from '../db'
 
 /**
- * What the daily sweep keeps. `0` for any knob means keep everything of that kind.
- * History snapshots (`creator_metrics_history`) are never touched: they are the
- * trend line the detail page draws and cannot be re-fetched from the vendor.
+ * Optional cleanup. For now everything is kept: every knob defaults to `0`
+ * ("keep all of that kind"), so the sweep deletes nothing unless ops set a
+ * positive value on purpose. History snapshots (`creator_metrics_history`)
+ * are never touched either way: they are the trend line the detail page draws
+ * and cannot be re-fetched from the vendor.
  */
 export type RetentionConfig = {
-  /** Newest raw payloads kept per (creator, source). */
+  /** Newest raw payloads kept per (creator, source); `0` keeps all. */
   rawPerSource: number
-  /** Settled dead letters (replayed / dismissed) older than this are dropped; open ones never. */
+  /** Settled dead letters (replayed / dismissed) older than this are dropped; open ones never. `0` keeps all. */
   deadLetterDays: number
+  /** `0` keeps all. */
   auditDays: number
-  /** How often the queue holder runs the sweep; `0` turns it off. */
+  /** How often the queue holder checks; `0` turns the check off. */
   intervalMs: number
 }
 
 export const RETENTION_DEFAULTS: RetentionConfig = {
-  rawPerSource: 10,
-  deadLetterDays: 90,
-  auditDays: 365,
+  rawPerSource: 0,
+  deadLetterDays: 0,
+  auditDays: 0,
   intervalMs: 24 * 60 * 60 * 1_000,
 }
 
@@ -37,6 +40,11 @@ export function retentionConfig(source: NodeJS.ProcessEnv = process.env): Retent
     auditDays: knob(source.RETENTION_AUDIT_DAYS, RETENTION_DEFAULTS.auditDays),
     intervalMs: knob(source.RETENTION_INTERVAL_HOURS, RETENTION_DEFAULTS.intervalMs / 3_600_000) * 3_600_000,
   }
+}
+
+/** True only when ops switched on at least one kind of cleanup. */
+export function retentionEnabled(config: RetentionConfig): boolean {
+  return config.intervalMs > 0 && (config.rawPerSource > 0 || config.deadLetterDays > 0 || config.auditDays > 0)
 }
 
 export type RetentionResult = { raw: number; deadLetters: number; auditLogs: number }
