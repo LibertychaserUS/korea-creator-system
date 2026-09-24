@@ -3,6 +3,8 @@
  * with one line here, e.g. `registerDailyTask('capacity', runDailyCapacitySnapshot)`.
  */
 import { registerDailyTask } from './daily'
+import { runScheduler } from './scheduler'
 import { runValueTiers } from './tiering'
 
 registerDailyTask('value-tiers', (env) => runValueTiers(env))
+registerDailyTask('scheduler', (env) => runScheduler(env))

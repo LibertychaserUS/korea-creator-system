@@ -78,6 +78,11 @@ export const API = {
   /** Registered daily tasks and their last run. */
   ingestDaily: { method: 'GET', path: '/api/ingest/daily', perm: 'ingest.read' },
   ingestDailyRun: { method: 'POST', path: '/api/ingest/daily/:task/run', perm: 'ingest.retry' },
+  /** Last refresh / discovery plan, its numbers and current settings. */
+  ingestScheduler: { method: 'GET', path: '/api/ingest/scheduler', perm: 'ingest.read' },
+  ingestDiscoverySearches: { method: 'GET', path: '/api/ingest/discovery-searches', perm: 'ingest.read' },
+  ingestDiscoverySearchCreate: { method: 'POST', path: '/api/ingest/discovery-searches', perm: 'ingest.write' },
+  ingestDiscoverySearchUpdate: { method: 'PATCH', path: '/api/ingest/discovery-searches/:id', perm: 'ingest.write' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
   /** multipart `file` (image, ≤ 5 MB). */
   assetUpload: { method: 'POST', path: '/api/assets', perm: 'ops.write' },

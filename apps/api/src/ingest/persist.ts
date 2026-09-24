@@ -18,6 +18,8 @@ import { parseMetrics, saveRelations } from '../http/creators'
 import type { AppEnv } from '../http/types'
 import { creatorKeyFromRow, type SheetRow } from '../xlsx-sheet'
 import { deadLetterRecord, failureOf } from './dead-letters'
+import { refreshIntervalDays, refreshModelConfig } from './refresh-model'
+import { materialChanges } from './tiering'
 
 /**
  * The only place a collected creator reaches `creators`. Every way in — a queue
@@ -136,8 +138,8 @@ async function upsertInTransaction(
       `INSERT INTO creators (
          id, creator_key, display_name, status, needs_review, followers, followers_unknown,
          regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-         metrics_fetched_at, last_ingest_job_id, note, source_signals
-       ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+         metrics_fetched_at, last_ingest_job_id, note, source_signals, first_ingest_job_id
+       ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$14)`,
       [
         creatorId,
         incoming.creatorKey,
@@ -187,15 +189,26 @@ async function upsertInTransaction(
         JSON.stringify(origin.raw.payload),
       ],
     )
+    const previous = await client.query(
+      `SELECT metrics, fetched_at FROM creator_metrics_history
+        WHERE creator_id = $1 AND source = $2 AND fetched_at < $3
+        ORDER BY fetched_at DESC LIMIT 1`,
+      [creatorId, origin.source, incoming.fetchedAt],
+    )
+    const before = previous.rows[0] as { metrics: Record<string, unknown>; fetched_at: Date } | undefined
+    const changed = before ? materialChanges(before.metrics, metrics as unknown as Record<string, unknown>) : null
     await client.query(
       `INSERT INTO creator_metrics_history
-         (id, creator_id, source, "window", fetched_at, job_id, metrics, signals)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+         (id, creator_id, source, "window", fetched_at, job_id, metrics, signals, material_change, changed_metrics)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
         randomUUID(), creatorId, origin.source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics),
         incoming.signals ? JSON.stringify(incoming.signals) : null,
+        changed ? changed.length > 0 : null,
+        changed,
       ],
     )
+    await updateRefreshStats(client, origin.source, origin.externalId, incoming.fetchedAt, before?.fetched_at ?? null, changed)
   } else if (!existing) {
     // A hand-typed row starts life like a hand-made draft: unknown cooperation
     // history, the quoted price, and a pending proof-read.
@@ -213,6 +226,47 @@ async function upsertInTransaction(
     )
   }
   return { creatorId, created: !existing }
+}
+
+/**
+ * One more observation for the Poisson change model of this (source, id):
+ * compared with the previous snapshot, did the numbers move? Then the next
+ * refresh is due after the interval that model gives (see `./refresh-model`).
+ */
+async function updateRefreshStats(
+  client: PoolClient,
+  source: SourceId,
+  externalId: string,
+  fetchedAt: string,
+  previousAt: Date | null,
+  changed: string[] | null,
+) {
+  const { rows } = await client.query(
+    'SELECT refresh_visits, refresh_changes, observed_days FROM creator_sources WHERE source = $1 AND external_id = $2',
+    [source, externalId],
+  )
+  if (!rows[0]) return
+  const stats = {
+    visits: Number(rows[0].refresh_visits),
+    changes: Number(rows[0].refresh_changes),
+    observedDays: Number(rows[0].observed_days),
+  }
+  if (previousAt && changed) {
+    const gap = (new Date(fetchedAt).getTime() - new Date(previousAt).getTime()) / 86_400_000
+    if (gap > 0) {
+      stats.visits += 1
+      stats.changes += changed.length ? 1 : 0
+      stats.observedDays += gap
+    }
+  }
+  const { rate, days } = refreshIntervalDays(stats, refreshModelConfig())
+  await client.query(
+    `UPDATE creator_sources SET refresh_visits = $3, refresh_changes = $4, observed_days = $5,
+       change_rate = $6, refresh_interval_days = $7,
+       next_refresh_at = $8::timestamptz + make_interval(secs => $7::float8 * 86400)
+     WHERE source = $1 AND external_id = $2`,
+    [source, externalId, stats.visits, stats.changes, stats.observedDays, rate, days, fetchedAt],
+  )
 }
 
 type Existing = { id: string; metrics: unknown }

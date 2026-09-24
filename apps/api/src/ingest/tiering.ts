@@ -129,6 +129,30 @@ export function relativeChange(previous: number | null, current: number | null):
 }
 
 /**
+ * Metrics whose relative change against `previous` exceeds their tolerance —
+ * "the numbers actually moved". A metric that appears or disappears counts.
+ */
+export function materialChanges(
+  previous: Record<string, unknown> | null | undefined,
+  current: Record<string, unknown> | null | undefined,
+  tolerances: Readonly<Record<string, number>> = DEFAULT_TIER_TOLERANCES,
+): string[] {
+  const changed: string[] = []
+  for (const [key, tol] of Object.entries(tolerances)) {
+    const before = metricValue(previous ?? {}, key)
+    const after = metricValue(current ?? {}, key)
+    if (before == null && after == null) continue
+    if (before == null || after == null) {
+      changed.push(key)
+      continue
+    }
+    const delta = relativeChange(before, after)
+    if (delta == null || Math.abs(delta) > tol) changed.push(key)
+  }
+  return changed
+}
+
+/**
  * One creator's snapshots → a tier per snapshot. `pins` are outside facts
  * (events, audit) already attached to a snapshot id.
  */

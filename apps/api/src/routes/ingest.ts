@@ -3,6 +3,8 @@ import { adapterDescriptions } from '../adapters'
 import { retryJob } from '../ingest/jobs'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
 import { dailyTaskStatus, runDailyTaskNow } from '../ingest/daily'
+import { readSchedulerState, schedulerConfig } from '../ingest/scheduler'
+import { randomUUID } from 'node:crypto'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { z } from 'zod'
@@ -43,6 +45,73 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (!outcome) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     await audit(env.db, user!.id, 'ingest.daily_run', 'daily_task', task, `${outcome.day} ${outcome.ok ? 'ok' : 'failed'}`)
     return context.json(outcome)
+  })
+
+  app.get('/api/ingest/scheduler', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const { samples: _samples, ...config } = schedulerConfig()
+    const due = await env.db.query(
+      `SELECT source, count(*)::int AS due, count(*) FILTER (WHERE next_refresh_at IS NULL)::int AS never,
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY refresh_interval_days) AS median_interval_days
+         FROM creator_sources WHERE next_refresh_at IS NULL OR next_refresh_at <= $1 GROUP BY source`,
+      [env.now()],
+    )
+    return context.json({
+      lastPlan: await readSchedulerState(env),
+      config,
+      due: due.rows.map((row) => ({
+        source: row.source,
+        due: row.due,
+        neverRefreshed: row.never,
+        medianIntervalDays: row.median_interval_days == null ? null : Number(row.median_interval_days),
+      })),
+    })
+  })
+
+  app.get('/api/ingest/discovery-searches', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const { rows } = await env.db.query('SELECT * FROM ingest_discovery_searches ORDER BY created_at, id')
+    return context.json({ items: rows.map(discoverySearchView) })
+  })
+
+  app.post('/api/ingest/discovery-searches', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { data, invalid } = await readJson(context, DISCOVERY_SEARCH_BODY)
+    if (invalid) return invalid
+    const query = data.query as SourceQuery & { sourceUrl?: unknown; url?: unknown }
+    if (!SOURCE_IDS.includes(query.source) || ![30, 90].includes(query.window)) {
+      return jsonError(context, 400, 'SOURCE-INVALID', 'invalid_source_query')
+    }
+    if (query.sourceUrl != null || query.url != null) return jsonError(context, 400, 'SOURCE-INVALID', 'adhoc_url_forbidden')
+    const { externalIds: _ids, cursor: _cursor, ...saved } = pickSourceQuery(query)
+    const id = randomUUID()
+    const { rows } = await env.db.query(
+      `INSERT INTO ingest_discovery_searches (id, source, name, query, enabled, max_pages, every_hours, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [id, query.source, data.name, JSON.stringify(saved), data.enabled ?? true, data.maxPages ?? 1, data.everyHours ?? 24, user!.id],
+    )
+    await audit(env.db, user!.id, 'ingest.discovery_create', 'discovery_search', id, data.name)
+    return context.json(discoverySearchView(rows[0]), 201)
+  })
+
+  app.patch('/api/ingest/discovery-searches/:id', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { data, invalid } = await readJson(context, DISCOVERY_SEARCH_PATCH)
+    if (invalid) return invalid
+    const { rows } = await env.db.query(
+      `UPDATE ingest_discovery_searches SET
+         name = COALESCE($2, name), enabled = COALESCE($3, enabled),
+         max_pages = COALESCE($4, max_pages), every_hours = COALESCE($5, every_hours), updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [context.req.param('id'), data.name ?? null, data.enabled ?? null, data.maxPages ?? null, data.everyHours ?? null],
+    )
+    if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    await audit(env.db, user!.id, 'ingest.discovery_update', 'discovery_search', rows[0].id, JSON.stringify(data))
+    return context.json(discoverySearchView(rows[0]))
   })
 
   app.get('/api/ingest/adapters', async (context) => {
@@ -190,6 +259,31 @@ const SOURCE_QUERY_KEYS = [
 ] as const satisfies readonly (keyof SourceQuery)[]
 
 /** The stored `query` holds exactly the SourceQuery fields, nothing the client tacked on. */
+const DISCOVERY_SEARCH_BODY = z.object({
+  name: z.string().trim().min(1).max(120),
+  query: z.record(z.string(), z.unknown()),
+  enabled: z.boolean().optional(),
+  maxPages: z.number().int().min(1).max(100).optional(),
+  everyHours: z.number().int().min(1).max(8760).optional(),
+})
+
+const DISCOVERY_SEARCH_PATCH = DISCOVERY_SEARCH_BODY.omit({ query: true }).partial()
+
+function discoverySearchView(row: Record<string, unknown>) {
+  const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : (value as string | null) ?? null)
+  return {
+    id: row.id,
+    source: row.source,
+    name: row.name,
+    query: row.query,
+    enabled: row.enabled,
+    maxPages: row.max_pages,
+    everyHours: row.every_hours,
+    lastEnqueuedAt: iso(row.last_enqueued_at),
+    createdAt: iso(row.created_at),
+  }
+}
+
 function pickSourceQuery(input: SourceQuery): SourceQuery {
   const out: Record<string, unknown> = {}
   for (const key of SOURCE_QUERY_KEYS) if (input[key] !== undefined) out[key] = input[key]
