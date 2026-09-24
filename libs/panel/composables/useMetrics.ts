@@ -1,9 +1,12 @@
 import {
+  FIVE_BAND_MIN_SAMPLE,
   METRIC_FIELDS,
   metricField,
   type MetricGroup,
+  type MetricPercentile,
   type NumericMetricKey,
   type PercentileBand,
+  type PercentileCohort,
 } from '@kcs/contract'
 
 /** 指标的标签、口径与按单位格式化；分位色带统一在这里定色。 */
@@ -87,6 +90,29 @@ export function useMetrics() {
     return t(`kcs.band.${band ?? 'none'}`)
   }
 
+  /**
+   * Who a percentile compares with, in words: the platform's own figure
+   * (小红书「超过 X% 同类」) or our library's peers — same source and period,
+   * similar follower count — with a note when the group is small.
+   */
+  function rankText(rank: MetricPercentile | null | undefined, cohort?: PercentileCohort | null): string[] {
+    if (!rank) return []
+    const source = cohort?.source ? t(`kcs.source.${cohort.source}`) : ''
+    const library = (r: Omit<MetricPercentile, 'library' | 'scope'>) => {
+      const lines = [
+        r.followersMin != null && r.followersMax != null
+          ? t('kcs.band.cohortLibrary', { n: r.n, source, min: format('followers', r.followersMin, true), max: format('followers', r.followersMax, true) })
+          : t('kcs.band.cohortUnknown', { n: r.n, source }),
+      ]
+      if (r.n < FIVE_BAND_MIN_SAMPLE) lines.push(t('kcs.band.fewPeers'))
+      return lines
+    }
+    if (rank.scope === 'platform') {
+      return [t('kcs.band.platform', { pct: rank.percentile }), ...(rank.library ? library(rank.library) : [])]
+    }
+    return library(rank)
+  }
+
   const groups: MetricGroup[] = ['scale', 'reach', 'cost', 'conversion', 'potential', 'trust']
 
   /** Hidden fields (no trustworthy definition yet) stay out of every list. */
@@ -94,5 +120,5 @@ export function useMetrics() {
     return METRIC_FIELDS.filter((f) => f.group === group && !f.hidden)
   }
 
-  return { label, help, groupLabel, format, bandClass, bandDot, bandLabel, groups, fieldsIn, fields: METRIC_FIELDS }
+  return { label, help, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
 }

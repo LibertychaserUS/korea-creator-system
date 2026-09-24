@@ -449,3 +449,56 @@ export async function ranksFor(
   }
   return out
 }
+
+export type ReferenceLineRow = {
+  group: string
+  source: string | null
+  window: number
+  contentForm: string | null
+  tier: string
+  key: NumericMetricKey
+  n: number
+  p25: number
+  p50: number
+  p75: number
+}
+
+/**
+ * Stored 25 / 50 / 75 分位 lines (groups × tiers with ≥ 30 current values).
+ * `where` narrows by source, window, content form, tier or metric.
+ */
+export async function readReferenceLines(
+  q: Queryable,
+  where: { groups?: string[]; source?: string | null; window?: number; contentForm?: string | null; tier?: string; key?: string } = {},
+): Promise<ReferenceLineRow[]> {
+  const clauses: string[] = []
+  const values: unknown[] = []
+  const add = (sql: string, value: unknown) => {
+    values.push(value)
+    clauses.push(sql.replace('?', `$${values.length}`))
+  }
+  if (where.groups) add('group_key = ANY(?)', where.groups)
+  if (where.tier) add('tier = ?', where.tier)
+  if (where.key) add('metric = ?', where.key)
+  const { rows } = await q.query(
+    `SELECT group_key, tier, metric, n, p25, p50, p75 FROM cohort_reference_lines
+      ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY group_key, tier, metric`,
+    values,
+  )
+  return rows
+    .map((row) => ({ row, group: parseCohortGroupKey(String(row.group_key)) }))
+    .filter(({ group }) =>
+      (where.source === undefined || group.source === where.source)
+      && (where.window === undefined || group.window === where.window)
+      && (where.contentForm === undefined || group.contentForm === where.contentForm))
+    .map(({ row, group }) => ({
+      group: String(row.group_key),
+      ...group,
+      tier: String(row.tier),
+      key: row.metric as NumericMetricKey,
+      n: Number(row.n),
+      p25: Number(row.p25),
+      p50: Number(row.p50),
+      p75: Number(row.p75),
+    }))
+}

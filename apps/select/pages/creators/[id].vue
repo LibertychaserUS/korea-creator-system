@@ -42,7 +42,10 @@
               </span>
               <span v-if="creator.cohort?.size" class="inline-flex items-center gap-1" data-testid="creator-cohort">
                 <Users class="size-3" />
-                {{ t('kcs.band.cohort', { n: creator.cohort.size, source: t(`kcs.source.${creator.cohort.source}`), tier: t(`kcs.tier.${creator.cohort.tier}`) }) }}
+                {{ t('kcs.band.cohort', { n: creator.cohort.size, source: creator.cohort.source ? t(`kcs.source.${creator.cohort.source}`) : '', window: creator.cohort.window }) }}
+              </span>
+              <span v-if="creator.stale" class="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300" data-testid="creator-stale">
+                {{ t('kcs.band.stale') }}
               </span>
             </p>
           </div>
@@ -50,10 +53,13 @@
             <div v-for="key in headline" :key="key">
               <p class="text-[11px] uppercase tracking-wide text-muted-foreground">{{ label(key) }}</p>
               <p class="text-lg font-semibold">
-                <MetricValue :metric-key="key" :value="metrics[key]" :band="percentiles[key]?.band" :percentile="percentiles[key]?.percentile" :cohort="creator.cohort" compact />
+                <MetricValue :metric-key="key" :value="metrics[key]" :rank="percentiles[key]" :cohort="creator.cohort" :stale="creator.stale" compact />
               </p>
-              <p v-if="percentiles[key]" class="text-[11px] tabular-nums text-muted-foreground" data-testid="headline-percentile">
-                {{ bandLabel(percentiles[key]!.band) }}
+              <p v-if="percentiles[key]" class="text-[11px] tabular-nums text-muted-foreground" data-testid="headline-percentile" :data-scope="percentiles[key]!.scope">
+                {{ percentiles[key]!.scope === 'platform' ? t('kcs.band.platform', { pct: percentiles[key]!.percentile }) : `${t('kcs.band.library')} · ${bandLabel(percentiles[key]!.band)}` }}
+              </p>
+              <p v-if="references[key]" class="text-[11px] tabular-nums text-muted-foreground/80" data-testid="headline-reference">
+                {{ t('kcs.query.referenceDetail', { p25: format(key, references[key]!.p25), p50: format(key, references[key]!.p50), p75: format(key, references[key]!.p75) }) }}
               </p>
             </div>
           </div>
@@ -142,7 +148,7 @@
                 </span>
               </dt>
               <dd class="text-right text-sm">
-                <MetricValue :metric-key="field.key" :value="metrics[field.key]" :band="percentiles[field.key]?.band" :percentile="percentiles[field.key]?.percentile" :cohort="creator.cohort" />
+                <MetricValue :metric-key="field.key" :value="metrics[field.key]" :rank="percentiles[field.key]" :cohort="creator.cohort" :stale="creator.stale" />
               </dd>
             </div>
           </dl>
@@ -241,7 +247,7 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const localePath = useLocalePath()
 const { request } = useApi()
-const { label, help, groupLabel, groups, fieldsIn, bandLabel } = useMetrics()
+const { label, help, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)
@@ -254,6 +260,10 @@ const historyWindow = ref<30 | 90>(30)
 
 const metrics = computed<CreatorMetrics>(() => ({ ...emptyMetrics(), ...(creator.value?.metrics ?? {}) }))
 const percentiles = computed<MetricPercentiles>(() => creator.value?.percentiles ?? {})
+/** 本库同组同量级的 25/50/75 分位（组内 ≥ 30 人才有）。 */
+const references = computed<Partial<Record<NumericMetricKey, { n: number; p25: number; p50: number; p75: number }>>>(
+  () => creator.value?.referenceLines ?? {},
+)
 /** 归并后的全部来源；老数据没有 sources 时退回主来源。 */
 const sourceLinks = computed<CreatorSourceLink[]>(() => {
   const links: CreatorSourceLink[] = creator.value?.sources ?? []

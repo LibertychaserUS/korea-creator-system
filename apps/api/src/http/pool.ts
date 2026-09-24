@@ -23,6 +23,8 @@ import {
   tierOf,
   withServiceFee,
   cohortGroupKey,
+  highlightFlags,
+  highlightKeys,
   type CreatorMetrics,
   type MetricPercentiles,
   type NumericMetricKey,
@@ -296,7 +298,7 @@ export async function poolPage(
 
 /** Keys a saved query shows: its columns, filters and highlights, in that order. */
 export function savedQueryKeys(spec: SavedQuery): NumericMetricKey[] {
-  return [...new Set([...spec.columns, ...spec.filters.map((f) => f.key), ...spec.highlights.map((h) => h.key)])]
+  return [...new Set([...spec.columns, ...spec.filters.map((f) => f.key), ...highlightKeys(spec.highlights)])]
 }
 
 /**
@@ -372,12 +374,7 @@ export async function savedQueryPage(
       tier: item.tier,
       cohort: item.cohort,
       percentiles,
-      flags: spec.highlights
-        .filter((h) => {
-          const v = metrics[h.key]
-          return v != null && (h.op === 'gte' ? v >= h.value : v <= h.value)
-        })
-        .map((h) => ({ key: h.key, tone: h.tone })),
+      flags: highlightFlags({ source: item.source, metrics, percentiles: item.percentiles }, spec.highlights),
       health: metrics.health,
       stale: item.stale,
     }

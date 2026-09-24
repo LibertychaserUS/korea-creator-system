@@ -223,6 +223,15 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     { health: ['healthy'], regions: ['上海'], brandsAny: ['兰芝'] },
     { columns: ['followers', 'priceImage', 'cpm', 'viralRate'], sort: { key: 'viralRate', dir: 'asc' } },
     { filters: [{ key: 'cpe', op: 'lte', value: 3 }], highlights: [{ key: 'readMedian', op: 'gte', value: 1_000, tone: 'good' }] },
+    {
+      columns: ['followers'],
+      highlights: [
+        { key: 'health', op: 'eq', value: 'abnormal', tone: 'bad' },
+        { key: 'cpe', op: 'percentileGte', value: 50, tone: 'good' },
+        { key: 'readMedian', op: 'gte', value: 1_000, tone: 'good', sources: ['qiangua'] },
+        { key: 'interactionMedian', op: 'percentileLte', value: 40, tone: 'warn' },
+      ],
+    },
   ]
 
   for (const [index, overrides] of specs.entries()) {
@@ -279,7 +288,7 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
       const detail = await get(`/api/select/creators/${item.id}`)
       const published = asPublished((await loadCreator(ctx.db, item.id, false))!)
       const expected = json(publicPoolRow(enrichPoolItems([published], pool, targets)[0]))
-      expect({ ...detail, metricsLatest: undefined, rawAvailable: undefined }).toEqual({
+      expect({ ...detail, metricsLatest: undefined, rawAvailable: undefined, referenceLines: undefined }).toEqual({
         ...expected,
         metricsLatest: undefined,
         rawAvailable: undefined,

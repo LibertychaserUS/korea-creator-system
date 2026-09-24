@@ -103,7 +103,15 @@ describe('SavedQuery replaces scoring', () => {
   ]
 
   it('drops unhealthy accounts, applies metric filters, sorts by CPE ascending', () => {
-    const q = defaultSavedQuery({ name: 'q', health: ['healthy'], filters: [{ key: 'cpe', op: 'lte', value: 5 }] })
+    const q = defaultSavedQuery({
+      name: 'q',
+      health: ['healthy'],
+      filters: [{ key: 'cpe', op: 'lte', value: 5 }],
+      highlights: [
+        { key: 'cpe', op: 'lte', value: 3, tone: 'good' },
+        { key: 'collectLikeRatio', op: 'gte', value: 0.8, tone: 'good' },
+      ],
+    })
     const res = applySavedQuery(rows, q)
     expect(res.map((r) => r.id)).toEqual(['d', 'a'])
     expect(res[0]!.tier).toBe('junior')

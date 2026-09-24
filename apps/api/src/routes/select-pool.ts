@@ -1,3 +1,4 @@
+import { cohortGroupKey } from '@kcs/contract'
 import {
   asPublished,
   attachCreatorMeta,
@@ -6,6 +7,7 @@ import {
   publicPoolRow,
 } from '../http/creators'
 import { poolPage, withPercentiles } from '../http/pool'
+import { readReferenceLines } from '../http/published'
 import { readJson, shortlistBody } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
@@ -26,14 +28,33 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     }
     const published = asPublished(item)
     const [enriched] = await withPercentiles(env.db, [published])
-    const raw = await env.db.query(
-      'SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1',
-      [item.id],
-    )
+    const cohort = enriched.cohort as { source: string | null; window: number; contentForm: string | null; tier: string }
+    const [raw, lines] = await Promise.all([
+      env.db.query('SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1', [item.id]),
+      readReferenceLines(env.db, { groups: [cohortGroupKey(cohort)], tier: cohort.tier }),
+    ])
     return context.json({
       ...publicPoolRow(enriched),
       metricsLatest: published.metricsLatest,
       rawAvailable: Boolean(raw.rowCount),
+      referenceLines: Object.fromEntries(lines.map((line) => [line.key, { n: line.n, p25: line.p25, p50: line.p50, p75: line.p75 }])),
+    })
+  })
+
+  /** 本库同组 25 / 50 / 75 分位（≥ 30 人才有），供方案编辑器填绝对值时参考。 */
+  app.get('/api/select/reference-lines', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'select.read')
+    if (denied) return denied
+    const query = context.req.query()
+    const window = query.window ? Number(query.window) : undefined
+    return context.json({
+      items: await readReferenceLines(env.db, {
+        source: query.source === undefined ? undefined : query.source || null,
+        window: Number.isFinite(window) ? window : undefined,
+        contentForm: query.contentForm === undefined ? undefined : query.contentForm || null,
+        tier: query.tier || undefined,
+        key: query.key || undefined,
+      }),
     })
   })
 

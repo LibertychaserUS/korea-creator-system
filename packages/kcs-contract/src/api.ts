@@ -42,6 +42,8 @@ export const API = {
   queryDelete: { method: 'DELETE', path: '/api/select/queries/:id', perm: 'select.write' },
   queryRun: { method: 'POST', path: '/api/select/queries/run', perm: 'select.read' },
   metricsPublic: { method: 'GET', path: '/api/metrics/fields', auth: false },
+  /** Filters: `source` (empty = no source), `window`, `contentForm`, `tier`, `key`. */
+  poolReferenceLines: { method: 'GET', path: '/api/select/reference-lines', perm: 'select.read' },
   poolCreator: { method: 'GET', path: '/api/select/creators/:id', perm: 'select.read' },
   poolCreatorHistory: { method: 'GET', path: '/api/select/creators/:id/history', perm: 'select.read' },
   projects: { method: 'GET', path: '/api/select/projects', perm: 'select.read' },

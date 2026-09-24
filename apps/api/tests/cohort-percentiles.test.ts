@@ -172,6 +172,20 @@ describe('cohort percentiles on the pool table', () => {
     expect(board.assignments[0].cohort).toEqual(target.cohort)
   })
 
+  it('reference lines appear once a group × tier has 30 current values, on the list route and the detail', async () => {
+    for (let i = 0; i < 30; i += 1) await create(`${tag}-参${i}`, 'xinhong', { cpe: i + 1, contentForm: 'image' })
+    const lines = await select('/api/select/reference-lines?source=xinhong&window=90&contentForm=image&key=cpe')
+    expect(lines.items).toEqual([
+      expect.objectContaining({ group: 'xinhong|90|image', tier: 'junior', key: 'cpe', n: 30, p25: 8.25, p50: 15.5, p75: 22.75 }),
+    ])
+    const id = byName(await pool())[`${tag}-参0`].id
+    expect((await select(`/api/select/creators/${id}`)).referenceLines.cpe).toEqual({ n: 30, p25: 8.25, p50: 15.5, p75: 22.75 })
+    const small = await select('/api/select/reference-lines?source=pugongying&window=90&contentForm=image')
+    expect(small.items).toEqual([])
+    const detail = await select(`/api/select/creators/${byName(await pool())[`${tag}-图0`].id}`)
+    expect(detail.referenceLines).toEqual({})
+  })
+
   it('dev can read each source\'s sample target with its bootstrap basis; select cannot', async () => {
     const devops = (await context.loginJson('devops@kcs.local')).token
     await refreshPublished(context.db)

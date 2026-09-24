@@ -224,35 +224,66 @@
             <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" :aria-label="t('kcs.query.removeFilter')" @click="spec.filters.splice(i, 1)">
               <X class="size-3.5" />
             </Button>
+            <ReferenceChips v-if="f.op === 'gte' || f.op === 'lte'" class="col-span-full" :line="referenceFor(f.key)" :metric-key="f.key" @pick="(v) => (f.value = v)" />
           </div>
         </section>
 
         <section class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold">{{ t('kcs.query.highlights') }}</h3>
-            <Button variant="ghost" size="sm" class="h-7 text-xs" @click="spec.highlights.push({ key: 'cpe', op: 'lte', value: 3, tone: 'good' })">
-              <Plus class="size-3.5" />
-              {{ t('kcs.query.addFilter') }}
-            </Button>
+            <div class="flex items-center gap-1">
+              <Button v-if="!hasHealthGate" variant="ghost" size="sm" class="h-7 text-xs" data-testid="query-add-health-gate" @click="spec.highlights.unshift({ ...HEALTH_GATE })">
+                <Plus class="size-3.5" />
+                {{ t('kcs.query.addHealthGate') }}
+              </Button>
+              <Button variant="ghost" size="sm" class="h-7 text-xs" data-testid="query-add-highlight" @click="spec.highlights.push({ key: 'cpe', op: 'percentileGte', value: 75, tone: 'good' })">
+                <Plus class="size-3.5" />
+                {{ t('kcs.query.addFilter') }}
+              </Button>
+            </div>
           </div>
-          <div v-for="(h, i) in spec.highlights" :key="i" class="grid grid-cols-[1fr_auto_1fr_auto_auto] items-center gap-1.5">
-            <select v-model="h.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
-              <option v-for="key in metricKeys" :key="key" :value="key">{{ label(key) }}</option>
-            </select>
-            <select v-model="h.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
-              <option value="gte">{{ t('kcs.query.op.gte') }}</option>
-              <option value="lte">{{ t('kcs.query.op.lte') }}</option>
-            </select>
-            <Input v-model.number="h.value" type="number" step="any" class="h-8 min-w-0 px-2 text-xs tabular-nums" />
-            <select v-model="h.tone" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
-              <option value="good">{{ t('kcs.query.tone.good') }}</option>
-              <option value="warn">{{ t('kcs.query.tone.warn') }}</option>
-              <option value="bad">{{ t('kcs.query.tone.bad') }}</option>
-            </select>
-            <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" :aria-label="t('kcs.query.removeFilter')" @click="spec.highlights.splice(i, 1)">
-              <X class="size-3.5" />
-            </Button>
-          </div>
+          <template v-for="(h, i) in spec.highlights" :key="i">
+            <div v-if="isHealthGate(h)" class="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-1.5 text-xs" data-testid="query-health-gate">
+              <span class="size-2 shrink-0 rounded-full bg-destructive" aria-hidden="true" />
+              <span class="flex-1">{{ t('kcs.query.healthGate') }}</span>
+              <Button variant="ghost" size="icon" class="size-7 text-muted-foreground" :aria-label="t('kcs.query.removeFilter')" @click="spec.highlights.splice(i, 1)">
+                <X class="size-3.5" />
+              </Button>
+            </div>
+            <div v-else class="grid grid-cols-[1fr_auto_1fr_auto_auto] items-center gap-1.5" :data-testid="`query-highlight-${i}`">
+              <select v-model="h.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
+                <option v-for="key in metricKeys" :key="key" :value="key">{{ label(key) }}</option>
+              </select>
+              <select v-model="h.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" @change="onHighlightOpChange(h)">
+                <option value="gte">{{ t('kcs.query.op.gte') }}</option>
+                <option value="lte">{{ t('kcs.query.op.lte') }}</option>
+                <option value="percentileGte">{{ t('kcs.query.op.percentileGte') }}</option>
+                <option value="percentileLte">{{ t('kcs.query.op.percentileLte') }}</option>
+              </select>
+              <Input v-model.number="h.value" type="number" step="any" class="h-8 min-w-0 px-2 text-xs tabular-nums" :aria-label="t('kcs.query.value')" />
+              <select v-model="h.tone" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
+                <option value="good">{{ t('kcs.query.tone.good') }}</option>
+                <option value="warn">{{ t('kcs.query.tone.warn') }}</option>
+                <option value="bad">{{ t('kcs.query.tone.bad') }}</option>
+              </select>
+              <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" :aria-label="t('kcs.query.removeFilter')" @click="spec.highlights.splice(i, 1)">
+                <X class="size-3.5" />
+              </Button>
+              <label class="col-span-full flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                {{ t('kcs.query.onlySources') }}
+                <select
+                  :value="h.sources?.[0] ?? ''"
+                  class="border-input h-7 rounded-md border bg-background px-1.5 text-[11px] shadow-xs outline-none"
+                  :data-testid="`query-highlight-source-${i}`"
+                  @change="setHighlightSource(h, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">{{ t('kcs.query.allSources') }}</option>
+                  <option v-for="source in SOURCE_IDS" :key="source" :value="source">{{ t(`kcs.source.${source}`) }}</option>
+                </select>
+              </label>
+              <ReferenceChips v-if="h.op === 'gte' || h.op === 'lte'" class="col-span-full" :line="referenceFor(h.key, h.sources)" :metric-key="h.key" @pick="(v) => (h.value = v)" />
+            </div>
+          </template>
 
           <h3 class="mt-2 text-sm font-semibold">{{ t('kcs.query.columns') }}</h3>
           <div class="flex flex-wrap gap-1.5" data-testid="query-columns">
@@ -309,8 +340,8 @@
         <!-- 高亮图例：方案里的阈值 → 颜色，新同事不用猜 -->
         <ul class="hidden flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground md:flex" data-testid="pool-legend">
           <li v-for="(h, i) in spec.highlights" :key="i" class="inline-flex items-center gap-1.5">
-            <span class="size-2 rounded-full" :class="h.tone === 'good' ? 'bg-emerald-500' : h.tone === 'warn' ? 'bg-amber-500' : 'bg-destructive'" aria-hidden="true" />
-            {{ label(h.key) }} {{ h.op === 'gte' ? '≥' : '≤' }} {{ format(h.key, h.value) }}
+            <span class="size-2 rounded-full" :class="toneDot(h.tone)" aria-hidden="true" />
+            {{ legendText(h) }}
           </li>
           <li class="text-muted-foreground/70">· {{ t('kcs.band.legend') }}</li>
         </ul>
@@ -351,6 +382,7 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-center justify-between gap-2">
               <span class="truncate font-medium text-foreground">{{ row.displayName }}</span>
+              <span v-if="row.stale" class="ml-auto shrink-0 rounded border border-border px-1.5 text-[10px] text-muted-foreground" :title="t('kcs.band.stale')" data-testid="row-stale">{{ t('kcs.band.staleShort') }}</span>
               <HealthBadge :health="row.metrics?.health" />
             </div>
             <div class="mt-1 flex flex-wrap items-center gap-1.5">
@@ -361,7 +393,7 @@
               <div v-for="key in mobileColumns" :key="key" class="min-w-0">
                 <dt class="truncate text-muted-foreground">{{ label(key) }}</dt>
                 <dd class="font-semibold">
-                  <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" :cohort="row.cohort" compact />
+                  <MetricValue :metric-key="key" :value="row.metrics?.[key]" :rank="row.percentiles?.[key]" :cohort="row.cohort" :stale="row.stale" compact />
                 </dd>
               </div>
             </dl>
@@ -429,9 +461,12 @@
                         v-for="flag in row.flags"
                         :key="flag.key"
                         class="size-1.5 rounded-full"
-                        :class="flag.tone === 'good' ? 'bg-emerald-500' : flag.tone === 'warn' ? 'bg-amber-500' : 'bg-destructive'"
-                        :title="`${label(flag.key)} · ${t(`kcs.query.tone.${flag.tone}`)}`"
+                        :class="toneDot(flag.tone)"
+                        :data-flag="flag.key"
+                        :data-tone="flag.tone"
+                        :title="`${flagLabel(flag.key)} · ${t(`kcs.query.tone.${flag.tone}`)}`"
                       />
+                      <span v-if="row.stale" class="rounded border border-border px-1.5 text-[10px] text-muted-foreground" :title="t('kcs.band.stale')" data-testid="row-stale">{{ t('kcs.band.staleShort') }}</span>
                     </div>
                     <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <SourceBadge :source="row.source" class="h-5 border-0 bg-transparent px-0" />
@@ -443,7 +478,7 @@
               <TableCell><TierBadge :tier="row.tier" /></TableCell>
               <TableCell><HealthBadge :health="row.metrics?.health" /></TableCell>
               <TableCell v-for="key in spec.columns" :key="key" class="text-right text-[13px]">
-                <MetricValue :metric-key="key" :value="row.metrics?.[key]" :band="row.percentiles?.[key]?.band" :percentile="row.percentiles?.[key]?.percentile" :cohort="row.cohort" compact />
+                <MetricValue :metric-key="key" :value="row.metrics?.[key]" :rank="row.percentiles?.[key]" :cohort="row.cohort" :stale="row.stale" compact />
               </TableCell>
             </TableRow>
           </TableBody>
@@ -514,7 +549,10 @@ import {
   API,
   apiPath,
   CREATOR_TIERS,
+  HEALTH_GATE,
   HEALTH_GRADES,
+  SOURCE_IDS,
+  isHealthGate,
   SERVICE_FEE_RATES,
   VISIBLE_METRIC_KEYS,
   PAGE_SIZE_DEFAULT,
@@ -525,10 +563,15 @@ import {
   validateSavedQuery,
   type CreatorTier,
   type HealthGrade,
+  type Highlight,
+  type HighlightTone,
   type MetricFilter,
+  type MetricHighlight,
   type NumericMetricKey,
   type SavedQuery,
+  type SourceId,
 } from '@kcs/contract'
+import ReferenceChips, { type ReferenceLine } from '~/components/ReferenceChips.vue'
 
 type SavedQueryRecord = { id: string; name: string; version: number; spec: SavedQuery }
 
@@ -639,6 +682,51 @@ function onOpChange(f: MetricFilter) {
   else if (f.op === 'percentileGte' && (Number(f.value) < 0 || Number(f.value) > 100)) (f as any).value = 75
 }
 
+const hasHealthGate = computed(() => spec.highlights.some(isHealthGate))
+
+function toneDot(tone: HighlightTone) {
+  return tone === 'good' ? 'bg-emerald-500' : tone === 'warn' ? 'bg-amber-500' : 'bg-destructive'
+}
+
+function flagLabel(key: NumericMetricKey | 'health') {
+  return key === 'health' ? t('kcs.health.label') : label(key)
+}
+
+function legendText(h: Highlight) {
+  if (isHealthGate(h)) return t('kcs.query.healthGate')
+  const scope = h.sources?.length ? ` · ${h.sources.map((s) => t(`kcs.source.${s}`)).join('/')}` : ''
+  if (h.op === 'percentileGte' || h.op === 'percentileLte') return `${label(h.key)} · ${t(`kcs.query.opLegend.${h.op}`, { n: h.value })}${scope}`
+  return `${label(h.key)} ${h.op === 'gte' ? '≥' : '≤'} ${format(h.key, h.value)}${scope}`
+}
+
+function onHighlightOpChange(h: MetricHighlight) {
+  if ((h.op === 'percentileGte' || h.op === 'percentileLte') && (h.value < 0 || h.value > 100)) h.value = h.op === 'percentileGte' ? 75 : 25
+}
+
+function setHighlightSource(h: MetricHighlight, value: string) {
+  if (value) h.sources = [value as SourceId]
+  else delete h.sources
+}
+
+/** 本库同组 25/50/75 分位：只取方案选中的数据源和量级里人数最多的一组作参考。 */
+const referenceLines = ref<ReferenceLine[]>([])
+function referenceFor(key: NumericMetricKey, sources?: SourceId[]): ReferenceLine | null {
+  const wantSources = sources?.length ? sources : spec.sources
+  const candidates = referenceLines.value.filter((line) =>
+    line.key === key
+    && (!wantSources.length || (line.source != null && wantSources.includes(line.source as SourceId)))
+    && (!spec.tiers.length || spec.tiers.includes(line.tier as CreatorTier)))
+  return candidates.sort((a, b) => b.n - a.n)[0] ?? null
+}
+
+async function loadReferenceLines() {
+  try {
+    referenceLines.value = (await request<any>(API.poolReferenceLines.path)).items ?? []
+  } catch {
+    referenceLines.value = []
+  }
+}
+
 function unitHint(key: NumericMetricKey) {
   const unit = metricField(key).unit
   return unit === 'ratio' ? '0.03' : unit === 'cnyPerUnit' ? '3' : ''
@@ -743,6 +831,7 @@ onMounted(async () => {
   await loadQueries()
   await run()
   loadProject()
+  loadReferenceLines()
 })
 const debouncedRun = useDebounceFn(run, 300)
 // 条件一变回到第一页；page 本身的变化（翻页）立即取数。

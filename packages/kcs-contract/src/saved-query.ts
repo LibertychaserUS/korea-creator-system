@@ -21,7 +21,7 @@ import {
   HEALTH_GRADES,
   METRIC_KEYS,
 } from './metrics'
-import type { SourceId } from './source-adapter'
+import { SOURCE_IDS, type SourceId } from './source-adapter'
 
 export type MetricFilter =
   | { key: NumericMetricKey; op: 'gte' | 'lte'; value: number }
@@ -30,11 +30,77 @@ export type MetricFilter =
 
 export type HighlightTone = 'good' | 'warn' | 'bad'
 
-export type Highlight = {
+/**
+ * A row gets a coloured dot when a highlight holds. Metric highlights compare
+ * the value (`gte` / `lte`) or its percentile among peers (`percentileGte` /
+ * `percentileLte`, 0–100, higher = better whatever the metric's direction), and
+ * may apply to some sources only. The health gate marks 健康「异常」 red and
+ * then no "good" dot is shown for that row.
+ */
+export type MetricHighlight = {
   key: NumericMetricKey
-  op: 'gte' | 'lte'
+  op: 'gte' | 'lte' | 'percentileGte' | 'percentileLte'
   value: number
   tone: HighlightTone
+  sources?: SourceId[]
+}
+export type HealthGate = { key: 'health'; op: 'eq'; value: 'abnormal'; tone: 'bad' }
+export type Highlight = MetricHighlight | HealthGate
+export type HighlightFlag = { key: NumericMetricKey | 'health'; tone: HighlightTone }
+
+export const HEALTH_GATE: HealthGate = { key: 'health', op: 'eq', value: 'abnormal', tone: 'bad' }
+
+export function isHealthGate(h: Highlight): h is HealthGate {
+  return h.key === 'health'
+}
+
+/**
+ * Defaults, all relative to the creator's own peers (no absolute number
+ * without a verified sample): health gate; CPE in the cheapest quarter →
+ * good; engagement rate in the lowest quarter → warn; 蒲公英 read and
+ * interaction medians ahead of at least half of similar creators → good.
+ */
+export function defaultHighlights(): Highlight[] {
+  return [
+    { ...HEALTH_GATE },
+    { key: 'cpe', op: 'percentileGte', value: 75, tone: 'good' },
+    { key: 'engagementRate', op: 'percentileLte', value: 25, tone: 'warn' },
+    { key: 'readMedian', op: 'percentileGte', value: 50, tone: 'good', sources: ['pugongying'] },
+    { key: 'interactionMedian', op: 'percentileGte', value: 50, tone: 'good', sources: ['pugongying'] },
+  ]
+}
+
+/** Which highlights hold for one row. Percentile highlights need a percentile (none when stale or too few peers). */
+export function highlightFlags(
+  row: { source: string | null; metrics: CreatorMetrics; percentiles: MetricPercentiles },
+  highlights: readonly Highlight[],
+): HighlightFlag[] {
+  const flags: HighlightFlag[] = []
+  let gated = false
+  for (const h of highlights) {
+    if (isHealthGate(h)) {
+      if (row.metrics.health === h.value) {
+        gated = true
+        flags.push({ key: 'health', tone: h.tone })
+      }
+      continue
+    }
+    if (h.sources?.length && !h.sources.includes(row.source as SourceId)) continue
+    if (h.op === 'percentileGte' || h.op === 'percentileLte') {
+      const p = row.percentiles[h.key]?.percentile
+      if (p == null) continue
+      if (h.op === 'percentileGte' ? p >= h.value : p <= h.value) flags.push({ key: h.key, tone: h.tone })
+      continue
+    }
+    const v = row.metrics[h.key]
+    if (v != null && (h.op === 'gte' ? v >= h.value : v <= h.value)) flags.push({ key: h.key, tone: h.tone })
+  }
+  return gated ? flags.filter((f) => f.tone !== 'good') : flags
+}
+
+/** Metric keys a highlight list reads. */
+export function highlightKeys(highlights: readonly Highlight[]): NumericMetricKey[] {
+  return highlights.filter((h): h is MetricHighlight => !isHealthGate(h)).map((h) => h.key)
 }
 
 export type SavedQuery = {
@@ -86,7 +152,7 @@ export type QueryResultRow<T extends QueryRow = QueryRow> = T & {
   tier: CreatorTier
   cohort: PercentileCohort
   percentiles: MetricPercentiles
-  flags: { key: NumericMetricKey; tone: HighlightTone }[]
+  flags: HighlightFlag[]
 }
 
 export function cohortKey(source: SourceId, tier: CreatorTier): string {
@@ -116,11 +182,7 @@ export function defaultSavedQuery(overrides: Partial<SavedQuery> = {}): SavedQue
     brandsAny: [],
     filters: [],
     sort: { key: 'cpe', dir: 'asc' },
-    highlights: [
-      { key: 'cpe', op: 'lte', value: 3, tone: 'good' },
-      { key: 'collectLikeRatio', op: 'gte', value: 0.8, tone: 'good' },
-      { key: 'engagementRate', op: 'lte', value: 0.02, tone: 'warn' },
-    ],
+    highlights: defaultHighlights(),
     columns: [...DEFAULT_QUERY_COLUMNS],
     serviceFee: 0,
     ...overrides,
@@ -141,7 +203,9 @@ export function normalizeSavedQuery(value: unknown): Partial<SavedQuery> {
   const q = { ...(value as Record<string, any>) }
   if (Array.isArray(q.columns)) q.columns = [...new Set(q.columns.map(renamedKey))]
   if (Array.isArray(q.filters)) q.filters = q.filters.map((f: any) => (f && typeof f === 'object' ? { ...f, key: renamedKey(f.key) } : f))
-  if (Array.isArray(q.highlights)) q.highlights = q.highlights.map((h: any) => (h && typeof h === 'object' ? { ...h, key: renamedKey(h.key) } : h))
+  if (Array.isArray(q.highlights)) {
+    q.highlights = q.highlights.map((h: any) => (h && typeof h === 'object' && h.key !== 'health' ? { ...h, key: renamedKey(h.key) } : h))
+  }
   if (q.sort && typeof q.sort === 'object') q.sort = { ...q.sort, key: renamedKey(q.sort.key) }
   if (Array.isArray(q.health)) {
     q.health = [...new Set(q.health.map((h: unknown) => normalizeHealth(h, null, null).health ?? h))]
@@ -167,10 +231,26 @@ export function validateSavedQuery(q: unknown): string[] {
   }
   if (!s.sort || (s.sort.key !== 'followers' && !METRIC_KEYS.includes(s.sort.key as NumericMetricKey))) errors.push('sort.key')
   if (!Array.isArray(s.columns) || !s.columns.length || s.columns.some((c) => !METRIC_KEYS.includes(c))) errors.push('columns')
-  if (!Array.isArray(s.highlights) || s.highlights.some((h) => !h || !METRIC_KEYS.includes(h.key) || typeof h.value !== 'number')) errors.push('highlights')
+  if (!Array.isArray(s.highlights) || s.highlights.some((h) => !validHighlight(h))) errors.push('highlights')
   if (s.serviceFee !== undefined && !SERVICE_FEE_RATES.includes(s.serviceFee as ServiceFeeRate)) errors.push('serviceFee')
   if (Array.isArray(s.health) && s.health.some((h) => !HEALTH_GRADES.includes(h as (typeof HEALTH_GRADES)[number]))) errors.push('health')
   return [...new Set(errors)]
+}
+
+const HIGHLIGHT_TONES: readonly HighlightTone[] = ['good', 'warn', 'bad']
+
+function validHighlight(h: unknown): boolean {
+  if (!h || typeof h !== 'object') return false
+  const x = h as Record<string, unknown>
+  if (x.key === 'health') return x.op === 'eq' && x.value === 'abnormal' && x.tone === 'bad'
+  if (!METRIC_KEYS.includes(x.key as NumericMetricKey)) return false
+  if (!HIGHLIGHT_TONES.includes(x.tone as HighlightTone)) return false
+  if (typeof x.value !== 'number' || !Number.isFinite(x.value)) return false
+  if (x.op === 'percentileGte' || x.op === 'percentileLte') {
+    if (x.value < 0 || x.value > 100) return false
+  } else if (x.op !== 'gte' && x.op !== 'lte') return false
+  if (x.sources !== undefined && (!Array.isArray(x.sources) || x.sources.some((v) => !SOURCE_IDS.includes(v as SourceId)))) return false
+  return true
 }
 
 function passes(row: QueryResultRow, f: MetricFilter): boolean {
@@ -212,7 +292,7 @@ export function applySavedQuery<T extends QueryRow>(
       for (const [id, percentiles] of rankGroup(members, { target })) ranked.set(id, percentiles)
     }
   }
-  const keys = new Set([...q.columns, ...q.filters.map((f) => f.key), ...q.highlights.map((h) => h.key)])
+  const keys = new Set([...q.columns, ...q.filters.map((f) => f.key), ...highlightKeys(q.highlights)])
   let out: QueryResultRow<T>[] = derived.map((r) => {
     const all = r.percentiles ?? ranked.get(r.id) ?? {}
     const percentiles: MetricPercentiles = {}
@@ -230,12 +310,7 @@ export function applySavedQuery<T extends QueryRow>(
       contentForm: r.metrics.contentForm ?? null,
     },
     percentiles,
-    flags: q.highlights
-      .filter((h) => {
-        const v = metrics[h.key]
-        return v != null && (h.op === 'gte' ? v >= h.value : v <= h.value)
-      })
-      .map((h) => ({ key: h.key, tone: h.tone })),
+    flags: highlightFlags({ source: r.source ?? null, metrics, percentiles: all }, q.highlights),
     }
   })
 
