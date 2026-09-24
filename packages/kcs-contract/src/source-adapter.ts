@@ -281,26 +281,119 @@ export function pickPath(obj: unknown, path: string | undefined): unknown {
   }, obj)
 }
 
+/**
+ * Why a value did not come through as a plain number. Surfaced as
+ * `<field>.<issue>` warnings so ops can see the vendor wrote "5000-8000" or
+ * "暂无" rather than a silent blank.
+ *   placeholder — the vendor's way of saying "no data" ("-", "—", "暂无" …)
+ *   range       — two numbers ("5000-8000", "1万~2万"); we do not pick one
+ *   lowerBound  — "10万+": the number is kept as the lower bound
+ *   unparseable — anything else that is not a number
+ *   outOfRange  — a number that cannot be right for this field (negative
+ *                 count, share above 100%, count past the integer column)
+ */
+export type NumberIssue = 'placeholder' | 'range' | 'lowerBound' | 'unparseable' | 'outOfRange'
+
+export type ParsedNumber = { value: number | null; issue: NumberIssue | null }
+
+const PLACEHOLDERS = new Set([
+  '-', '--', '---', '—', '——', '–', '/', '\\', '.', '?', '*',
+  'n/a', 'na', 'nan', 'null', 'none', 'nil', 'undefined',
+  '暂无', '无', '未知', '无数据', '暂无数据', '未公开', '未展示', '不展示', '-%',
+])
+
+/** Powers of ten for the unit suffixes vendors use (Chinese, Korean, Latin). */
+const UNIT_EXPONENT: Record<string, number> = {
+  千: 3, 천: 3, k: 3, K: 3,
+  万: 4, 萬: 4, 만: 4, w: 4, W: 4,
+  百万: 6, m: 6, M: 6,
+  亿: 8, 億: 8, 억: 8,
+}
+
+const NUMBER_PATTERN = /^([+-]?)(\d+(?:\.\d*)?|\.\d+)(?:e([+-]?\d+))?(百万|[千천kK万萬만wWmM亿億억])?(\+)?$/i
+const RANGE_PATTERN = /\d\s*(?:百万|[千천kK万萬만wWmM亿億억])?\s*(?:-|~|～|〜|–|—|至|到)\s*[-+]?\.?\d/
+
+/** True for the strings vendors put where a value is missing. */
+export function isPlaceholder(value: unknown): boolean {
+  return typeof value === 'string' && PLACEHOLDERS.has(value.normalize('NFKC').trim().toLowerCase())
+}
+
+/** Shift the decimal point in a digit string without going through a float. */
+function scaleDecimal(intPart: string, fracPart: string, exponent: number): number {
+  const digits = `${intPart}${fracPart}`.replace(/^0+(?=\d)/, '')
+  const point = digits.length - fracPart.length + exponent
+  let text: string
+  if (point <= 0) text = `0.${'0'.repeat(-point)}${digits}`
+  else if (point >= digits.length) text = `${digits}${'0'.repeat(point - digits.length)}`
+  else text = `${digits.slice(0, point)}.${digits.slice(point)}`
+  return Number(text)
+}
+
+/**
+ * Reads what vendors write for a number. Unit suffixes are applied in decimal
+ * (`0.07万` is exactly 700, `12.3456万` exactly 123456), so a count never
+ * arrives as 700.0000000000001 and trips an integer column.
+ */
+export function parseNumber(value: unknown): ParsedNumber {
+  if (value == null) return { value: null, issue: null }
+  if (typeof value === 'number') return Number.isFinite(value) ? { value, issue: null } : { value: null, issue: 'unparseable' }
+  if (typeof value === 'bigint') return { value: Number(value), issue: null }
+  if (typeof value !== 'string') return { value: null, issue: 'unparseable' }
+  let s = value.normalize('NFKC').trim()
+  if (s === '') return { value: null, issue: null }
+  if (PLACEHOLDERS.has(s.toLowerCase())) return { value: null, issue: 'placeholder' }
+  s = s.replace(/^[\u2212\u2012\u2013\uFE63]/, '-').replace(/^([+-]?)\s*[¥￥]\s*/, '$1')
+  if (RANGE_PATTERN.test(s.replace(/^[+-]/, ''))) return { value: null, issue: 'range' }
+  s = s.replace(/[\s\u00A0\u2009\u202F]/g, '')
+  if (s.includes(',')) {
+    // Only thousands separators: "1,234,567.5". "1.234,5" is ambiguous.
+    if (!/^[+-]?\d{1,3}(,\d{3})+(\.\d*)?(?!\d)/.test(s)) return { value: null, issue: 'unparseable' }
+    s = s.replace(/,/g, '')
+  }
+  const m = NUMBER_PATTERN.exec(s)
+  if (!m) return { value: null, issue: 'unparseable' }
+  const [, sign, mantissa, exp, unit, plus] = m
+  const [intPart = '', fracPart = ''] = mantissa!.split('.')
+  const exponent = Number(exp ?? 0) + (unit ? UNIT_EXPONENT[unit]! : 0)
+  const magnitude = scaleDecimal(intPart || '0', fracPart, exponent)
+  if (!Number.isFinite(magnitude)) return { value: null, issue: 'unparseable' }
+  const n = sign === '-' ? -magnitude : magnitude
+  return { value: Object.is(n, -0) ? 0 : n, issue: plus ? 'lowerBound' : null }
+}
+
 export function toNumber(value: unknown): number | null {
-  if (value == null || value === '') return null
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  const s = String(value).trim()
-  const m = /^([\d.,]+)\s*([wW万kK]?)$/.exec(s.replace(/[,，\s]/g, ''))
-  if (!m) return null
-  const n = Number(m[1]!.replace(/,/g, ''))
-  if (!Number.isFinite(n)) return null
-  const unit = m[2]
-  if (unit === 'w' || unit === 'W' || unit === '万') return n * 10_000
-  if (unit === 'k' || unit === 'K') return n * 1_000
-  return n
+  return parseNumber(value).value
+}
+
+/** Largest value a Postgres `integer` column (followers) holds. */
+export const MAX_COUNT = 2_147_483_647
+
+/**
+ * Whole-number counts (粉丝、中位数、篇数). Rounded to an integer; negative
+ * only when `signed` (涨粉 can be negative), and never past `MAX_COUNT`.
+ */
+export function toCount(value: unknown, options: { signed?: boolean } = {}): ParsedNumber {
+  const parsed = parseNumber(value)
+  if (parsed.value == null) return parsed
+  const n = Math.round(parsed.value)
+  if (Math.abs(n) > MAX_COUNT || (n < 0 && !options.signed)) return { value: null, issue: 'outOfRange' }
+  return { value: n, issue: parsed.issue }
+}
+
+/** Money and unit costs: a number that is not negative. */
+export function toAmount(value: unknown): ParsedNumber {
+  const parsed = parseNumber(value)
+  if (parsed.value != null && parsed.value < 0) return { value: null, issue: 'outOfRange' }
+  return parsed
 }
 
 /** "3.2%" → 0.032; 3.2 → 0.032 when `percentInput`; 0.032 stays 0.032. */
 export function toRatio(value: unknown, percentInput = false): number | null {
   if (value == null || value === '') return null
-  if (typeof value === 'string' && value.trim().endsWith('%')) {
-    const n = Number(value.trim().slice(0, -1))
-    return Number.isFinite(n) ? n / 100 : null
+  const text = typeof value === 'string' ? value.normalize('NFKC').trim() : null
+  if (text?.endsWith('%')) {
+    const n = toNumber(text.slice(0, -1))
+    return n == null ? null : n / 100
   }
   const n = toNumber(value)
   if (n == null) return null

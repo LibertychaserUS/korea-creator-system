@@ -24,7 +24,9 @@ import {
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  isPlaceholder,
   pickPath,
+  toCount,
   toNumber,
   toRatio,
   type AudienceProfile,
@@ -277,11 +279,11 @@ async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterP
 // Normalize
 // ---------------------------------------------------------------------------
 
-/** First non-empty value among paths; medians/prices reported as 0 mean "not shown". */
+/** First usable value among paths; a placeholder ("-", "暂无") counts as missing. */
 function pick(payload: Json, paths: readonly string[]): unknown {
   for (const path of paths) {
     const value = pickPath(payload, path)
-    if (value !== undefined && value !== null && value !== '') return value
+    if (value !== undefined && value !== null && value !== '' && !isPlaceholder(value)) return value
   }
   return undefined
 }
@@ -289,6 +291,15 @@ function pick(payload: Json, paths: readonly string[]): unknown {
 function positive(payload: Json, paths: readonly string[]): number | null {
   for (const path of paths) {
     const n = toNumber(pickPath(payload, path))
+    if (n != null && n > 0) return n
+  }
+  return null
+}
+
+/** Same as `positive`, for whole-number counts (rounded, within the integer column). */
+function positiveCount(payload: Json, paths: readonly string[]): number | null {
+  for (const path of paths) {
+    const n = toCount(pickPath(payload, path)).value
     if (n != null && n > 0) return n
   }
   return null
@@ -373,24 +384,24 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   if (!externalId || !displayName) return { ok: false, errors: [!externalId ? 'externalId.missing' : 'displayName.missing'] }
 
   const m: CreatorMetrics = emptyMetrics(toNumber(p.kcsWindow) === 90 ? 90 : 30)
-  m.followers = positive(p, ['fansNum', 'fansCount', 'fansSummary.fansNum'])
-  m.followerGrowth = toNumber(pick(p, ['fansSummary.fansIncreaseNum', 'fans30GrowthNum']))
+  m.followers = positiveCount(p, ['fansNum', 'fansCount', 'fansSummary.fansNum'])
+  m.followerGrowth = toCount(pick(p, ['fansSummary.fansIncreaseNum', 'fans30GrowthNum']), { signed: true }).value
   m.followerGrowthRate = percent(p, ['fansSummary.fansGrowthRate', 'fans30GrowthRate', 'dataSummary.fans30GrowthRate'])
   m.readFanRatio = percent(p, ['fansSummary.readFansRate'])
   m.activeFanRatio = percent(p, ['fansSummary.activeFansRate'])
   m.engagedFanRatio = percent(p, ['fansSummary.engageFansRate'])
 
-  m.impressionMedian = positive(p, ['notesRate.impMedian', 'dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])
-  m.readMedian = positive(p, ['notesRate.readMedian', 'dataSummary.readMedian', 'clickMidNum'])
-  m.interactionMedian = positive(p, ['notesRate.interactionMedian', 'dataSummary.interactionMedian', 'interMidNum', 'mEngagementNum'])
-  m.likeMedian = positive(p, ['notesRate.likeMedian'])
-  m.collectMedian = positive(p, ['notesRate.collectMedian'])
-  m.commentMedian = positive(p, ['notesRate.commentMedian'])
-  m.coopReadMedian = positive(p, ['readMidCoop30'])
-  m.coopInteractionMedian = positive(p, ['interMidCoop30'])
+  m.impressionMedian = positiveCount(p, ['notesRate.impMedian', 'dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])
+  m.readMedian = positiveCount(p, ['notesRate.readMedian', 'dataSummary.readMedian', 'clickMidNum'])
+  m.interactionMedian = positiveCount(p, ['notesRate.interactionMedian', 'dataSummary.interactionMedian', 'interMidNum', 'mEngagementNum'])
+  m.likeMedian = positiveCount(p, ['notesRate.likeMedian'])
+  m.collectMedian = positiveCount(p, ['notesRate.collectMedian'])
+  m.commentMedian = positiveCount(p, ['notesRate.commentMedian'])
+  m.coopReadMedian = positiveCount(p, ['readMidCoop30'])
+  m.coopInteractionMedian = positiveCount(p, ['interMidCoop30'])
   m.engagementRate = percent(p, ['notesRate.interactionRate'])
   m.retentionRate = percent(p, ['notesRate.videoFullViewRate', 'videoFinishRate'])
-  m.noteCount = positive(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
+  m.noteCount = positiveCount(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
   // 千赞笔记比例 is the platform's own "爆文" ratio; no absolute count is exposed.
   m.viralRate = percent(p, ['notesRate.thousandLikePercent', 'thousandLikePercent30'])
 
@@ -405,7 +416,7 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.trafficFollowRatio = fraction(p, ['notesRate.pagePercentVo.readFollowPercent'])
 
   m.health = healthOf(p)
-  m.coopNoteCount = positive(p, ['coopNoteNum30d', 'businessNoteCount'])
+  m.coopNoteCount = positiveCount(p, ['coopNoteNum30d', 'businessNoteCount'])
   m.audience = audienceOf(p)
 
   const metrics = deriveMetrics(m)

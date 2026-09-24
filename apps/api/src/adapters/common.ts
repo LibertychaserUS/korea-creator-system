@@ -1,15 +1,22 @@
 import { readFileSync } from 'node:fs'
 import {
+  METRIC_FIELDS,
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  isPlaceholder,
+  parseNumber,
   pickPath,
+  toAmount,
+  toCount,
   toHealth,
   toNumber,
   toRatio,
   toStringArray,
   type CreatorMetrics,
   type NormalizeResult,
+  type NumericMetricKey,
+  type ParsedNumber,
   type RawRecord,
   type SourceId,
   type SourcePage,
@@ -57,12 +64,39 @@ export function fieldMapFromEnv(envName: string, defaults: FieldMap): FieldMap {
   }
 }
 
+/**
+ * First usable value among `paths`. A placeholder ("-", "暂无" …) counts as
+ * missing, so it never hides a real value under a later alias.
+ */
 export function first(payload: unknown, paths: readonly string[] | undefined): unknown {
   for (const path of paths ?? []) {
     const value = pickPath(payload, path)
-    if (value !== undefined && value !== null && value !== '') return value
+    if (value !== undefined && value !== null && value !== '' && !isPlaceholder(value)) return value
   }
   return undefined
+}
+
+/** Counts that may legitimately go below zero. */
+const SIGNED_COUNTS = new Set<NumericMetricKey>(['followerGrowth'])
+
+/** Parse one metric by what kind of number it is, collecting a warning when it did not come through. */
+export function readMetric(
+  key: NumericMetricKey,
+  value: unknown,
+  warnings: string[],
+  options: { percentInput?: boolean } = {},
+): number | null {
+  const field = METRIC_FIELDS.find((f) => f.key === key)
+  let parsed: ParsedNumber
+  if (field?.unit === 'count') parsed = toCount(value, { signed: SIGNED_COUNTS.has(key) })
+  else if (field?.unit === 'cny' || field?.unit === 'cnyPerUnit') parsed = toAmount(value)
+  else if (field?.unit === 'ratio') {
+    const n = toRatio(value, options.percentInput ?? false)
+    parsed = { value: n, issue: n == null && value != null ? parseNumber(value).issue ?? 'unparseable' : null }
+  } else parsed = parseNumber(value)
+  if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
+  else if (parsed.value == null) warnings.push(`${key}.missing`)
+  return parsed.value
 }
 
 export function normalizeRecord(raw: RawRecord, map: FieldMap, percentFields: readonly (keyof CreatorMetrics)[] = []): NormalizeResult {
@@ -73,15 +107,14 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap, percentFields: re
   const metrics = emptyMetrics((toNumber(first(raw.payload, map.window)) === 90 ? 90 : 30))
   const numericKeys = Object.keys(metrics).filter((key) =>
     !['window', 'health', 'coopBrands', 'audience', 'vendorIndex'].includes(key),
-  ) as (keyof CreatorMetrics)[]
+  ) as NumericMetricKey[]
   const warnings: string[] = []
   for (const key of numericKeys) {
     const paths = map[key]
     if (!paths) continue
     const value = first(raw.payload, paths)
-    const parsed = percentFields.includes(key) ? toRatio(value, typeof value === 'number' && value > 1) : toNumber(value)
-    ;(metrics as Record<string, unknown>)[key] = parsed
-    if (parsed == null) warnings.push(`${String(key)}.missing`)
+    const percentInput = percentFields.includes(key) && typeof value === 'number' && value > 1
+    ;(metrics as Record<string, unknown>)[key] = readMetric(key, value, warnings, { percentInput })
   }
   metrics.health = toHealth(first(raw.payload, map.health))
   metrics.coopBrands = toStringArray(first(raw.payload, map.coopBrands))
