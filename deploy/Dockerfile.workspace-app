@@ -1,34 +1,56 @@
-# glibc 镜像：better-sqlite3 / pg 等原生依赖的预编译包在 musl 下不一定有，用 bookworm-slim 更稳。
-FROM node:22-bookworm-slim AS builder
+# syntax=docker/dockerfile:1.7
+# The four Nuxt workspace apps (marketing / ops / dev / select) share this file:
+#   docker build -f deploy/Dockerfile.workspace-app --build-arg APP=ops -t kcs-ops .
+# Every origin / URL is read at runtime (NUXT_PUBLIC_*), so one image works for
+# any domain. The install layer does not depend on APP, so building all four
+# reuses it.
 
-ARG APP
-WORKDIR /app
+# glibc: better-sqlite3 / pg prebuilt binaries are not guaranteed on musl.
+FROM node:22-bookworm-slim AS build
+WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
-
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json config.ts .npmrc ./
+COPY packages/kcs-contract/package.json packages/kcs-contract/
+COPY apps/marketing/package.json apps/marketing/
+COPY apps/ops/package.json apps/ops/
+COPY apps/dev/package.json apps/dev/
+COPY apps/select/package.json apps/select/
+# Root + the four apps only; each app's postinstall (`nuxt prepare`) needs its
+# sources, so scripts run later in the build step instead.
+RUN --mount=type=cache,id=kcs-pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts \
+      --filter . --filter "@kcs/app-marketing..." --filter "@kcs/app-ops..." \
+      --filter "@kcs/app-dev..." --filter "@kcs/app-select..."
 COPY config ./config
 COPY packages ./packages
 COPY libs ./libs
-COPY apps ./apps
-
-RUN test -n "$APP" \
-  && pnpm install --filter "@kcs/app-${APP}..." --frozen-lockfile \
-  && pnpm --filter "@kcs/app-${APP}" build
-
-FROM node:22-bookworm-slim AS runner
+COPY apps/marketing apps/marketing
+COPY apps/ops apps/ops
+COPY apps/dev apps/dev
+COPY apps/select apps/select
 
 ARG APP
-ENV NODE_ENV=production
-ENV NITRO_HOST=0.0.0.0
+# BUILD_TIME: TinyShip's build switch — skips the in-build vue-tsc pass (CI's
+# `apps` job type-checks with the full workspace; unused shadcn components here
+# import packages only other workspace apps install) and lets config getters
+# return placeholders instead of demanding runtime secrets.
+ENV NODE_OPTIONS=--max-old-space-size=4096 \
+    BUILD_TIME=true
+RUN test -n "$APP" \
+  && pnpm --filter "@kcs/app-${APP}" exec nuxt prepare \
+  && NODE_ENV=production pnpm --filter "@kcs/app-${APP}" build
+
+FROM node:22-bookworm-slim AS runtime
+ARG APP
+ENV NODE_ENV=production \
+    NITRO_HOST=0.0.0.0 \
+    NITRO_PORT=3000
 WORKDIR /app
-
-RUN groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid nodejs --create-home nuxt \
-  && mkdir -p /data && chown nuxt:nodejs /data
-
-COPY --from=builder --chown=nuxt:nodejs /app/apps/${APP}/.output ./.output
-
-USER nuxt
-# 端口由 NITRO_PORT 决定（marketing 7000 / ops 7002 / dev 7003 / select 7004），默认 3000。
+COPY --from=build --chown=node:node /repo/apps/${APP}/.output ./.output
+USER node
 EXPOSE 3000
+# better-auth's own liveness route: exercises Nitro + the auth handler, no DB round-trip.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.NITRO_PORT||process.env.PORT||3000)+'/api/auth/ok').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+STOPSIGNAL SIGTERM
 CMD ["node", ".output/server/index.mjs"]

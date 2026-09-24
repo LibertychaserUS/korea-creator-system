@@ -161,12 +161,16 @@ for app in $BLACKBOX_APPS; do
     node "$output"
 done
 
+# The API runs from its production bundle (apps/api/dist), the same artifact the image ships.
+log "building @kcs/api"
+pnpm --filter @kcs/api build >/dev/null
 start_bg api env \
   NODE_ENV=test \
   PORT="$(port_of "$BLACKBOX_BASE_URL")" \
   DATABASE_URL="$BLACKBOX_DATABASE_URL" \
   API_PUBLIC_URL="$BLACKBOX_BASE_URL" \
   AUTH_BASE_URL="$BLACKBOX_AUTH_URL" \
+  WEB_ORIGIN="$BLACKBOX_SELECT_URL,$BLACKBOX_OPS_URL,$BLACKBOX_DEV_URL,$BLACKBOX_MARKETING_URL" \
   KCS_SEED=demo \
   QIANGUA_BASE_URL="http://127.0.0.1:$BLACKBOX_VENDOR_PORT" \
   QIANGUA_TOKEN="$BLACKBOX_VENDOR_TOKEN" \
@@ -174,7 +178,7 @@ start_bg api env \
   TIKHUB_BASE_URL="http://127.0.0.1:$BLACKBOX_VENDOR_PORT" \
   PGY_GATEWAY=tikhub \
   PGY_TIMEOUT_MS="${BLACKBOX_PGY_TIMEOUT_MS:-1500}" \
-  bash -c 'cd apps/api && exec node --import tsx src/index.ts'
+  bash -c 'cd apps/api && exec node --enable-source-maps dist/src/index.mjs'
 
 for app in $BLACKBOX_APPS; do
   wait_http "$app" "$(app_url "$app")/api/auth/get-session"

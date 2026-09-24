@@ -1,29 +1,41 @@
-# Dependencies
-node_modules
+# Every pattern is anchored at the build context (repository root); `**/` makes
+# it apply in sub-directories too. Images install their own dependencies and
+# build their own output — nothing from the host checkout may leak in.
+
+# Dependencies (pnpm symlinks from the host would break inside the image)
+**/node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Production builds
-.next
-.nuxt
-.output
-dist
-build
-out
+# Build output
+**/.next
+**/.nuxt
+**/.output
+**/.turbo
+**/dist
+**/build
+**/out
 
-# Environment variables
-.env
-.env.*
-!.env.example
+# Secrets and local environment — never baked into an image
+**/.env
+**/.env.*
+!**/.env.example
+deploy/ecs/secrets/
+**/*.pem
+**/*.key
 
-# IDE
+# Local data
+data/
+**/*.sqlite
+**/*.sqlite-journal
+backups/
+
+# IDE / OS
 .vscode
 .idea
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
 
@@ -31,27 +43,31 @@ Thumbs.db
 .git
 .gitignore
 
-# Documentation
+# Documentation, inbox, tests (not needed by any image)
 README.md
-docs/
 *.md
-
-# Tests
+docs/
+inbox/
 test/
 tests/
+e2e/
 __tests__/
 coverage/
+test-results/
+playwright-report/
 
-# Logs
+# Apps no image builds
+apps/next-app/
+apps/tanstack-app/
+apps/docs-app/
+apps/nuxt-app/
+
+# Logs / runtime data
 logs
-*.log
-
-# Runtime data
+**/*.log
 pids
 *.pid
 *.seed
 *.pid.lock
-
-# Temporary folders
 tmp/
-temp/ 
+temp/

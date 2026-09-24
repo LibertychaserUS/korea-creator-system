@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "node --import tsx src/index.ts",
+    "build": "node scripts/build.mjs",
+    "start": "node --enable-source-maps dist/src/index.mjs",
+    "start:src": "node --import tsx src/index.ts",
     "test": "vitest run",
     "seed": "tsx src/seed-cli.ts",
     "db:seed": "tsx src/seed-cli.ts",
-    "migrate": "tsx src/migrate-cli.ts"
+    "migrate": "tsx src/migrate-cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",
@@ -23,6 +26,7 @@
   },
   "devDependencies": {
     "@types/pg": "8.15.4",
+    "esbuild": "0.27.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vitest": "3.0.9"

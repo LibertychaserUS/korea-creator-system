@@ -94,9 +94,10 @@ export default defineNuxtConfig({
     dev: process.env.NODE_ENV === 'development',
   },
 
+  // DATABASE_URL / BETTER_AUTH_SECRET stay out of runtimeConfig: anything read
+  // from process.env here is frozen into .output at build time, and
+  // @libs/database / @libs/auth read them from process.env at runtime anyway.
   runtimeConfig: {
-    databaseUrl: appConfig.database.url,
-    betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     // OAuth provider credentials (public redirect flow only; secrets stay server-side)
     wechatAppId: process.env.WECHAT_APP_ID || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
