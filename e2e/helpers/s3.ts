@@ -1,10 +1,10 @@
 import {
   CreateBucketCommand,
+  DeleteBucketPolicyCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
-  PutBucketPolicyCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 
@@ -74,34 +74,25 @@ export async function getObjectBytes(key: string): Promise<Uint8Array> {
   }
 }
 
+/** Creates the bucket if needed and keeps it private, as in production (no anonymous read). */
 export async function ensureBucket(): Promise<void> {
   const cfg = s3Config();
   const client = createS3Client();
   try {
     try {
       await client.send(new HeadBucketCommand({ Bucket: cfg.bucket }));
-      return;
     } catch {
       await client.send(new CreateBucketCommand({ Bucket: cfg.bucket }));
     }
-    const policy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Principal: '*',
-          Action: ['s3:GetObject'],
-          Resource: [`arn:aws:s3:::${cfg.bucket}/*`],
-        },
-      ],
-    });
-    await client.send(new PutBucketPolicyCommand({ Bucket: cfg.bucket, Policy: policy }));
+    // An older run may have left a public-read policy behind.
+    await client.send(new DeleteBucketPolicyCommand({ Bucket: cfg.bucket })).catch(() => {});
   } finally {
     client.destroy();
   }
 }
 
-export function publicObjectUrl(key: string): string {
+/** The object's direct bucket URL — must NOT be readable anonymously. */
+export function bucketObjectUrl(key: string): string {
   const cfg = s3Config();
   return `${cfg.endpoint.replace(/\/$/, '')}/${cfg.bucket}/${key.replace(/^\//, '')}`;
 }

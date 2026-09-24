@@ -118,26 +118,42 @@ describe('asset uploads', () => {
 
 describe('asset uploads with an S3-style store', () => {
   let ctx: TestCtx
-  const puts: string[] = []
+  let ops: string
+  const objects = new Map<string, Buffer>()
   const store: ObjectStore = {
     durable: true,
-    presign: async (key) => ({ url: `https://s3.example.test/bucket/${key}?sig=1`, key }),
-    put: async (key) => {
-      puts.push(key)
-      return { url: `https://s3.example.test/bucket/${key}`, key }
+    put: async (key, body) => {
+      objects.set(key, body)
     },
+    get: async (key) => objects.get(key) ?? null,
+    signedGetUrl: async (key, seconds) => `https://bucket.example.test/${key}?X-Amz-Expires=${seconds}`,
   }
 
   beforeAll(async () => {
     ctx = await createTestApp({ store })
+    ops = (await ctx.loginJson('ops@kcs.local')).token
   })
 
   afterAll(async () => {
+    delete process.env.S3_READ_MODE
     await ctx.close()
   })
 
-  it('keeps the bytes in S3 only, not also in Postgres', async () => {
-    const ops = (await ctx.loginJson('ops@kcs.local')).token
+  const presign = async (contentType = 'image/png') => {
+    const res = await ctx.app.request('/api/assets/presign', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ops}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ purpose: 'avatar', contentType }),
+    })
+    expect(res.status).toBe(200)
+    return res.json() as Promise<{ url: string; key: string; method: string; maxBytes: number; publicUrl: string }>
+  }
+  const put = (url: string, body: Buffer, type = 'image/png') => {
+    const { pathname, search } = new URL(url)
+    return ctx.app.request(`${pathname}${search}`, { method: 'PUT', headers: { 'content-type': type }, body: new Uint8Array(body) })
+  }
+
+  it('keeps the bytes in the bucket only, and serves them through the API (private bucket)', async () => {
     const res = await ctx.app.request('/api/assets', {
       method: 'POST',
       headers: { authorization: `Bearer ${ops}` },
@@ -145,9 +161,70 @@ describe('asset uploads with an S3-style store', () => {
     })
     expect(res.status).toBe(201)
     const { key, url } = await res.json()
-    expect(puts).toContain(key)
-    expect(url).toBe(`https://s3.example.test/bucket/${key}`)
+    expect(objects.get(key)?.equals(PNG)).toBe(true)
+    expect(url).toMatch(new RegExp(`/api/assets/raw/${key}$`))
     const { rows } = await ctx.db.query('SELECT bytes, size, content_type FROM assets WHERE key = $1', [key])
     expect(rows[0]).toEqual({ bytes: null, size: PNG.length, content_type: 'image/png' })
+    const raw = await ctx.app.request(`/api/assets/raw/${key}`)
+    expect(raw.status).toBe(200)
+    expect(raw.headers.get('content-type')).toBe('image/png')
+    expect(raw.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(Buffer.from(await raw.arrayBuffer()).equals(PNG)).toBe(true)
+  })
+
+  it('S3_READ_MODE=redirect answers with a short-lived signed bucket URL', async () => {
+    process.env.S3_READ_MODE = 'redirect'
+    try {
+      const { key } = await (await ctx.app.request('/api/assets', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ops}` },
+        body: form(PNG, 'image/png'),
+      })).json()
+      const raw = await ctx.app.request(`/api/assets/raw/${key}`)
+      expect(raw.status).toBe(302)
+      expect(raw.headers.get('location')).toBe(`https://bucket.example.test/${key}?X-Amz-Expires=300`)
+    } finally {
+      delete process.env.S3_READ_MODE
+    }
+  })
+
+  it('presign hands out the API upload URL, not a bucket URL, with the size cap', async () => {
+    const grant = await presign()
+    expect(grant.method).toBe('PUT')
+    expect(grant.maxBytes).toBe(IMAGE_MAX_BYTES)
+    expect(new URL(grant.url).pathname).toBe(`/api/assets/upload/${grant.key}`)
+    expect(grant.url).not.toContain('bucket.example.test')
+    const done = await put(grant.url, PNG)
+    expect(done.status).toBe(201)
+    expect((await done.json()).url).toBe(grant.publicUrl)
+    expect(objects.get(grant.key)?.equals(PNG)).toBe(true)
+    const raw = await ctx.app.request(`/api/assets/raw/${grant.key}`)
+    expect(Buffer.from(await raw.arrayBuffer()).equals(PNG)).toBe(true)
+  })
+
+  it('a presigned URL takes one upload, of its own type, within the size cap, and cannot be forged', async () => {
+    const grant = await presign()
+    const big = Buffer.concat([PNG, Buffer.alloc(IMAGE_MAX_BYTES)])
+    expect((await put(grant.url, big)).status).toBe(413)
+    expect((await put(grant.url, HTML)).status).toBe(415)
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0])
+    expect((await put(grant.url, jpeg, 'image/jpeg')).status).toBe(415)
+    expect(objects.has(grant.key)).toBe(false)
+
+    const other = await presign()
+    const token = new URL(other.url).searchParams.get('token')
+    const forged = await ctx.app.request(`/api/assets/upload/${grant.key}?token=${token}`, {
+      method: 'PUT', body: new Uint8Array(PNG),
+    })
+    expect(forged.status).toBe(403)
+    expect((await ctx.app.request(`/api/assets/upload/${grant.key}?token=x.y`, { method: 'PUT', body: new Uint8Array(PNG) })).status).toBe(403)
+
+    expect((await put(grant.url, PNG)).status).toBe(201)
+    expect((await put(grant.url, PNG)).status).toBe(409)
+  })
+
+  it('an unfinished presign reads back 404, not an empty image', async () => {
+    const grant = await presign()
+    expect((await ctx.app.request(`/api/assets/raw/${grant.key}`)).status).toBe(404)
   })
 })

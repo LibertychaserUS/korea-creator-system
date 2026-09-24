@@ -247,6 +247,8 @@ Spec: `docs/04_抓取流水线与队列.md`（§抽水 / §失败 / §搁置记�
 | object metadata via API | user brief GET metadata | `GET /api/assets/:key` |
 | selector cannot upload | PRD §4 | `POST /api/assets` → 403 |
 | returned URL fetchable over HTTP | not AWS SDK | `GET <url>` |
+| presigned PUT to the returned URL → 201, bytes read back from `publicUrl`, second PUT → 409 | 05 §上传限制 预签名 | `POST /api/assets/presign` `PUT /api/assets/upload/:key` `GET /api/assets/raw/*` |
+| presigned PUT over 5 MB → 413; forged token → 403 | 05 §上传限制 5 MB | `PUT /api/assets/upload/:key` |
 
 ## 8. i18n — `08-i18n.test.ts`
 

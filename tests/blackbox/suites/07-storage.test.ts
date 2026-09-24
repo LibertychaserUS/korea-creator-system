@@ -79,4 +79,39 @@ describe('S3 via HTTP API', () => {
     const buf = Buffer.from(await res.arrayBuffer())
     expect(buf.byteLength).toBeGreaterThan(0)
   })
+
+  it('presigned upload: PUT the bytes to the returned URL, then read them back from publicUrl', async () => {
+    const grant = await request('POST', PATHS.assetsPresign, {
+      token: ops.token,
+      body: { purpose: 'avatar', contentType: 'image/png' },
+    })
+    expect(grant.status).toBe(200)
+    expect(grant.json).toMatchObject({ method: 'PUT', maxBytes: 5 * 1024 * 1024 })
+    const put = await fetch(String(grant.json.url), {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png' },
+      body: new Uint8Array(PNG),
+    })
+    expect(put.status).toBe(201)
+    const raw = await fetch(String(grant.json.publicUrl), { redirect: 'follow' })
+    expect(raw.status).toBe(200)
+    expect(Buffer.from(await raw.arrayBuffer()).equals(PNG)).toBe(true)
+    const again = await fetch(String(grant.json.url), { method: 'PUT', body: new Uint8Array(PNG) })
+    expect(again.status).toBe(409)
+  })
+
+  it('presigned upload is capped at 5 MB and bound to its token', async () => {
+    const grant = await request('POST', PATHS.assetsPresign, {
+      token: ops.token,
+      body: { purpose: 'avatar', contentType: 'image/png' },
+    })
+    const big = await fetch(String(grant.json.url), {
+      method: 'PUT',
+      body: new Uint8Array(Buffer.concat([PNG, Buffer.alloc(5 * 1024 * 1024)])),
+    })
+    expect(big.status).toBe(413)
+    const target = new URL(String(grant.json.url))
+    target.searchParams.set('token', 'forged.token')
+    expect((await fetch(target, { method: 'PUT', body: new Uint8Array(PNG) })).status).toBe(403)
+  })
 })

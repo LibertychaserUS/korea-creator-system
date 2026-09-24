@@ -1,0 +1,72 @@
+# Local rehearsal of the production stack — never used on the ECS.
+#   docker compose -f compose.prod.yml -f compose.local.yml --env-file .env.local up -d
+# Adds MinIO as the OSS stand-in (private bucket, same S3 API) and points the
+# API and the backup job at it. Everything else is compose.prod.yml unchanged;
+# .env.local sets CADDY_EXTRA_GLOBAL=local_certs, HTTP_PORT / HTTPS_PORT and
+# PUBLIC_PORT_SUFFIX so the placeholder hosts resolve via /etc/hosts.
+
+x-local-s3: &local-s3
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: us-east-1
+  S3_BUCKET: ${S3_BUCKET:-kcs-assets}
+  S3_ACCESS_KEY: ${LOCAL_MINIO_USER:-kcs-local}
+  S3_SECRET_KEY: ${LOCAL_MINIO_PASSWORD:?LOCAL_MINIO_PASSWORD is required}
+  S3_FORCE_PATH_STYLE: "true"
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${LOCAL_MINIO_USER:-kcs-local}
+      MINIO_ROOT_PASSWORD: ${LOCAL_MINIO_PASSWORD:?LOCAL_MINIO_PASSWORD is required}
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [backend]
+
+  # Private buckets: assets, and backups (a separate bucket, as recommended for OSS).
+  minio-init:
+    image: quay.io/minio/minio:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_USER: ${LOCAL_MINIO_USER:-kcs-local}
+      MC_PASSWORD: ${LOCAL_MINIO_PASSWORD:?LOCAL_MINIO_PASSWORD is required}
+      ASSETS: ${S3_BUCKET:-kcs-assets}
+      BACKUPS: ${BACKUP_S3_BUCKET:-kcs-backups}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        mc alias set local http://minio:9000 "$$MC_USER" "$$MC_PASSWORD" &&
+        mc mb -p "local/$$ASSETS" "local/$$BACKUPS" &&
+        mc anonymous set none "local/$$ASSETS" &&
+        mc anonymous set none "local/$$BACKUPS"
+    restart: "no"
+    networks: [backend]
+
+  api:
+    environment:
+      <<: *local-s3
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  backup:
+    environment:
+      BACKUP_S3_ENDPOINT: http://minio:9000
+      BACKUP_S3_REGION: us-east-1
+      BACKUP_S3_ACCESS_KEY: ${LOCAL_MINIO_USER:-kcs-local}
+      BACKUP_S3_SECRET_KEY: ${LOCAL_MINIO_PASSWORD:?LOCAL_MINIO_PASSWORD is required}
+      BACKUP_S3_FORCE_PATH_STYLE: "true"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+volumes:
+  minio:

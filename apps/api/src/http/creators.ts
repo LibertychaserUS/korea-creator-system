@@ -20,9 +20,12 @@ export function hasCollabSql() {
   return `(SELECT count(*) FROM collaborations col WHERE col.creator_id = c.id)`
 }
 
+export function apiPublicBase() {
+  return (process.env.API_PUBLIC_URL || 'http://localhost:7100').replace(/\/$/, '')
+}
+
 export function assetPublicUrl(key: string) {
-  const base = (process.env.API_PUBLIC_URL || 'http://localhost:7100').replace(/\/$/, '')
-  return `${base}/api/assets/raw/${key}`
+  return `${apiPublicBase()}/api/assets/raw/${key}`
 }
 
 export function mutexCoop(categories: unknown): boolean {

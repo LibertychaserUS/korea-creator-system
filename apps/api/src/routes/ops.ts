@@ -19,6 +19,7 @@ import {
   validationError,
 } from '../http/body'
 import {
+  apiPublicBase,
   assetPublicUrl,
   attachCreatorMeta,
   camelJobs,
@@ -37,13 +38,19 @@ import { categoryView, overviewJobView, reviewView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import {
   IMAGE_MAX_BYTES,
+  UPLOAD_URL_TTL_SECONDS,
   WORKBOOK_MAX_BYTES,
   imageExtension,
   isImageType,
   safeImageHeaders,
+  signUploadToken,
   sniffImage,
   uploadLimit,
+  verifyUploadToken,
 } from '../http/uploads'
+
+/** S3_READ_MODE=redirect: 302 to a signed bucket URL instead of streaming through the API. */
+const READ_REDIRECT_SECONDS = 300
 
 const STAGE_SQL = `(CASE WHEN c.status = 'released' THEN 'released'
   WHEN c.metrics_locked_at IS NOT NULL THEN 'withdrawn' ELSE 'review' END)`
@@ -461,8 +468,11 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     return validationError(context, 'file_required', [{ path: 'file', message: 'an .xlsx workbook is required' }])
   })
 
+  // Not a bucket URL: the bucket is private and a raw S3 presigned PUT cannot cap
+  // the size. The URL is the API's own upload endpoint, signed for this key and
+  // image type, valid UPLOAD_URL_TTL_SECONDS, one upload, IMAGE_MAX_BYTES at most.
   app.post('/api/assets/presign', async (context) => {
-    const { denied } = await helpers.requireAuth(context, 'ops.write')
+    const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
     const { data: body, invalid } = await readJson(context, presignBody)
     if (invalid) return invalid
@@ -470,14 +480,47 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (!isImageType(contentType)) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
     const purpose = body.purpose === 'attachment' ? 'attachments' : 'avatars'
     const key = `${purpose}/${randomUUID()}.${imageExtension(contentType)}`
-    const signed = await env.store.presign(key, contentType)
+    const exp = Math.floor(env.now().getTime() / 1000) + UPLOAD_URL_TTL_SECONDS
     const publicUrl = assetPublicUrl(key)
     await env.db.query(
-      `INSERT INTO assets (key, url, content_type, size) VALUES ($1,$2,$3,0)
-       ON CONFLICT (key) DO UPDATE SET url = EXCLUDED.url`,
-      [key, publicUrl, contentType],
+      `INSERT INTO assets (key, url, content_type, size, uploaded_by) VALUES ($1,$2,$3,0,$4)
+       ON CONFLICT (key) DO NOTHING`,
+      [key, publicUrl, contentType, user!.id],
     )
-    return context.json({ url: signed.url || publicUrl, key })
+    const token = signUploadToken({ key, type: contentType, exp })
+    return context.json({
+      url: `${apiPublicBase()}/api/assets/upload/${key}?token=${token}`,
+      key,
+      method: 'PUT',
+      headers: { 'content-type': contentType },
+      maxBytes: IMAGE_MAX_BYTES,
+      expiresAt: new Date(exp * 1000).toISOString(),
+      publicUrl,
+    })
+  })
+
+  // The signed token is the credential (like an S3 presigned URL), so no session.
+  app.put('/api/assets/upload/:key{.+}', uploadLimit(IMAGE_MAX_BYTES, 0), async (context) => {
+    const key = decodeURIComponent(context.req.param('key'))
+    const grant = verifyUploadToken(context.req.query('token') || '', key, env.now().getTime())
+    if (!grant) return jsonError(context, 403, 'AUTH-DENIED', 'upload_url_invalid')
+    const bytes = Buffer.from(await context.req.arrayBuffer())
+    if (!bytes.length) return jsonError(context, 400, 'VALIDATION', 'file_required')
+    if (bytes.length > IMAGE_MAX_BYTES) return jsonError(context, 413, 'UPLOAD-TOO-LARGE', 'file_too_large')
+    if (sniffImage(bytes) !== grant.type) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
+    const claimed = await env.db.query(
+      `UPDATE assets SET size = $2, content_type = $3 WHERE key = $1 AND size = 0 AND bytes IS NULL RETURNING url`,
+      [key, bytes.length, grant.type],
+    )
+    if (!claimed.rowCount) return jsonError(context, 409, 'CONFLICT', 'upload_url_used')
+    try {
+      await env.store.put(key, bytes, grant.type)
+      if (!env.store.durable) await env.db.query('UPDATE assets SET bytes = $2 WHERE key = $1', [key, bytes])
+    } catch (error) {
+      await env.db.query('UPDATE assets SET size = 0 WHERE key = $1', [key])
+      throw error
+    }
+    return context.json({ url: String(claimed.rows[0].url), key }, 201)
   })
 
   // Anonymous on purpose (<img src> cannot send a Bearer), so it must never hand
@@ -490,8 +533,19 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     } catch {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
-    const { rows } = await env.db.query('SELECT bytes FROM assets WHERE key = $1', [key])
-    const bytes: Buffer | null = rows[0]?.bytes ?? null
+    const { rows } = await env.db.query('SELECT bytes, size FROM assets WHERE key = $1', [key])
+    if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    let bytes: Buffer | null = rows[0].bytes ?? null
+    if (!bytes && env.store.durable && Number(rows[0].size) > 0) {
+      if (process.env.S3_READ_MODE === 'redirect' && env.store.signedGetUrl) {
+        const location = await env.store.signedGetUrl(key, READ_REDIRECT_SECONDS)
+        return new Response(null, {
+          status: 302,
+          headers: { location, 'cache-control': `private, max-age=${READ_REDIRECT_SECONDS - 60}` },
+        })
+      }
+      bytes = await env.store.get(key)
+    }
     const type = bytes ? sniffImage(bytes) : null
     if (!bytes || !type) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     return new Response(new Uint8Array(bytes), { headers: safeImageHeaders(type, bytes.length) })
@@ -510,8 +564,8 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (!type || !declaredOk) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
     const purpose = String(body?.purpose || 'avatar') === 'attachment' ? 'attachments' : 'avatars'
     const key = `${purpose}/${randomUUID()}.${imageExtension(type)}`
-    const stored = await env.store.put(key, bytes, type)
-    const publicUrl = stored.url || assetPublicUrl(key)
+    await env.store.put(key, bytes, type)
+    const publicUrl = assetPublicUrl(key)
     await env.db.query(
       `INSERT INTO assets (key, url, content_type, size, bytes, uploaded_by)
        VALUES ($1,$2,$3,$4,$5,$6)

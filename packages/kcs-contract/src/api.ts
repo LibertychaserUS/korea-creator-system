@@ -111,7 +111,15 @@ export const API = {
   ingestMissingDecision: { method: 'POST', path: '/api/ingest/data-status/:creatorId/missing', perm: 'ingest.write' },
   ingestTrends: { method: 'GET', path: '/api/ingest/trends/:creatorId', perm: 'ingest.read' },
   ingestNameSearch: { method: 'GET', path: '/api/ingest/name-search', perm: 'ingest.read' },
+  /**
+   * `{ url, method: 'PUT', headers, maxBytes, expiresAt, key, publicUrl }` — `url` is
+   * `assetPut` signed for one image of that type (≤ 5 MB, 15 min), not a bucket URL.
+   */
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
+  /** Raw body upload; the `token` query from `presign` is the credential. */
+  assetPut: { method: 'PUT', path: '/api/assets/upload/:key', auth: false },
+  /** Anonymous image read-back (the bucket itself is private). */
+  assetRaw: { method: 'GET', path: '/api/assets/raw/:key', auth: false },
   /** multipart `file` (image, ≤ 5 MB). */
   assetUpload: { method: 'POST', path: '/api/assets', perm: 'ops.write' },
   assetList: { method: 'GET', path: '/api/assets', perm: 'ops.read' },

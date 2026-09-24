@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { ObjectStore } from './store'
 
@@ -15,22 +15,13 @@ export function createS3Store(env: {
     region: env.region,
     forcePathStyle: env.forcePathStyle ?? true,
     credentials: { accessKeyId: env.accessKey, secretAccessKey: env.secretKey },
+    // SDK ≥ 3.729 adds CRC32 checksums to every request by default; Aliyun OSS's
+    // S3 endpoint rejects the trailer, so only send them where S3 demands one.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   })
-  const publicBase = `${env.endpoint.replace(/\/$/, '')}/${env.bucket}`
   return {
     durable: true,
-    async presign(key, contentType) {
-      const url = await getSignedUrl(
-        client,
-        new PutObjectCommand({
-          Bucket: env.bucket,
-          Key: key,
-          ContentType: contentType,
-        }),
-        { expiresIn: 900 },
-      )
-      return { url, key }
-    },
     async put(key, body, contentType) {
       await client.send(
         new PutObjectCommand({
@@ -38,9 +29,31 @@ export function createS3Store(env: {
           Key: key,
           Body: body,
           ContentType: contentType,
+          CacheControl: 'private, max-age=31536000, immutable',
         }),
       )
-      return { url: `${publicBase}/${key}`, key }
+    },
+    async get(key) {
+      try {
+        const res = await client.send(new GetObjectCommand({ Bucket: env.bucket, Key: key }))
+        const bytes = await res.Body?.transformToByteArray()
+        return bytes ? Buffer.from(bytes) : null
+      } catch (error) {
+        const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
+        if (error instanceof NoSuchKey || status === 404) return null
+        throw error
+      }
+    },
+    async signedGetUrl(key, expiresInSeconds) {
+      return getSignedUrl(
+        client,
+        new GetObjectCommand({
+          Bucket: env.bucket,
+          Key: key,
+          ResponseContentDisposition: 'inline',
+        }),
+        { expiresIn: expiresInSeconds },
+      )
     },
   }
 }
