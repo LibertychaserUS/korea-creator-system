@@ -649,7 +649,9 @@ export const ko: Locale = {
     },
     creators: {
       trend: "추이",
-      trendLead: "수집마다 데이터 기록 1건을 남기며, 변화는 첫 기록과 최근 기록의 상대 차이입니다.",
+      trendLead: "하루에 데이터 기록 1건을 남깁니다(같은 날 여러 번 수집하면 마지막 기록). 소스마다 선을 따로 그리고, 변화는 같은 소스 안에서만 비교합니다.",
+      trendHints: "살펴볼 점",
+      trendHintsNote: "이 안내는 참고용이며 정렬에는 영향을 주지 않습니다.",
       snapshots: "기록 {n}건 모두 보기",
       noHistory: "아직 데이터 기록이 없습니다. 수집을 실행하면 여기에 추이가 표시됩니다.",
       sources: "데이터 소스",

@@ -37,6 +37,7 @@ import type { Db, Queryable } from '../db'
 import { asPublished, attachCreatorMeta, parseMetrics, publicPoolRow } from './creators'
 import { metricColumn, rankColumn, ranksFor } from './published'
 import { bytesToHex, CursorError, decodeCursor, encodeCursor, fingerprint, hexToFloat } from './cursor'
+import { nameMatchSql } from '../ingest/name-search'
 
 const SNAPSHOT_KEYS = Object.keys(emptyMetrics())
 
@@ -81,6 +82,18 @@ class Params {
     this.values.push(value)
     return `$${this.values.length}`
   }
+}
+
+/**
+ * A pool search filters rather than ranks, so it asks for more of the query's
+ * pieces than the ops name search: a typo or another spelling still matches,
+ * a shared common word (「博主」) alone does not.
+ */
+export const POOL_NAME_MIN_SCORE = 0.8
+
+/** Fuzzy nickname match (中韩昵称, 초성, romanisation) against the creator row behind a pool row. */
+function nameMatches(placeholder: string): string {
+  return `EXISTS (SELECT 1 FROM creators nc WHERE nc.id = p.creator_id AND ${nameMatchSql('nc', placeholder, POOL_NAME_MIN_SCORE).where})`
 }
 
 function list(raw: string | undefined): string[] {
@@ -355,10 +368,11 @@ export async function poolPage(
     }
   }
   if (query.q) {
-    where.push(`strpos(lower(concat_ws(' ', p.display_name, p.creator_key,
+    const text = params.add(query.q)
+    where.push(`(strpos(lower(concat_ws(' ', p.display_name, p.creator_key,
       NULLIF(array_to_string(p.regions, ' '), ''), NULLIF(array_to_string(p.verticals, ' '), ''),
       NULLIF(array_to_string(p.collab_brands, ' '), '')
-    )), lower(${params.add(query.q)})) > 0`)
+    )), lower(${text})) > 0 OR ${nameMatches(text)})`)
   }
   for (const key of METRIC_KEYS) {
     for (const [suffix, op] of [['Min', '>='], ['Max', '<=']] as const) {
@@ -435,8 +449,10 @@ export async function savedQueryPage(
   if (spec.hasCollaborated != null) where.push(spec.hasCollaborated ? 'p.collab_count > 0' : 'p.collab_count = 0')
   if (spec.collabCountMin != null) where.push(`p.collab_count >= ${params.add(spec.collabCountMin)}::int`)
   if (spec.collabCountMax != null) where.push(`p.collab_count <= ${params.add(spec.collabCountMax)}::int`)
-  const searchSql = (text: string) =>
-    `strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${params.add(text)})) > 0`
+  const searchSql = (text: string) => {
+    const value = params.add(text)
+    return `(strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${value})) > 0 OR ${nameMatches(value)})`
+  }
   if (spec.search?.trim()) where.push(searchSql(spec.search.trim()))
   const search = (query.q ?? '').trim()
   if (search) where.push(searchSql(search))

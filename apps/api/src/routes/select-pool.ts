@@ -5,6 +5,7 @@ import {
   creatorHistory,
   loadCreator,
   publicPoolRow,
+  inSelectPool,
 } from '../http/creators'
 import { poolPage, withPercentiles } from '../http/pool'
 import { recordEvents } from '../http/events'
@@ -12,6 +13,7 @@ import { readReferenceLines } from '../http/published'
 import { readJson, shortlistBody, validationError } from '../http/body'
 import { CursorError } from '../http/cursor'
 import { jsonError } from '../http/responses'
+import { creatorTrends } from '../ingest/trends'
 import { logEvent } from '../log'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -31,7 +33,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     const { user, denied } = await helpers.requireAuth(context, 'select.read')
     if (denied) return denied
     const item = await loadCreator(env.db, context.req.param('id'), false)
-    if (!item || item.status !== 'released' || item.categories.includes('blacklist')) {
+    if (!item || !inSelectPool(item)) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
     const published = asPublished(item)
@@ -91,10 +93,20 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     if (denied) return denied
     const creatorId = context.req.param('id')
     const creator = await loadCreator(env.db, creatorId, false)
-    if (!creator || creator.status !== 'released' || creator.categories.includes('blacklist')) {
+    if (!creator || !inSelectPool(creator)) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
     return context.json({ snapshots: await creatorHistory(env.db, creatorId, context.req.query()) })
+  })
+
+  /** 按来源分线的走势与人话提示；只给池子里看得到的博主。 */
+  app.get('/api/select/creators/:id/trends', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'select.read')
+    if (denied) return denied
+    const creatorId = context.req.param('id')
+    const creator = await loadCreator(env.db, creatorId, false)
+    if (!creator || !inSelectPool(creator)) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json(await creatorTrends(env, creatorId, context.req.query()))
   })
 
   app.get('/api/select/shortlist', async (context) => {
@@ -147,7 +159,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     const { data: body, invalid } = await readJson(context, shortlistBody)
     if (invalid) return invalid
     const creator = await loadCreator(env.db, body.creatorId, false)
-    if (!creator || creator.status !== 'released' || creator.categories.includes('blacklist')) {
+    if (!creator || !inSelectPool(creator)) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
     await env.db.query(

@@ -84,7 +84,7 @@
             :testid="TESTID.metricCompare"
           />
 
-          <!-- 趋势：每次抓取一条记录 -->
+          <!-- 趋势：每天一条记录，按来源分线 -->
           <Card class="gap-0 border-border/60 py-0 shadow-xs" :data-testid="TESTID.creatorTrend">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-3">
               <div>
@@ -108,9 +108,12 @@
             <div v-if="loadingHistory" class="grid gap-4 px-5 py-4 sm:grid-cols-2">
               <Skeleton v-for="i in 4" :key="i" class="h-10 rounded-md" />
             </div>
-            <div v-else-if="snapshots.length" class="grid gap-4 px-5 py-4 sm:grid-cols-2">
-              <MetricTrend v-for="key in trendKeys" :key="key" :metric-key="key" :snapshots="snapshots" />
-            </div>
+            <template v-else-if="series.length">
+              <div class="grid gap-4 px-5 py-4 sm:grid-cols-2">
+                <MetricTrend v-for="key in trendKeys" :key="key" :metric-key="key" :series="series" />
+              </div>
+              <TrendHints :hints="hints" />
+            </template>
             <p v-else class="px-5 py-4 text-sm text-muted-foreground">{{ t('kcs.creators.noHistory') }}</p>
           </Card>
         </div>
@@ -281,7 +284,7 @@ import {
   tierOf,
   type CreatorMetrics,
   type CreatorStage,
-  type MetricSnapshot,
+  type CreatorTrends,
   type NumericMetricKey,
 } from '@kcs/contract'
 
@@ -305,7 +308,9 @@ const creator = ref<any>(null)
 const loading = ref(true)
 const categories = ref<CategoryView[]>([])
 const trendKeys: NumericMetricKey[] = ['followers', 'readMedian', 'engagementRate', 'cpe']
-const snapshots = ref<MetricSnapshot[]>([])
+const trends = ref<CreatorTrends | null>(null)
+const series = computed(() => trends.value?.series ?? [])
+const hints = computed(() => trends.value?.hints ?? [])
 const loadingHistory = ref(true)
 const historyWindow = ref<30 | 90>(30)
 const pending = ref<Action | null>(null)
@@ -371,10 +376,9 @@ async function load() {
 async function loadHistory() {
   loadingHistory.value = true
   try {
-    const res = await request<{ snapshots: MetricSnapshot[] }>(apiPath(API.opsCreatorHistory, { id: String(route.params.id) }, { window: historyWindow.value, limit: 60 }))
-    snapshots.value = res.snapshots ?? []
+    trends.value = await request<CreatorTrends>(apiPath(API.opsCreatorTrends, { id: String(route.params.id) }, { window: historyWindow.value, limit: 60 }))
   } catch {
-    snapshots.value = []
+    trends.value = null
   } finally {
     loadingHistory.value = false
   }

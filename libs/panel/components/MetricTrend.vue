@@ -27,16 +27,16 @@
 </template>
 
 <script setup lang="ts">
-import { metricField, type MetricSnapshot, type NumericMetricKey } from '@kcs/contract'
+import { metricField, type NumericMetricKey, type TrendSeries } from '@kcs/contract'
 
 /**
- * 一个指标在历史快照上的走势：每个来源一条线（不同来源口径不同，不能连成一条），
+ * 一个指标在历史快照上的走势：每个来源一条线（接口按来源分好，口径不同不能连成一条），
  * 同一纵轴、按抓取时间排开；最新值取最近一次抓到的来源，涨跌只在同一来源内算。
- * 快照按 fetchedAt 升序传入；空值跳过。
+ * 空值跳过。
  */
 const props = defineProps<{
   metricKey: NumericMetricKey
-  snapshots: MetricSnapshot[]
+  series: TrendSeries[]
 }>()
 
 const { t, locale } = useI18n()
@@ -51,19 +51,21 @@ const COLORS = [
 
 type Point = { at: number; value: number }
 
-const bySource = computed(() => {
-  const groups = new Map<string, Point[]>()
-  for (const s of props.snapshots) {
-    const value = s.metrics[props.metricKey]
-    const at = Date.parse(s.fetchedAt)
-    if (typeof value !== 'number' || !Number.isFinite(value) || Number.isNaN(at)) continue
-    const list = groups.get(s.source) ?? []
-    list.push({ at, value })
-    groups.set(s.source, list)
-  }
-  for (const list of groups.values()) list.sort((a, b) => a.at - b.at)
-  return [...groups.entries()]
-})
+const bySource = computed(() =>
+  props.series
+    .map((line) => {
+      const points: Point[] = []
+      for (const s of line.snapshots) {
+        const value = s.metrics[props.metricKey]
+        const at = Date.parse(s.fetchedAt)
+        if (typeof value !== 'number' || !Number.isFinite(value) || Number.isNaN(at)) continue
+        points.push({ at, value })
+      }
+      points.sort((a, b) => a.at - b.at)
+      return [line.source, points] as [string, Point[]]
+    })
+    .filter(([, points]) => points.length > 0),
+)
 
 function change(points: Point[]): number | null {
   if (points.length < 2) return null

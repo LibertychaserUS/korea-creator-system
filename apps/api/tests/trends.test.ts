@@ -171,6 +171,25 @@ describe('trends against the database', () => {
     expect(hint.params.factor).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('the ops and select detail pages read the same series; select only for creators in the pool', async () => {
+    const xhs = `${RUN}_detail`
+    await write('pugongying', `${RUN}-d`, { fans: 50_000, xhs }, day(2))
+    await write('pugongying', `${RUN}-d`, { fans: 51_000, xhs }, day(3))
+    const creatorId = (await ctx.db.query('SELECT id FROM creators WHERE xhs_id = $1', [xhs])).rows[0].id
+    const ingest = (await get(`/api/ingest/trends/${creatorId}`)).json
+    expect((await get(`/api/ops/creators/${creatorId}/trends`)).json).toEqual(ingest)
+
+    const selector = { authorization: 'Bearer test:selector@kcs.local' }
+    expect((await get(`/api/select/creators/${creatorId}/trends`, selector)).status).toBe(404)
+    await ctx.db.query("UPDATE creators SET regions = ARRAY['kr'] WHERE id = $1", [creatorId])
+    expect((await ctx.app.request(`/api/ops/creators/${creatorId}/publish`, { method: 'POST', headers: auth })).status).toBe(200)
+    const selected = await get(`/api/select/creators/${creatorId}/trends`, selector)
+    expect(selected.status).toBe(200)
+    expect(selected.json.series[0].snapshots.map((snapshot: { metrics: { followers: number } }) => snapshot.metrics.followers))
+      .toEqual([50_000, 51_000])
+    expect((await get(`/api/ops/creators/${creatorId}/trends`, selector)).status).toBe(403)
+  })
+
   it('404 for nobody, ingest rights only', async () => {
     expect((await get('/api/ingest/trends/nobody')).status).toBe(404)
     expect((await get('/api/ingest/trends/nobody', { authorization: 'Bearer test:selector@kcs.local' })).status).toBe(403)

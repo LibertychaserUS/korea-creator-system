@@ -82,9 +82,12 @@ async function lockGroups(q: Queryable, keys: Iterable<string>) {
 
 type Built = { groupKey: string; record: Record<string, unknown> }
 
-/** A published row from a `creators` row (+ its meta), or null when it is not in the pool. */
+/**
+ * A published row from a `creators` row (+ its meta), or null when it is not in
+ * the pool: not released, or flagged 「平台上已找不到」 and waiting for ops.
+ */
 function buildRecord(row: Record<string, any>, item: Record<string, any>): Built | null {
-  if (row.status !== 'released') return null
+  if (row.status !== 'released' || row.platform_missing_at != null) return null
   const published = asPublished(item)
   const metrics = published.metrics as CreatorMetrics
   const group = { source: item.source ?? null, window: metrics.window, contentForm: metrics.contentForm ?? null }
@@ -374,12 +377,14 @@ export async function refreshPublished(
   const now = options.now ?? new Date()
   const removed = await db.query(
     `DELETE FROM creator_published p
-      WHERE NOT EXISTS (SELECT 1 FROM creators c WHERE c.id = p.creator_id AND c.status = 'released')`,
+      WHERE NOT EXISTS (SELECT 1 FROM creators c
+                         WHERE c.id = p.creator_id AND c.status = 'released' AND c.platform_missing_at IS NULL)
+      RETURNING group_key`,
   )
-  const touched = new Set<string>()
+  const touched = new Set<string>(removed.rows.map((row) => String(row.group_key)))
   const { rows: todo } = await db.query(
     `SELECT c.id FROM creators c LEFT JOIN creator_published p ON p.creator_id = c.id
-      WHERE c.status = 'released'
+      WHERE c.status = 'released' AND c.platform_missing_at IS NULL
         AND ($1 OR p.creator_id IS NULL
           -- published_at went through a JS Date (milliseconds).
           OR p.published_at IS DISTINCT FROM date_trunc('milliseconds', COALESCE(c.metrics_locked_at, c.updated_at)))

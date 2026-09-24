@@ -111,6 +111,20 @@ describe('fuzzy nickname search', () => {
     await ctx.db.query('UPDATE creators SET display_name = $2 WHERE id = $1', [ids.jeongsuk, NAMES.jeongsuk])
   })
 
+  it('the select pool and saved queries search nicknames the same fuzzy way', async () => {
+    const selector = { authorization: 'Bearer test:selector@kcs.local', 'content-type': 'application/json' }
+    const ops = { authorization: 'Bearer test:ops@kcs.local' }
+    for (const key of ['jisoo', 'jeongsuk'] as const) {
+      await ctx.db.query("UPDATE creators SET regions = ARRAY['kr'] WHERE id = $1", [ids[key]])
+      expect((await ctx.app.request(`/api/ops/creators/${ids[key]}/publish`, { method: 'POST', headers: ops })).status).toBe(200)
+    }
+    const pool = async (q: string) => (await (await ctx.app.request(`/api/select/pool?q=${encodeURIComponent(q)}`, { headers: selector })).json())
+      .items.map((row: { id: string }) => row.id).filter((id: string) => Object.values(ids).includes(id))
+    expect(await pool('Jisu')).toEqual([ids.jisoo])
+    expect(await pool('ㅈㅅ')).toEqual(expect.arrayContaining([ids.jisoo, ids.jeongsuk]))
+    expect(await pool('지수')).toEqual([ids.jisoo])
+  })
+
   it('the SQL pieces drop into another query', async () => {
     const match = nameMatchSql('x', '$1')
     const { rows } = await ctx.db.query(

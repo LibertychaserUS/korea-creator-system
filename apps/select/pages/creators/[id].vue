@@ -75,7 +75,7 @@
         :testid="TESTID.metricCompare"
       />
 
-      <!-- 趋势：每次抓取一条快照 -->
+      <!-- 趋势：每天一条记录，按来源分线 -->
       <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="creator-trend">
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-3">
           <div>
@@ -101,8 +101,9 @@
         </div>
         <template v-else-if="snapshots.length">
           <div class="grid gap-4 px-5 py-4 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricTrend v-for="key in trendKeys" :key="key" :metric-key="key" :snapshots="snapshots" />
+            <MetricTrend v-for="key in trendKeys" :key="key" :metric-key="key" :series="series" />
           </div>
+          <TrendHints :hints="hints" />
           <details class="border-t border-border/60">
             <summary class="cursor-pointer select-none px-5 py-2.5 text-xs text-muted-foreground hover:text-foreground">
               {{ t('kcs.creators.snapshots', { n: snapshots.length }) }}
@@ -239,6 +240,7 @@ import {
   type CreatorMetrics,
   type CreatorSourceLink,
   type MetricPercentiles,
+  type CreatorTrends,
   type MetricSnapshot,
   type NumericMetricKey,
 } from '@kcs/contract'
@@ -254,7 +256,12 @@ const loading = ref(true)
 const headline: NumericMetricKey[] = ['cpe', 'engagementRate', 'readToFollowerRatio']
 const trendKeys: NumericMetricKey[] = ['followers', 'readMedian', 'engagementRate', 'cpe']
 
-const snapshots = ref<MetricSnapshot[]>([])
+const trends = ref<CreatorTrends | null>(null)
+const series = computed(() => trends.value?.series ?? [])
+const hints = computed(() => trends.value?.hints ?? [])
+const snapshots = computed<MetricSnapshot[]>(() =>
+  series.value.flatMap((line) => line.snapshots).sort((a, b) => a.fetchedAt.localeCompare(b.fetchedAt)),
+)
 const loadingHistory = ref(true)
 const historyWindow = ref<30 | 90>(30)
 
@@ -282,10 +289,9 @@ const sourceLinks = computed<CreatorSourceLink[]>(() => {
 async function loadHistory() {
   loadingHistory.value = true
   try {
-    const res = await request<{ snapshots: MetricSnapshot[] }>(apiPath(API.poolCreatorHistory, { id: String(route.params.id) }, { window: historyWindow.value, limit: 60 }))
-    snapshots.value = res.snapshots ?? []
+    trends.value = await request<CreatorTrends>(apiPath(API.poolCreatorTrends, { id: String(route.params.id) }, { window: historyWindow.value, limit: 60 }))
   } catch {
-    snapshots.value = []
+    trends.value = null
   } finally {
     loadingHistory.value = false
   }

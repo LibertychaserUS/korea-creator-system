@@ -8,6 +8,7 @@ import {
 } from '@kcs/contract'
 import type { Context, MiddlewareHandler } from 'hono'
 import { runWorkbookIngest } from '../ingest/workbook'
+import { creatorTrends } from '../ingest/trends'
 import { audit } from '../http/audit'
 import {
   categoryPatchBody,
@@ -206,6 +207,15 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const exists = await env.db.query('SELECT 1 FROM creators WHERE id = $1', [creatorId])
     if (!exists.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     return context.json({ snapshots: await creatorHistory(env.db, creatorId, context.req.query()) })
+  })
+
+  /** 按来源分线的走势与人话提示（与 `/api/ingest/trends/:creatorId` 同一份数据）。 */
+  app.get('/api/ops/creators/:id/trends', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ops.read')
+    if (denied) return denied
+    const trends = await creatorTrends(env, context.req.param('id'), context.req.query())
+    if (!trends) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json(trends)
   })
 
   app.patch('/api/ops/creators/:id', async (context) => {

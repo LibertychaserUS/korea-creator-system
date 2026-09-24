@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg'
 import type { Paging } from '@kcs/contract'
 import { audit } from '../http/audit'
 import { pageRows } from '../http/lists'
+import { recomputeGroups, republish, syncPublished } from '../http/published'
 import type { AppEnv } from '../http/types'
 import { logEvent } from '../log'
 import { materialChanges } from './tiering'
@@ -50,12 +51,16 @@ export async function markSeen(client: PoolClient, creatorId: string, source: st
     [source, externalId],
   )
   if (!cleared.rowCount) return
-  await client.query(
+  const back = await client.query(
     `UPDATE creators SET platform_missing_at = NULL, platform_missing_confirmed_at = NULL
       WHERE id = $1 AND platform_missing_at IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM creator_sources WHERE creator_id = $1 AND missing_at IS NOT NULL)`,
     [creatorId],
   )
+  if (back.rowCount) {
+    const moved = await syncPublished(client, [creatorId])
+    if (moved.size) await recomputeGroups(client, moved)
+  }
 }
 
 /**
@@ -101,6 +106,7 @@ export async function recordRefreshMisses(
       `${source}:${row.external_id} 连续 ${row.miss_count} 次刷新取不到（任务 ${jobId}）`,
     )
   }
+  if (flagged.length) await republish(env.db, flagged)
   if (rows.length) logEvent('info', 'ingest.refresh_misses', { jobId, source, missed: rows.length, flagged: flagged.length })
   return { missed: rows.length, flagged }
 }
@@ -122,6 +128,7 @@ export async function decideMissing(env: AppEnv, creatorId: string, decision: 'k
       'UPDATE creators SET platform_missing_at = NULL, platform_missing_confirmed_at = NULL WHERE id = $1',
       [creatorId],
     )
+    await republish(env.db, [creatorId])
   } else {
     await env.db.query(
       'UPDATE creators SET platform_missing_confirmed_at = COALESCE(platform_missing_confirmed_at, $2) WHERE id = $1',

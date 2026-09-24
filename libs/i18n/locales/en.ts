@@ -2516,7 +2516,9 @@ export const en: Locale = {
     },
     creators: {
       trend: "Trend",
-      trendLead: "Every collection writes one data record; change reflects the first and latest records.",
+      trendLead: "One data record per day (the last collection that day); each source gets its own line, and change is compared only within a source.",
+      trendHints: "Worth a look",
+      trendHintsNote: "These notes are for reference only and do not affect ranking.",
       snapshots: "Show all {n} records",
       noHistory: "No records yet. Run collection once to view trends here.",
       sources: "Data sources",

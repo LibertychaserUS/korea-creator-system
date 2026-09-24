@@ -31,6 +31,11 @@ export function mutexCoop(categories: unknown): boolean {
     && categories.includes('never_collaborated')
 }
 
+/** What a selector may see: released, not blacklisted, not flagged 「平台上已找不到」. */
+export function inSelectPool(item: Record<string, any> | null | undefined): boolean {
+  return Boolean(item && item.status === 'released' && !item.categories.includes('blacklist') && item.platformMissingAt == null)
+}
+
 export function publicPoolRow(item: Record<string, any>) {
   return {
     id: item.id,
@@ -167,7 +172,7 @@ function dateOnly(value: unknown): string | null {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
 
-/** One record per day and source (the day's last fetch), oldest first. */
+/** One record per Beijing day and source (`snapshot_day`: the day's last fetch), oldest first. */
 export async function creatorHistory(
   db: Db,
   creatorId: string,
@@ -176,15 +181,11 @@ export async function creatorHistory(
   const window = query.window === '90' ? 90 : 30
   const limit = Math.max(1, Math.min(200, Number(query.limit || 60)))
   const { rows } = await db.query(
-    `SELECT * FROM (
-       SELECT DISTINCT ON ((fetched_at AT TIME ZONE 'UTC')::date, source)
-         id, creator_id, source, "window", fetched_at, job_id, metrics
+    `SELECT id, creator_id, source, "window", fetched_at, job_id, metrics
        FROM creator_metrics_history
-       WHERE creator_id = $1 AND "window" = $2
-       ORDER BY (fetched_at AT TIME ZONE 'UTC')::date, source, fetched_at DESC
-     ) snapshots
-     ORDER BY fetched_at DESC
-     LIMIT $3`,
+      WHERE creator_id = $1 AND "window" = $2
+      ORDER BY snapshot_day DESC, source
+      LIMIT $3`,
     [creatorId, window, limit],
   )
   return rows.reverse().map((row) => ({
@@ -250,6 +251,7 @@ export async function attachCreatorMeta(
       snapshotFetchedAt: isoOrNull(row.metrics_locked_fetched_at ?? row.metrics_locked_at),
       stage: creatorStage({ status: row.status, metricsLockedAt: row.metrics_locked_at }),
       metricsFetchedAt: row.metrics_fetched_at ?? null,
+      platformMissingAt: row.platform_missing_at ?? null,
       updatedAt: isoOrNull(row.updated_at),
       sources: sources.rows
         .filter((item) => item.creator_id === row.id)

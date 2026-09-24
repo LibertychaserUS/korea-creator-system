@@ -2523,7 +2523,9 @@ export const zhCN: Locale = {
     },
     creators: {
       trend: "趋势",
-      trendLead: "每次抓取留一条数据记录；变化是第一次和最近一次记录的相对差。",
+      trendLead: "每天留一条数据记录（同一天抓了几次，取最后一次）；每个来源各画一条线，变化只在同一来源里比较。",
+      trendHints: "值得留意",
+      trendHintsNote: "这些提示只供参考，不影响排序。",
       snapshots: "查看全部 {n} 条记录",
       noHistory: "还没有历史记录，抓取一次后这里会显示趋势。",
       sources: "数据来源",

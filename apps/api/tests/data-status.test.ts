@@ -137,6 +137,36 @@ describe('data status', () => {
     expect((await get(`/api/ingest/data-status/${creatorId}`)).json.platformMissing).toBeNull()
   })
 
+  it('a flagged creator leaves the select pool (list, detail, shortlist) and comes back when seen again', async () => {
+    const id = `${RUN}-pool`
+    await seed(id)
+    const creatorId = await creatorOf(id)
+    await ctx.db.query("UPDATE creators SET regions = ARRAY['kr'] WHERE id = $1", [creatorId])
+    expect((await ctx.app.request(`/api/ops/creators/${creatorId}/publish`, { method: 'POST', headers: ops })).status).toBe(200)
+    const selector = { authorization: 'Bearer test:selector@kcs.local', 'content-type': 'application/json' }
+    const inTable = async () => (await ctx.db.query('SELECT 1 FROM creator_published WHERE creator_id = $1', [creatorId])).rowCount
+    const listed = async () => (await get(`/api/select/pool?q=${encodeURIComponent(id)}`, selector)).json.items
+      .some((row: { id: string }) => row.id === creatorId)
+    expect(await inTable()).toBe(1)
+    expect(await listed()).toBe(true)
+    expect((await get(`/api/select/creators/${creatorId}`, selector)).status).toBe(200)
+
+    present.delete(id)
+    for (let i = 0; i < 3; i += 1) await refresh([id])
+    expect(await inTable()).toBe(0)
+    expect(await listed()).toBe(false)
+    expect((await get(`/api/select/creators/${creatorId}`, selector)).status).toBe(404)
+    expect((await get(`/api/select/creators/${creatorId}/history`, selector)).status).toBe(404)
+    const shortlist = await ctx.app.request('/api/select/shortlist', { method: 'POST', headers: selector, body: JSON.stringify({ creatorId }) })
+    expect(shortlist.status).toBe(404)
+    expect((await ctx.db.query("SELECT status FROM creators WHERE id = $1", [creatorId])).rows[0].status).toBe('released')
+
+    present.add(id)
+    await refresh([id])
+    expect(await inTable()).toBe(1)
+    expect((await get(`/api/select/creators/${creatorId}`, selector)).status).toBe(200)
+  })
+
   it('ops decides: "gone" confirms and stays flagged, "keep" clears; unflagged is 409', async () => {
     const id = `${RUN}-decide`
     await seed(id)

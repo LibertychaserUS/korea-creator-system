@@ -7,6 +7,7 @@ import {
   loadCreator,
   metricsFromRow,
   publicPoolRow,
+  inSelectPool,
 } from '../http/creators'
 import { recordEvents } from '../http/events'
 import { withPercentiles } from '../http/pool'
@@ -124,7 +125,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
         if (byKey.rows[0]) creatorId = byKey.rows[0].id
       }
       const creator = await loadCreator(env.db, creatorId, false)
-      if (!creator || creator.status !== 'released' || creator.categories.includes('blacklist')) {
+      if (!creator || !inSelectPool(creator)) {
         return validationError(context, 'not_in_pool', [
           { path: 'creatorIds', message: `not in the released pool: ${rawId}` },
         ])
