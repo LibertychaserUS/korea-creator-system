@@ -63,7 +63,7 @@
       <KpiTile :label="t('kcs.console.health.database')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
         <span class="flex items-center gap-2 text-xl md:text-2xl">
           <span class="relative flex size-2.5" aria-hidden="true">
-            <span v-if="health.ok" class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
+            <span v-if="health.ok" class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60 motion-reduce:animate-none" />
             <span class="relative inline-flex size-2.5 rounded-full" :class="health.ok ? 'bg-emerald-500' : 'bg-destructive'" />
           </span>
           <span v-if="health.ok" data-testid="dev-sql-ok">{{ t('kcs.panel.sqlOk') }}</span>

@@ -11,6 +11,8 @@
  *   不挡卡片交互），位置即视口坐标。
  * - 潮光：底部岸线暖光随 fogTide 涨落（0=潮退 1=潮涌）。
  * - prefers-reduced-motion：只画一帧静态潮光，不开 rAF。
+ * - 没有涟漪时潮光约 10 帧/秒（周期 61–107s，一帧移动不到 1px），有涟漪时逐帧画；
+ *   画布滚出视口或标签页在后台时整个停下。
  */
 import { fogTide, rippleProgress } from '@libs/panel/utils/tide'
 
@@ -25,6 +27,7 @@ interface Ripple {
 const MAX_RIPPLES = 8
 const AMBIENT_MIN_MS = 3500
 const AMBIENT_VAR_MS = 2500
+const IDLE_FRAME_MS = 100
 
 const el = ref<HTMLCanvasElement | null>(null)
 let cleanup: (() => void) | null = null
@@ -58,7 +61,9 @@ onMounted(() => {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const ripples: Ripple[] = []
   let raf = 0
+  let idleTimer = 0
   let ambientTimer = 0
+  let onScreen = true
   let w = 0
   let h = 0
 
@@ -76,6 +81,7 @@ onMounted(() => {
   const spawn = (x: number, y: number, dur: number, scale: number) => {
     ripples.push({ x, y, t0: performance.now(), dur, scale })
     if (ripples.length > MAX_RIPPLES) ripples.shift()
+    wake()
   }
 
   const spawnAmbient = () => {
@@ -132,22 +138,61 @@ onMounted(() => {
     }
   }
 
+  const active = () => onScreen && document.visibilityState !== 'hidden'
+
+  const frame = (now: number) => {
+    raf = 0
+    draw(now)
+    if (!active()) return
+    if (ripples.length) {
+      raf = requestAnimationFrame(frame)
+    } else {
+      idleTimer = window.setTimeout(() => {
+        idleTimer = 0
+        raf = requestAnimationFrame(frame)
+      }, IDLE_FRAME_MS)
+    }
+  }
+
+  function wake() {
+    if (reduceMotion || !active()) return
+    clearTimeout(idleTimer)
+    idleTimer = 0
+    if (!raf) raf = requestAnimationFrame(frame)
+  }
+
+  const stop = () => {
+    cancelAnimationFrame(raf)
+    clearTimeout(idleTimer)
+    clearTimeout(ambientTimer)
+    raf = idleTimer = ambientTimer = 0
+  }
+
+  const resume = () => {
+    if (!active()) return stop()
+    wake()
+    if (!ambientTimer) ambientTimer = window.setTimeout(spawnAmbient, 1200)
+  }
+
+  let observer: IntersectionObserver | null = null
   if (reduceMotion) {
     // 静态潮光一帧，不启动循环、不生成涟漪
     drawShore(0.5, palette())
   } else {
-    const tick = (now: number) => {
-      draw(now)
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    ambientTimer = window.setTimeout(spawnAmbient, 1200)
+    resume()
     window.addEventListener('pointerdown', onPointerDown, { passive: true })
+    document.addEventListener('visibilitychange', resume)
+    observer = new IntersectionObserver(([entry]) => {
+      onScreen = Boolean(entry?.isIntersecting)
+      resume()
+    })
+    observer.observe(canvas)
   }
 
   cleanup = () => {
-    cancelAnimationFrame(raf)
-    clearTimeout(ambientTimer)
+    stop()
+    observer?.disconnect()
+    document.removeEventListener('visibilitychange', resume)
     window.removeEventListener('resize', resize)
     window.removeEventListener('pointerdown', onPointerDown)
   }
