@@ -12,14 +12,15 @@ PostgreSQL is required. SQLite is rejected.
 # 1. Postgres (repo-root compose — user kcs / db kcs / port 5432)
 docker compose up -d postgres
 
-# 2. API process (default http://localhost:7100)
-#    when fullstack ships it:
-#    docker compose --profile full up -d
-#    or: pnpm --filter @kcs/api dev
+# 2. API process (default http://localhost:7100) with the demo data loaded —
+#    the suites assert against it; without KCS_SEED=demo the API starts empty:
+#    docker compose --profile full up -d        (compose already sets KCS_SEED=demo)
+#    or: KCS_SEED=demo pnpm --filter @kcs/api dev
 
 # 3. A workspace app serving TinyShip auth (default http://localhost:7004 = select)
-#    with the five demo accounts seeded: pnpm db:seed:auth
-#    emails: admin@ / ops@ / devops@ / selector@ / viewer@kcs.local
+#    with the five demo accounts + the role-less stranger seeded
+#    (public sign-up is closed): pnpm db:seed:auth --stranger
+#    emails: admin@ / ops@ / devops@ / selector@ / viewer@ / stranger@kcs.local
 #    password: Kcs!demo2026
 #    Sessions are minted by real email + password sign-in in global-setup.ts.
 
@@ -64,7 +65,8 @@ See [`.env.example`](./.env.example). Defaults:
 | `BLACKBOX_PASSWORD` | `Kcs!demo2026` |
 | `BLACKBOX_AUTH_URL` | `http://localhost:7004` (TinyShip auth origin used for sign-in) |
 | `BLACKBOX_SELECT_URL` / `BLACKBOX_OPS_URL` / `BLACKBOX_DEV_URL` / `BLACKBOX_MARKETING_URL` | `:7004` / `:7002` / `:7003` / `:7005` (form-login and hand-off cases; unreachable origins are skipped) |
-| `BLACKBOX_STRANGER_EMAIL` | `stranger@kcs.local` (public sign-up probe; reused across runs) |
+| `BLACKBOX_STRANGER_EMAIL` | `stranger@kcs.local` (signed-in account with no KCS role; provision it with `pnpm db:seed:auth --stranger`, password = `BLACKBOX_PASSWORD`) |
+| `BLACKBOX_WORKSPACE_DEV` | unset. Set to `1` only when the workspace origins run `nuxt dev`: `11-security` then skips the `Secure` cookie assertions (production builds must send `Secure`) |
 | `BLACKBOX_VENDOR_PORT` / `BLACKBOX_VENDOR_TOKEN` | `7190` / `blackbox-vendor-token` (stand-in vendor for the queue suite; the API's `QIANGUA_BASE_URL` / `QIANGUA_TOKEN` must match) |
 
 `BLACKBOX_DATABASE_URL` must be `postgres://`. A `sqlite` URL fails setup.

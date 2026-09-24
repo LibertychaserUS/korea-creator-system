@@ -37,6 +37,8 @@ services:
       DATABASE_URL: postgres://kcs:kcs@postgres:5432/kcs
       AUTH_BASE_URL: http://select:7004
       NODE_ENV: test
+      # The suites assert against the demo creators / projects / jobs.
+      KCS_SEED: demo
       # 千瓜 adapter → the stand-in vendor that the black-box global setup runs on the host (:7190).
       QIANGUA_BASE_URL: http://host.docker.internal:7190
       QIANGUA_TOKEN: blackbox-vendor-token

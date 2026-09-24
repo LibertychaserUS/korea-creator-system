@@ -17,7 +17,11 @@ async function main() {
   if (!url) throw new Error('DATABASE_URL is required (Postgres)')
   const db = await connectDb(url)
   await migrate(db)
-  await seed(db)
+  // Demo creators / projects / jobs are opt-in: a real install must never get them.
+  if (process.env.KCS_SEED === 'demo') {
+    const counts = await seed(db)
+    console.log('demo data loaded', JSON.stringify(counts))
+  }
   const store =
     process.env.S3_ENDPOINT && process.env.S3_ACCESS_KEY
       ? createS3Store({

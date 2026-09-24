@@ -1,7 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { deriveMetrics, emptyMetrics } from '@kcs/contract'
+import { deriveMetrics, emptyMetrics, type Permission } from '@kcs/contract'
+import type { Context, MiddlewareHandler } from 'hono'
 import { runIngest, runWorkbookIngest } from '../ingest/service'
 import { audit } from '../http/audit'
+import {
+  categoryPatchBody,
+  creatorCreateBody,
+  creatorPatchBody,
+  presignBody,
+  readJson,
+  validationError,
+} from '../http/body'
 import {
   assetPublicUrl,
   attachCreatorMeta,
@@ -13,8 +22,42 @@ import {
 } from '../http/creators'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
+import {
+  IMAGE_MAX_BYTES,
+  WORKBOOK_MAX_BYTES,
+  imageExtension,
+  isImageType,
+  safeImageHeaders,
+  sniffImage,
+  uploadLimit,
+} from '../http/uploads'
 
 export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
+  // Auth before the body limit, so strangers get 401/403 rather than a 413.
+  const gate = (permission: Permission): MiddlewareHandler => async (context, next) => {
+    const { denied } = await helpers.requireAuth(context, permission)
+    if (denied) return denied
+    await next()
+  }
+
+  // Unknown slugs would hit the creator_categories FK halfway through a write.
+  const checkCategories = async (context: Context, categories: string[] | undefined) => {
+    if (!categories?.length) return null
+    if (mutexCoop(categories)) {
+      return validationError(context, 'coop_history_mutex', [
+        { path: 'categories', message: 'collaborated and never_collaborated are mutually exclusive' },
+      ])
+    }
+    const { rows } = await env.db.query('SELECT slug FROM categories WHERE slug = ANY($1)', [categories])
+    const known = new Set(rows.map((row) => row.slug))
+    const unknown = categories.filter((slug) => !known.has(slug))
+    if (!unknown.length) return null
+    return validationError(context, 'unknown_category', unknown.map((slug) => ({
+      path: 'categories',
+      message: `unknown category: ${slug}`,
+    })))
+  }
+
   app.get('/api/ops/overview', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
@@ -48,9 +91,10 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.post('/api/ops/creators', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
-    const body = await context.req.json()
-    if (!body.displayName) return jsonError(context, 400, 'VALIDATION', 'display_name_required')
-    if (mutexCoop(body.categories)) return jsonError(context, 400, 'VALIDATION', 'coop_history_mutex')
+    const { data: body, invalid } = await readJson(context, creatorCreateBody)
+    if (invalid) return invalid
+    const rejected = await checkCategories(context, body.categories)
+    if (rejected) return rejected
     const id = randomUUID()
     const key = body.creatorKey || `ck_${id.slice(0, 8)}`
     const metrics = deriveMetrics({
@@ -100,12 +144,14 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
     const id = context.req.param('id')
-    const body = await context.req.json()
-    if (mutexCoop(body.categories)) return jsonError(context, 400, 'VALIDATION', 'coop_history_mutex')
+    const { data: body, invalid } = await readJson(context, creatorPatchBody)
+    if (invalid) return invalid
+    const rejected = await checkCategories(context, body.categories)
+    if (rejected) return rejected
     const metrics = body.metrics && typeof body.metrics === 'object'
       ? deriveMetrics({ ...emptyMetrics(body.metrics.window === 90 ? 90 : 30), ...body.metrics })
       : null
-    await env.db.query(
+    const updated = await env.db.query(
       `UPDATE creators SET
         display_name = COALESCE($2, display_name),
         followers = COALESCE($3, followers),
@@ -121,7 +167,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         metrics_window = COALESCE($13, metrics_window),
         metrics_fetched_at = CASE WHEN $12::jsonb IS NULL THEN metrics_fetched_at ELSE now() END,
         updated_at = now()
-       WHERE id = $1`,
+       WHERE id = $1 RETURNING id`,
       [
         id,
         body.displayName ?? null,
@@ -138,6 +184,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         metrics?.window ?? null,
       ],
     )
+    if (!updated.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     if (body.categories || body.collaborations || body.price) {
       await saveRelations(env.db, id, body)
     }
@@ -171,7 +218,11 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { user, denied } = await helpers.requireAuth(context, 'ops.publish')
     if (denied) return denied
     const id = context.req.param('id')
-    await env.db.query("UPDATE creators SET status = 'ready', updated_at = now() WHERE id = $1", [id])
+    const updated = await env.db.query(
+      "UPDATE creators SET status = 'ready', updated_at = now() WHERE id = $1 RETURNING id",
+      [id],
+    )
+    if (!updated.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     await env.db.query('UPDATE assignments SET pool_gone = true WHERE creator_id = $1', [id])
     await audit(env.db, user!.id, 'creator.unpublish', 'creator', id, 'unpublish')
     return context.json({ ok: true, status: 'ready' })
@@ -188,19 +239,22 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { denied } = await helpers.requireAuth(context, 'ops.categories')
     if (denied) return denied
     const slug = context.req.param('slug')
-    const body = await context.req.json()
+    const { data: body, invalid } = await readJson(context, categoryPatchBody)
+    if (invalid) return invalid
     if (body.enabled === false && ['collaborated', 'never_collaborated'].includes(slug)) {
-      return jsonError(context, 400, 'VALIDATION', 'cannot_disable_builtin_coop')
+      return validationError(context, 'cannot_disable_builtin_coop', [
+        { path: 'enabled', message: 'builtin coop_history categories stay enabled' },
+      ])
     }
     const names = body.names ?? {}
-    await env.db.query(
+    const updated = await env.db.query(
       `UPDATE categories SET
         name_zh = COALESCE($2, name_zh),
         name_en = COALESCE($3, name_en),
         name_ko = COALESCE($4, name_ko),
         enabled = COALESCE($5, enabled),
         frontend_visible = COALESCE($6, frontend_visible)
-       WHERE slug = $1`,
+       WHERE slug = $1 RETURNING slug`,
       [
         slug,
         names['zh-CN'] ?? body.nameZh ?? null,
@@ -210,6 +264,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         body.frontendVisible ?? null,
       ],
     )
+    if (!updated.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     return context.json({ ok: true })
   })
 
@@ -247,7 +302,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     return context.json({ items: rows })
   })
 
-  app.post('/api/ops/batches', async (context) => {
+  app.post('/api/ops/batches', gate('ops.write'), uploadLimit(WORKBOOK_MAX_BYTES), async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
     if ((context.req.header('content-type') || '').includes('multipart/form-data')) {
@@ -270,45 +325,60 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.post('/api/assets/presign', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
-    const body = await context.req.json()
+    const { data: body, invalid } = await readJson(context, presignBody)
+    if (invalid) return invalid
+    const contentType = body.contentType ?? 'image/png'
+    if (!isImageType(contentType)) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
     const purpose = body.purpose === 'attachment' ? 'attachments' : 'avatars'
-    const key = `${purpose}/${randomUUID()}`
-    const signed = await env.store.presign(key, body.contentType || 'application/octet-stream')
+    const key = `${purpose}/${randomUUID()}.${imageExtension(contentType)}`
+    const signed = await env.store.presign(key, contentType)
     const publicUrl = assetPublicUrl(key)
     await env.db.query(
       `INSERT INTO assets (key, url, content_type, size) VALUES ($1,$2,$3,0)
        ON CONFLICT (key) DO UPDATE SET url = EXCLUDED.url`,
-      [key, publicUrl, body.contentType || 'application/octet-stream'],
+      [key, publicUrl, contentType],
     )
     return context.json({ url: signed.url || publicUrl, key })
   })
 
+  // Anonymous on purpose (<img src> cannot send a Bearer), so it must never hand
+  // back anything a browser would run: bytes are re-sniffed and only an image
+  // type goes out, with nosniff / inline / a CSP that forbids everything.
   app.get('/api/assets/raw/*', async (context) => {
-    const key = decodeURIComponent(context.req.path.replace('/api/assets/raw/', ''))
-    const { rows } = await env.db.query('SELECT * FROM assets WHERE key = $1', [key])
-    if (!rows[0]?.bytes) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    return new Response(rows[0].bytes, {
-      headers: { 'content-type': rows[0].content_type || 'application/octet-stream' },
-    })
+    let key: string
+    try {
+      key = decodeURIComponent(context.req.path.replace('/api/assets/raw/', ''))
+    } catch {
+      return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    }
+    const { rows } = await env.db.query('SELECT bytes FROM assets WHERE key = $1', [key])
+    const bytes: Buffer | null = rows[0]?.bytes ?? null
+    const type = bytes ? sniffImage(bytes) : null
+    if (!bytes || !type) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return new Response(new Uint8Array(bytes), { headers: safeImageHeaders(type, bytes.length) })
   })
 
-  app.post('/api/assets', async (context) => {
+  app.post('/api/assets', gate('ops.write'), uploadLimit(IMAGE_MAX_BYTES), async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
-    const body = await context.req.parseBody()
-    const file = body.file
-    if (!(file instanceof File)) return jsonError(context, 400, 'VALIDATION', 'file_required')
-    const purpose = String(body.purpose || 'avatar') === 'attachment' ? 'attachments' : 'avatars'
-    const key = `${purpose}/${randomUUID()}`
+    const body = await context.req.parseBody().catch(() => null)
+    const file = body?.file
+    if (!(file instanceof File) || file.size === 0) return jsonError(context, 400, 'VALIDATION', 'file_required')
+    if (file.size > IMAGE_MAX_BYTES) return jsonError(context, 413, 'UPLOAD-TOO-LARGE', 'file_too_large')
     const bytes = Buffer.from(await file.arrayBuffer())
-    const stored = await env.store.put(key, bytes, file.type || 'image/png')
+    const type = sniffImage(bytes)
+    const declaredOk = !file.type || file.type === 'application/octet-stream' || isImageType(file.type)
+    if (!type || !declaredOk) return jsonError(context, 415, 'UPLOAD-TYPE', 'unsupported_type')
+    const purpose = String(body?.purpose || 'avatar') === 'attachment' ? 'attachments' : 'avatars'
+    const key = `${purpose}/${randomUUID()}.${imageExtension(type)}`
+    const stored = await env.store.put(key, bytes, type)
     const publicUrl = stored.url || assetPublicUrl(key)
     await env.db.query(
       `INSERT INTO assets (key, url, content_type, size, bytes, uploaded_by)
        VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (key) DO UPDATE SET
-         bytes = EXCLUDED.bytes, size = EXCLUDED.size, url = EXCLUDED.url`,
-      [key, publicUrl, file.type || 'image/png', bytes.length, bytes, user!.id],
+         bytes = EXCLUDED.bytes, size = EXCLUDED.size, url = EXCLUDED.url, content_type = EXCLUDED.content_type`,
+      [key, publicUrl, type, bytes.length, env.store.durable ? null : bytes, user!.id],
     )
     return context.json({ url: publicUrl, key }, 201)
   })

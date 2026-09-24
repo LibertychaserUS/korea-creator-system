@@ -1,6 +1,9 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { HTTPException } from 'hono/http-exception'
 import { createRouteHelpers } from './http/auth'
+import { validationError } from './http/body'
+import { jsonError } from './http/responses'
 import type { AppEnv } from './http/types'
 import { registerAuthRoutes } from './routes/auth'
 import { registerDevRoutes } from './routes/dev'
@@ -12,6 +15,9 @@ import { registerSelectProjectRoutes } from './routes/select-projects'
 import { registerSelectQueryRoutes } from './routes/select-queries'
 
 export type { AppEnv, SessionUser } from './http/types'
+
+// invalid_text_representation, numeric/datetime out of range, invalid datetime format
+const PG_BAD_INPUT = new Set(['22P02', '22003', '22007', '22008'])
 
 export function createApp(env: AppEnv) {
   const app = new Hono()
@@ -46,6 +52,14 @@ export function createApp(env: AppEnv) {
   registerDevRoutes(app, env, helpers)
 
   app.onError((error, context) => {
+    if (error instanceof HTTPException) return error.getResponse()
+    if (error instanceof SyntaxError) return validationError(context, 'invalid_json')
+    const pgCode = (error as { code?: unknown }).code
+    if (pgCode === '23505') return jsonError(context, 409, 'CONFLICT', 'already_exists')
+    if (pgCode === '23503') return validationError(context, 'invalid_reference')
+    if (typeof pgCode === 'string' && PG_BAD_INPUT.has(pgCode)) {
+      return validationError(context, 'invalid_value')
+    }
     console.error(error)
     return context.json(
       { error: { code: 'INTERNAL', message: 'internal_server_error' } },

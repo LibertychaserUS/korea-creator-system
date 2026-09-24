@@ -133,7 +133,7 @@
                     id="creator-avatar"
                     data-testid="creator-avatar"
                     type="file"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
                     class="sr-only"
                     :disabled="uploading || Boolean(saved.id)"
                     @change="onFile"
@@ -149,6 +149,9 @@
                     </label>
                     <span v-if="!avatarUrl && !uploading" class="text-xs text-muted-foreground">{{ t('kcs.panel.imageHint') }}</span>
                   </div>
+                  <p v-if="uploadError" data-testid="creator-avatar-error" role="alert" class="text-xs text-destructive">
+                    {{ t(uploadError) }}
+                  </p>
                   <p v-if="uploading" class="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Loader2 class="size-3.5 animate-spin" />
                     {{ t('kcs.panel.loading') }}
@@ -317,6 +320,9 @@ const form = reactive({
 const avatarUrl = ref('')
 const avatarKey = ref('')
 const uploading = ref(false)
+const uploadError = ref('')
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024
+const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const saving = ref(false)
 const publishing = ref(false)
 const error = ref(false)
@@ -324,8 +330,20 @@ const confirming = ref(false)
 const saved = reactive({ id: '', creatorKey: '', status: 'draft' })
 
 async function onFile(ev: Event) {
-  const file = (ev.target as HTMLInputElement).files?.[0]
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
   if (!file) return
+  uploadError.value = ''
+  if (file.type && !AVATAR_TYPES.includes(file.type)) {
+    uploadError.value = 'kcs.panel.uploadWrongType'
+    input.value = ''
+    return
+  }
+  if (file.size > AVATAR_MAX_BYTES) {
+    uploadError.value = 'kcs.panel.uploadTooLarge'
+    input.value = ''
+    return
+  }
   uploading.value = true
   try {
     const body = new FormData()
@@ -338,11 +356,22 @@ async function onFile(ev: Event) {
       headers: token.value ? { authorization: `Bearer ${token.value}` } : {},
       body,
     })
+    if (!res.ok) {
+      uploadError.value = res.status === 413
+        ? 'kcs.panel.uploadTooLarge'
+        : res.status === 415
+          ? 'kcs.panel.uploadWrongType'
+          : 'kcs.panel.uploadFailed'
+      return
+    }
     const data = await res.json()
     avatarUrl.value = data.url
     avatarKey.value = data.key
+  } catch {
+    uploadError.value = 'kcs.panel.uploadFailed'
   } finally {
     uploading.value = false
+    input.value = ''
   }
 }
 
@@ -392,6 +421,7 @@ function reset() {
   form.priceMin = 3000
   avatarUrl.value = ''
   avatarKey.value = ''
+  uploadError.value = ''
   saved.id = ''
   saved.creatorKey = ''
   saved.status = 'draft'

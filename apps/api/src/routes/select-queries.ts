@@ -7,8 +7,23 @@ import {
   queryRow,
   savedQueryFromRow,
 } from '../http/creators'
+import type { Context } from 'hono'
+import { z } from 'zod'
+import { readJson } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
+
+// `errors` stays as i18n keys (kcs.query.errors.*) for the select page.
+function invalidQuery(context: Context, errors: string[]) {
+  return context.json({
+    error: {
+      code: 'VALIDATION',
+      message: 'invalid_query',
+      fields: errors.map((key) => ({ path: key.split('.')[0], message: key })),
+    },
+    errors,
+  }, 400)
+}
 
 export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
   app.get('/api/select/queries', async (context) => {
@@ -25,9 +40,11 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
   app.post('/api/select/queries/run', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'select.read')
     if (denied) return denied
-    const spec = coerceSavedQuery(await context.req.json().catch(() => null))
+    const { data: raw, invalid } = await readJson(context, z.unknown())
+    if (invalid) return invalid
+    const spec = coerceSavedQuery(raw)
     const errors = validateSavedQuery(spec)
-    if (errors.length) return context.json({ error: 'invalid', errors }, 400)
+    if (errors.length) return invalidQuery(context, errors)
     const pool = await queryPool(env.db, {})
     const rows = applySavedQuery(pool.map(queryRow), spec)
     return context.json({ items: rows.map(publicQueryResultRow), total: rows.length })
@@ -37,9 +54,11 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
     const { user, denied } = await helpers.requireAuth(context, 'select.write')
     if (denied) return denied
     const id = randomUUID()
-    const spec = coerceSavedQuery(await context.req.json().catch(() => null), id, 1)
+    const { data: raw, invalid } = await readJson(context, z.unknown())
+    if (invalid) return invalid
+    const spec = coerceSavedQuery(raw, id, 1)
     const errors = validateSavedQuery(spec)
-    if (errors.length) return context.json({ error: 'invalid', errors }, 400)
+    if (errors.length) return invalidQuery(context, errors)
     const { rows } = await env.db.query(
       `INSERT INTO saved_queries (id, org_id, name, version, spec, created_by)
        VALUES ($1,$2,$3,1,$4,$5) RETURNING *`,
@@ -68,10 +87,11 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
     )
     if (!found.rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     const current = savedQueryFromRow(found.rows[0])
-    const patch = await context.req.json().catch(() => ({}))
+    const { data: patch, invalid } = await readJson(context, z.record(z.string(), z.unknown()))
+    if (invalid) return invalid
     const spec = coerceSavedQuery({ ...current, ...patch }, current.id, current.version + 1)
     const errors = validateSavedQuery(spec)
-    if (errors.length) return context.json({ error: 'invalid', errors }, 400)
+    if (errors.length) return invalidQuery(context, errors)
     const { rows } = await env.db.query(
       `UPDATE saved_queries SET name = $3, version = $4, spec = $5, updated_at = now()
        WHERE id = $1 AND org_id = $2 RETURNING *`,

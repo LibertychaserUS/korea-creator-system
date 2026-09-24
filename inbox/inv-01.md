@@ -4,28 +4,28 @@ kind: user-case
 readiness: ready
 source:
   repo: LibertychaserUS/korea-creator-system
-  path: docs/product/DOMAIN.md
-  ref: 4b406a0
+  path: docs/03_指标口径与数据源.md
+  ref: cursor/fix-launch-blockers-d3aa
 packages:
-  - libs/kcs-domain
+  - packages/kcs-contract
 ---
 
 # Intent
 
-Rules produce Score.final / grade / rank. AI review and human confirmation sit beside the score. They do not write those three fields.
+Selectors compare creators on platform numbers. A number the platform did not give us must read as "—", not as a good or bad value. Adapters, derivation, percentiles, filters and sorting keep it `null`.
 
 # In scope
 
-- INV-01 Score triplet stays immutable when AI or humans attach a decision.
+- INV-01 Missing metrics stay `null`; zero denominators give `null`; real zeros stay `0`.
 
 # Out of scope
 
-- Excel ingest, DeepSeek live calls, export files.
+- Live vendor calls, currency conversion, UI rendering of "—".
 
 # User cases
 
-1. INV-01 Attach an AI reject or a human reject; the triplet stays the rule values. INV-score-immutable holds.
+1. INV-01 A creator without a quote has no CPE; a "CPE ≤ 5" query does not return them, and sorting by CPE puts them last. INV-metrics-null-not-zero holds.
 
 # Notes
 
-Ready to gate. Suite stays `active`.
+Ready to gate. Suite stays `active`. Replaces the old score-triplet invariant, which went away with the S/A/B scoring.

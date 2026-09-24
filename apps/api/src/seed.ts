@@ -5,17 +5,12 @@ import {
   type SavedQuery,
   type SourceId,
 } from '@kcs/contract'
+import { readFile } from 'node:fs/promises'
 import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
 
-const CATEGORIES = [
-  ['collaborated', '合作过的', 'Collaborated', '협업함', 'coop_history', true],
-  ['never_collaborated', '没合作过的', 'Never collaborated', '협업 없음', 'coop_history', true],
-  ['intending', '意向中', 'Intending', '의향', null, true],
-  ['blacklist', '黑名单', 'Blacklist', '블랙리스트', null, false],
-  ['stale', '待更新', 'Stale', '업데이트 필요', null, true],
-] as const
+const BASE_DATA_SQL = new URL('./migrations/0008_base_reference_data.sql', import.meta.url)
 
 export type SeedCounts = {
   users: number
@@ -250,33 +245,15 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
       RESTART IDENTITY CASCADE
     `)
   }
+  // A reset truncates the reference rows migration 0008 wrote; put them back first.
+  await db.query(await readFile(BASE_DATA_SQL, 'utf8'))
   const orgId = 'org_platform'
   await db.query(
     `INSERT INTO orgs (id, name, budget_note) VALUES ($1,$2,$3)
-     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, budget_note = EXCLUDED.budget_note`,
     [orgId, '全球达人情报', '试水单笔 ≤80000 CNY'],
   )
   await seedUsers(db, orgId)
-  for (const [slug, zh, en, ko, group, visible] of CATEGORIES) {
-    await db.query(
-      `INSERT INTO categories (slug, name_zh, name_en, name_ko, builtin, enabled, group_name, frontend_visible)
-       VALUES ($1,$2,$3,$4,true,true,$5,$6) ON CONFLICT (slug) DO NOTHING`,
-      [slug, zh, en, ko, group, visible],
-    )
-  }
-  for (const [id, name, adapterType] of [
-    ['file-drop', '文件投递', 'file_drop'],
-    ['pugongying', '蒲公英 OpenAPI', 'pugongying'],
-    ['qiangua', '千瓜', 'qiangua'],
-    ['xinhong', '新红', 'xinhong'],
-  ]) {
-    await db.query(
-      `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, owner)
-       VALUES ($1,$2,$3,true,60,1000,'ops')
-       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, adapter_type = EXCLUDED.adapter_type`,
-      [id, name, adapterType],
-    )
-  }
   for (const [index, status] of JOB_STATUSES.entries()) {
     await db.query(
       `INSERT INTO ingest_jobs (

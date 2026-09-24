@@ -18,6 +18,7 @@ export function createS3Store(env: {
   })
   const publicBase = `${env.endpoint.replace(/\/$/, '')}/${env.bucket}`
   return {
+    durable: true,
     async presign(key, contentType) {
       const url = await getSignedUrl(
         client,
