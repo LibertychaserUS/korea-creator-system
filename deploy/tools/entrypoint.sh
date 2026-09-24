@@ -1,6 +1,6 @@
 #!/bin/sh
 # kcs/tools: `init` (schema + first admin) and the backup / restore commands.
-#   docker compose run --rm init <command> [args]
+#   docker compose -f compose.prod.yml run --rm --no-deps backup <command> [args]
 set -eu
 cd /repo
 cmd="${1:-init}"
