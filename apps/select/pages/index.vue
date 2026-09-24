@@ -27,7 +27,7 @@
     </div>
 
     <!-- 方案栏：已保存方案 + 快捷过滤 + 编辑器 -->
-    <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="query-bar">
+    <Card class="gap-0 border-border/60 py-0 shadow-xs" data-testid="query-bar" @click.capture="markDiscrete" @change.capture="markDiscrete">
       <div class="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3 sm:px-5">
         <Bookmark class="size-4 text-primary" aria-hidden="true" />
         <span class="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{{ t('kcs.query.title') }}</span>
@@ -567,7 +567,7 @@
 
       <div class="hidden md:block">
         <Table data-testid="table-pool">
-          <TableHeader>
+          <TableHeader @click.capture="markDiscrete">
             <TableRow class="hover:bg-transparent">
               <TableHead v-if="canPick" class="w-10"><span class="sr-only">{{ t('kcs.panel.assign') }}</span></TableHead>
               <TableHead class="min-w-48">{{ t('kcs.creators.cols.creator') }}</TableHead>
@@ -1143,11 +1143,24 @@ onMounted(async () => {
 })
 // 条件改了又改回（包括进页面时选中第一个方案），和刚发出的那次一样就不再取。
 const debouncedRun = useDebounceFn(() => (runKey() === lastRunKey ? undefined : run()), 300)
+/**
+ * 点一下就改完的（按钮、勾选、下拉）立即取数；打字（搜索框、编辑器里的数字）照旧停手 300ms 再取。
+ * 捕获阶段先记下，改动触发的 watch 在同一轮里看到；没改动就在这一轮之后清掉。
+ */
+let discrete = false
+function markDiscrete(e: Event) {
+  if (!(e.target as Element | null)?.closest?.('button, select, input[type=checkbox], input[type=radio]')) return
+  discrete = true
+  setTimeout(() => { discrete = false })
+}
 // 条件一变回到第一页；page 本身的变化（翻页）立即取数。
 function rerun() {
   Object.assign(cursors, { page: 0, next: null, prev: null })
   if (page.value !== 1) page.value = 1
-  else debouncedRun()
+  else if (discrete) {
+    discrete = false
+    if (runKey() !== lastRunKey) return run()
+  } else debouncedRun()
 }
 watch(specJson, rerun)
 watch(search, rerun)
