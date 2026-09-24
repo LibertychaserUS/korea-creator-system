@@ -182,11 +182,11 @@ describe('蒲公英 gateways', () => {
     // Every one of them is billed, and the page says so for the quota ledger.
     expect(page.calls).toBe(5)
     const notesCall = calls.find((c) => c.url.endsWith('get_blogger_notes_rate'))!
-    // TikHub: 1 ≈ 7 天, 2 = 30 天, 3 = 90 天 (待实测).
-    expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 3, business: 0, note_type: 3 })
+    // Docs: 1 = 30 天, 2 = 90 天, 3 → 422 (待实测).
+    expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 2, business: 0, note_type: 3 })
     const raw = page.records[0]!
     expect(raw.payload.kcsWindow).toBe(90)
-    expect(raw.payload.kcsDateType).toBe(3)
+    expect(raw.payload.kcsDateType).toBe(2)
     const result = pugongyingAdapter.normalize(raw)
     expect(result.ok && result.creator.metrics.window).toBe(90)
     expect(result.ok && result.creator.metrics.readFanRatio).toBeCloseTo(0.29, 3)
@@ -194,7 +194,7 @@ describe('蒲公英 gateways', () => {
     expect(result.ok && result.creator.metrics.engagementRate).toBeCloseTo(0.067, 3)
   })
 
-  it('dateType: 30 天 is 2 on TikHub / official, a string enum on JustOneAPI, and PGY_DATE_TYPES overrides both', async () => {
+  it('dateType: 30 天 is 1 and 90 天 is 2 on TikHub / official (never 3), a string enum on JustOneAPI, and PGY_DATE_TYPES overrides both', async () => {
     const detail = record(1).payload
     const notesParams = async (gateway: string, window: 30 | 90) => {
       calls = []
@@ -205,13 +205,15 @@ describe('蒲公英 gateways', () => {
       const sent = call.init.body ? JSON.parse(String(call.init.body)).date_type : new URL(call.url).searchParams.get('dateType')
       return { sent, stored: page.records[0]?.payload.kcsDateType }
     }
-    expect(await notesParams('tikhub', 30)).toEqual({ sent: 2, stored: 2 })
-    expect(await notesParams('official', 90)).toEqual({ sent: '3', stored: 3 })
-    expect(await notesParams('justoneapi', 30)).toEqual({ sent: 'DAY_30', stored: 'DAY_30' })
-    process.env.PGY_DATE_TYPES = '{"30":1,"90":2}'
     expect(await notesParams('tikhub', 30)).toEqual({ sent: 1, stored: 1 })
+    expect(await notesParams('tikhub', 90)).toEqual({ sent: 2, stored: 2 })
+    expect(await notesParams('official', 90)).toEqual({ sent: '2', stored: 2 })
+    expect(await notesParams('justoneapi', 30)).toEqual({ sent: 'DAY_30', stored: 'DAY_30' })
+    expect(await notesParams('justoneapi', 90)).toEqual({ sent: 'DAY_90', stored: 'DAY_90' })
+    process.env.PGY_DATE_TYPES = '{"30":"DAY_30","90":"DAY_90"}'
+    expect(await notesParams('tikhub', 30)).toEqual({ sent: 'DAY_30', stored: 'DAY_30' })
     process.env.PGY_DATE_TYPES = 'not json'
-    expect(await notesParams('tikhub', 90)).toEqual({ sent: 3, stored: 3 })
+    expect(await notesParams('tikhub', 90)).toEqual({ sent: 2, stored: 2 })
   })
 
   it('justoneapi: GET with token query and one-layer data', async () => {

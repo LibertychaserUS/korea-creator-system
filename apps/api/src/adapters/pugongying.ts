@@ -69,16 +69,16 @@ type Gateway = {
 type DateType = number | string
 
 /**
- * notesRate `dateType` per window. TikHub documents 1 ≈ 7 天 / 2 = 30 天 /
- * 3 = 90 天 and relays the solar value unchanged, so `official` follows it;
- * JustOneAPI takes string enums. None of this has been checked against a live
- * account yet (待实测: same creator, dateType 1/2/3, compare noteNumber), so
- * `PGY_DATE_TYPES` (JSON, e.g. `{"30":1,"90":2}`) overrides the table and the
- * value actually sent is stored in the payload as `kcsDateType`.
+ * notesRate `dateType` per window, as the gateway docs give it: 1 = 30 天,
+ * 2 = 90 天 (3 is rejected with 422), and TikHub / official relay the solar
+ * value unchanged; JustOneAPI takes string enums. None of this has been checked
+ * against a live account yet (待实测: same creator, dateType 1/2, compare
+ * noteNumber), so `PGY_DATE_TYPES` (JSON, e.g. `{"30":1,"90":2}`) overrides the
+ * table and the value actually sent is stored in the payload as `kcsDateType`.
  */
 export const PGY_DATE_TYPES: Record<PgyGateway, Record<SourceQuery['window'], DateType>> = {
-  official: { 30: 2, 90: 3 },
-  tikhub: { 30: 2, 90: 3 },
+  official: { 30: 1, 90: 2 },
+  tikhub: { 30: 1, 90: 2 },
   justoneapi: { 30: 'DAY_30', 90: 'DAY_90' },
 }
 
