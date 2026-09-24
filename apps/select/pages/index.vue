@@ -974,8 +974,11 @@ async function loadReferenceLines() {
 const cursors = { page: 0, next: null as string | null, prev: null as string | null }
 
 let loadSeq = 0
+let lastRunKey = ''
+const runKey = () => JSON.stringify([page.value, search.value.trim(), specJson.value])
 async function run() {
   const mine = ++loadSeq
+  lastRunKey = runKey()
   loading.value = true
   try {
     // 新建还没起名的方案也要能先看结果；名字只在保存时必填。
@@ -996,6 +999,9 @@ async function run() {
     total.value = res.total ?? items.value.length
     Object.assign(cursors, { page: res.page ?? page.value, next: res.nextCursor ?? null, prev: res.prevCursor ?? null })
     if (page.value > pages.value) page.value = pages.value
+  } catch (e) {
+    if (mine === loadSeq) lastRunKey = ''
+    throw e
   } finally {
     if (mine === loadSeq) loading.value = false
   }
@@ -1129,13 +1135,14 @@ async function assign() {
 }
 
 onMounted(async () => {
-  await loadQueries()
-  await run()
   loadProject()
   loadReferenceLines()
   loadCategories()
+  await loadQueries()
+  await run()
 })
-const debouncedRun = useDebounceFn(run, 300)
+// 条件改了又改回（包括进页面时选中第一个方案），和刚发出的那次一样就不再取。
+const debouncedRun = useDebounceFn(() => (runKey() === lastRunKey ? undefined : run()), 300)
 // 条件一变回到第一页；page 本身的变化（翻页）立即取数。
 function rerun() {
   Object.assign(cursors, { page: 0, next: null, prev: null })
