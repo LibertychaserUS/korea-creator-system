@@ -60,6 +60,7 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `RETENTION_RAW_PER_SOURCE` | **现阶段全部保留，默认不删。** 设成正数 N 才会每个（博主，来源）只留最新 N 条平台原始 JSON；不设或 `0` 全留 |
 | `RETENTION_DEAD_LETTER_DAYS` | 已处理的搁置记录保留天数；不设或 `0` 全留（默认）；待处理的永远不删 |
 | `RETENTION_AUDIT_DAYS` | 审计日志保留天数；不设或 `0` 全留（默认） |
+| `RETENTION_JOB_DAYS` | 已结束抓取任务的保留天数；不设或 `0` 全留（默认）；还有待处理搁置记录的、博主「第一次 / 最近一次」指向的、表格导入的任务永远不删 |
 | `RETENTION_INTERVAL_HOURS` | 上面任一类打开后的清理间隔，默认 24；`0` 关闭。只有抽水进程执行，历史快照永不删（见 `docs/04` §保留期限） |
 | `KCS_CAPACITY_DATA_PATH` | 数据盘上的一个路径，用来量磁盘总量 / 已用；缺省用数据库的 `data_directory`（仅当它在本机） |
 | `KCS_CAPACITY_DISK_BYTES` | 磁盘读不到时（托管 Postgres）按这个大小算，已用 = 数据库 + WAL |
