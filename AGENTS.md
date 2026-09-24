@@ -4,7 +4,15 @@
 语言：`zh-CN` / `en` / `ko`。门：旁边 checkout 的 AIOps（`overlay-v2.0.0` + `forge-v1.1.1`）上跑 `python3 -m forge check`。不要 live-apply，不要 vendor `forge/` / `overlay/`。
 系统 = 有参数的爬虫 + 转换层 + 指标筛选方案；身份统一 TinyShip（better-auth）。没有评分、权重、等级，不自建抓取。
 文档只解释当前架构，保存在本地、不进仓库（`docs/` 已被 `.gitignore` 忽略）：从本地文档 `docs/00` 开始，字段口径看本地文档 `docs/02`–`04`，多 agent 分工看本地文档 `docs/09`。旧 Python / FastAPI Demo 已删除，`docs/archive/`（同在本地）只用于考古（git `f31c882`）。不要把旧口径加回来。
-仓库里只留必要文档：本文件、`README.md`、`deploy/README.md`（上线手册）、`CHANGELOG.md`（forge 用它核对 pin）、`inbox/` 与 `suites/`（overlay 用例）。
+
+## 文档规则（必读）
+
+- 仓库只保留必要文档：本文件、`README.md`、`deploy/README.md`（上线手册）、`CHANGELOG.md`（forge 用它核对 pin）、`inbox/` 与 `suites/`（overlay 用例）、`docs-archive/`（加密包与说明）。
+- `docs/` 以及 `tests/`、`e2e/`、`libs/`、`apps/` 下的 `.md` 只在本地，已被 `.gitignore` 忽略。**不要用 `git add -f` 把它们加回仓库**；CI 的 `i18n` 检查会拦下。
+- 工作区里没有这些文档时，先跑 `scripts/docs/restore-local-docs.sh`（从 git 历史恢复，不动暂存区、不覆盖已有文件）；要最新版就用 `scripts/docs/restore-local-docs.sh --from-archive docs-archive/<包名>.7z` 解密加密包。
+- 改了本地文档，跑 `scripts/docs/pack-local-docs.sh --update-readme` 重新打包，删掉旧包，提交新包和 `docs-archive/README.md`。
+- 新建文档默认放本地；只有门禁、工具链或上线必需的才进仓库。
+- 加密包口令不在仓库里，由仓库负责人保管。永远不要把口令写进仓库、日志、命令行、PR 或评论。
 
 
 开始任何开发任务前，必须：

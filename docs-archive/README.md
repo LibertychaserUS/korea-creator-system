@@ -19,7 +19,16 @@
 | `tests/blackbox/`、`e2e/`、`tests/e2e/` | 6 | 黑盒与 E2E 测试说明（规格映射、旅程契约、测试目录等） |
 | `tests/payment/`、`libs/`、`apps/tanstack-app/` | 6 | TinyShip 模板自带文档（支付测试说明、组件库与校验库说明、部署笔记） |
 
-## 解密
+## 恢复
+
+工作区里没有这些文档时（例如新 clone，或拉取移出提交后 git 删掉了本地文件），在仓库根目录运行：
+
+```bash
+scripts/docs/restore-local-docs.sh                                   # 从 git 历史（6ba4232）恢复，不覆盖已有文件
+scripts/docs/restore-local-docs.sh --from-archive docs-archive/kcs-docs-20260924.7z   # 从本加密包恢复（交互输入口令）
+```
+
+## 手动解密
 
 - macOS：`brew install sevenzip` 后 `7zz x kcs-docs-20260924.7z`；或用 Keka / The Unarchiver 打开
 - Linux：`7z x kcs-docs-20260924.7z`（`p7zip-full` 或 `7zip` 包）
@@ -33,15 +42,10 @@
 
 ## 更新
 
-文档有变更时：
+文档有变更时，在仓库根目录运行：
 
-1. 在仓库根目录重新生成 `MANIFEST.txt`（新增或删除的文档同步增删行，每行「路径、字节数、sha256」用制表符分隔，前两行是注释）。
-2. 只打包清单里的文件（`tests/`、`libs/`、`apps/` 下还有代码，不要整目录打包）：
+```bash
+scripts/docs/pack-local-docs.sh --update-readme      # 交互输入口令两次；或 --password-file <只有自己可读的文件>
+```
 
-   ```bash
-   tail -n +3 MANIFEST.txt | cut -f1 > /tmp/kcs-docs-list.txt
-   7z a -t7z -mhe=on -mx=9 -p docs-archive/kcs-docs-YYYYMMDD.7z MANIFEST.txt @/tmp/kcs-docs-list.txt
-   ```
-
-   口令按提示输入，不要写在命令行上。
-3. 用新包替换本目录里的旧包，并更新本说明里的包名、生成时间、大小和 sha256。
+脚本只打包被 `.gitignore` 忽略的文档（不含代码、依赖和构建输出），生成 `MANIFEST.txt`，打出新包并改写本说明里的包名、生成时间、文件数、大小和 sha256。然后 `git rm` 旧包，`git add` 新包与本说明并提交；目录汇总表请人工核对。口令不要写在命令行上。

@@ -51,4 +51,6 @@ pnpm test:e2e          # Playwright 浏览器旅程
 
 仓库里只留必要文档：本文件、`AGENTS.md`、`deploy/README.md`（上线手册）、`CHANGELOG.md`（forge 用它核对 pin）、`inbox/` 与 `suites/`（overlay 用例）。
 
+工作区里没有这些本地文档时，运行 `scripts/docs/restore-local-docs.sh` 从 git 历史恢复（或加 `--from-archive` 解密 `docs-archive/` 里的加密包），规则见 `AGENTS.md`「文档规则」。
+
 TinyShip 来源：`TinyshipCN/tinyship` @ `v2.2.0` / `54ddc7a`（`git archive` 导入，排除 `docs/` `archive/`）。
