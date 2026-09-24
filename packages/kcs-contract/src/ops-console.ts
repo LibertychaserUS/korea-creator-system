@@ -1,3 +1,5 @@
+import type { BasisBacktestReport } from './basis-backtest'
+import type { RefreshCoverage } from './refresh-coverage'
 import type { AuditLogView } from './responses'
 import type { SourceScopeView } from './source-adapter'
 
@@ -128,6 +130,10 @@ export type DevCohortsReport = {
   calibration: DevCohortCalibration[]
   groups: { key: string; source: string | null; window: number; contentForm: string | null; size: number; rankedFrom: string | null; rankedTo: string | null }[]
   referenceLines: { group: string; tier: string; key: string; n: number; p25: number; p50: number; p75: number; computedAt: string | null }[]
+  /** What the daily budget buys in refreshes, per source that can refresh. */
+  coverage: RefreshCoverage[]
+  /** Which 口径 predicts use better; advisory, never applied on its own. */
+  basisBacktest: BasisBacktestReport
 }
 
 export type LocaleKeyReport = {

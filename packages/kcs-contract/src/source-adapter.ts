@@ -50,11 +50,23 @@ export const SOURCE_BUDGET_ENV: Record<SourceId, string> = {
 
 /**
  * Which notes and which traffic a source's numbers describe (蒲公英 `business`
- * and `advertise_switch`). `traffic`: `all` = 全部流量 including paid boosts,
- * `organic` = 仅自然流量. `business`: `daily` = 日常笔记, `coop` = 合作笔记 — it
- * also moves the platform's cost estimates. Sources without such switches
- * have `null` defaults. The scope a record was fetched with is kept in its
- * payload (`kcsScope`) and in `metrics.basis.trafficScope` / `businessScope`.
+ * and `advertise_switch`). The two switches drive two different families:
+ *
+ * - `traffic` → 传播类 (曝光 / 阅读 / 互动中位数, 互动率 …, from 笔记表现
+ *   `advertise_switch`): `organic` = 仅自然流量, `all` = 全部流量 including paid
+ *   boosts. Reach is always read on 日常笔记 (`REACH_BUSINESS_SCOPE`).
+ * - `business` → 成本类 (CPE, CPM, 阅读单价 …, from 数据概览 `business`):
+ *   `coop` = 合作笔记, `daily` = 日常笔记. A creator with no 合作笔记 data falls
+ *   back to 日常笔记, and `metrics.basis` says so (`businessScope: 'daily'`,
+ *   `costFallback: 'noCoopData'`).
+ *
+ * Defaults (待实测 against a live account): reach on organic traffic — the
+ * creator's own pull, not what a brand paid to boost — and cost on 合作笔记,
+ * closest to what a brand gets from a paid post. A 全部流量 reference is
+ * fetched about once a month (`PGY_ALL_TRAFFIC_REFERENCE_DAYS`) and shown for
+ * comparison only (`metrics.allTraffic`). Sources without such switches have
+ * `null` defaults. The scope a record was fetched with is kept in its payload
+ * (`kcsScope`) and in `metrics.basis.trafficScope` / `businessScope`.
  */
 export const TRAFFIC_SCOPES = ['all', 'organic'] as const
 export type TrafficScope = (typeof TRAFFIC_SCOPES)[number]
@@ -64,10 +76,13 @@ export type SourceScope = { traffic: TrafficScope; business: BusinessScope }
 export type SourceScopeView = SourceScope & { from: { traffic: 'env' | 'source' | 'default'; business: 'env' | 'source' | 'default' } }
 
 export const SOURCE_SCOPE_DEFAULTS: Record<SourceId, SourceScope | null> = {
-  pugongying: { traffic: 'all', business: 'daily' },
+  pugongying: { traffic: 'organic', business: 'coop' },
   qiangua: null,
   xinhong: null,
 }
+
+/** 传播类 numbers are read on 日常笔记 whatever `business` the cost side uses. */
+export const REACH_BUSINESS_SCOPE: BusinessScope = 'daily'
 
 /** Env overrides, read before `ingest_sources.traffic_scope` / `business_scope`. */
 export const SOURCE_SCOPE_ENV: Partial<Record<SourceId, { traffic: string; business: string }>> = {
@@ -78,7 +93,7 @@ export const SOURCE_SCOPE_ENV: Partial<Record<SourceId, { traffic: string; busin
 export const SCOPED_METRIC_KEYS: readonly NumericMetricKey[] = [
   'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
   'engagementRate', 'completionRate', 'read3sRate', 'noteCount', 'viralCount', 'viralRate',
-  'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'cpr', 'cpe', 'cpeVideo', 'cpm',
+  'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'cpr', 'cpe', 'cpeVideo', 'cpm', 'cpmRead',
 ]
 
 /** Parameters ops fill in on the ingest page; every adapter accepts the same shape. */
@@ -482,6 +497,7 @@ export const SOURCE_CREDENTIALS: readonly SourceCredentialRef[] = [
     optionalEnvVars: [
       'TIKHUB_BASE_URL', 'PGY_GATEWAY', 'PGY_BASE_URL', 'PGY_BRAND_USER_ID', 'PGY_ENRICH', 'PGY_DATE_TYPES',
       'PGY_TIMEOUT_MS', 'PGY_DAILY_BUDGET_USD', 'PGY_TRAFFIC_SCOPE', 'PGY_BUSINESS_SCOPE',
+      'PGY_SLOW_REFRESH_DAYS', 'PGY_ALL_TRAFFIC_REFERENCE_DAYS',
     ],
   },
   { source: 'qiangua', envVars: ['QIANGUA_TOKEN'], optionalEnvVars: ['QIANGUA_BASE_URL', 'QIANGUA_SEARCH_PATH', 'QIANGUA_FIELD_MAP'] },
