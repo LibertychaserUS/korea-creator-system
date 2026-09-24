@@ -232,6 +232,27 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
         { key: 'interactionMedian', op: 'percentileLte', value: 40, tone: 'warn' },
       ],
     },
+    { groups: [{ mode: 'any', filters: [{ key: 'cpe', op: 'lte', value: 2 }, { key: 'readMedian', op: 'percentileGte', value: 80 }] }] },
+    {
+      groups: [
+        { mode: 'exclude', filters: [{ key: 'engagementRate', op: 'lte', value: 0.03 }, { key: 'followers', op: 'gte', value: 100_000 }] },
+        { mode: 'exclude', filters: [] },
+      ],
+      sort: { key: 'followers', dir: 'desc' },
+    },
+    {
+      filters: [{ key: 'followers', op: 'gte', value: 5_000 }],
+      groups: [
+        { mode: 'any', filters: [{ key: 'cpe', op: 'between', value: [0, 3] }, { key: 'viralRate', op: 'gte', value: 0.1 }] },
+        { mode: 'exclude', filters: [{ key: 'cpe', op: 'percentileGte', value: 90 }] },
+      ],
+      serviceFee: 0.1,
+    },
+    { categories: ['collaborated', 'never_collaborated'], hasCollaborated: true },
+    { categories: ['never_collaborated'] },
+    { hasCollaborated: false, sort: { key: 'readMedian', dir: 'desc' } },
+    { collabCountMin: 1, collabCountMax: 2 },
+    { search: 'XHS1', sources: ['pugongying', 'qiangua'] },
   ]
 
   for (const [index, overrides] of specs.entries()) {

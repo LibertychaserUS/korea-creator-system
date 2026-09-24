@@ -103,6 +103,20 @@ export function highlightKeys(highlights: readonly Highlight[]): NumericMetricKe
   return highlights.filter((h): h is MetricHighlight => !isHealthGate(h)).map((h) => h.key)
 }
 
+/**
+ * Extra condition groups on top of `filters` (which must all hold): an `any`
+ * group keeps a row when at least one of its conditions holds; an `exclude`
+ * group drops a row when all of its conditions hold. Empty groups do nothing.
+ */
+export type FilterGroup = { mode: 'any' | 'exclude'; filters: MetricFilter[] }
+export const FILTER_GROUP_MODES = ['any', 'exclude'] as const
+
+/** `private`: only the author sees and edits it (我的方案); `team`: everyone in the org (团队方案). */
+export type QueryVisibility = 'private' | 'team'
+export const QUERY_VISIBILITIES: readonly QueryVisibility[] = ['private', 'team']
+
+export const SAVED_QUERY_LIMITS = { groups: 10, filtersPerGroup: 20, filters: 30, search: 100, categories: 50 } as const
+
 export type SavedQuery = {
   id: string
   name: string
@@ -112,13 +126,47 @@ export type SavedQuery = {
   health: HealthGrade[]
   regions: string[]
   brandsAny: string[]
+  /** Category ids; a creator in any of them passes. */
+  categories: string[]
+  /** true: worked with us before; false: never; null: either. */
+  hasCollaborated: boolean | null
+  collabCountMin: number | null
+  collabCountMax: number | null
+  /** Saved name / creator key / 小红书号 search, applied with the page's own search box. */
+  search: string
   filters: MetricFilter[]
+  groups: FilterGroup[]
   sort: { key: NumericMetricKey | 'followers'; dir: 'asc' | 'desc' }
   highlights: Highlight[]
   /** Columns the pool table shows for this query, in order. */
   columns: NumericMetricKey[]
   /** Cost fields shown (and filtered) with this service fee added: 0, 10% or 20% (优效). */
   serviceFee: ServiceFeeRate
+  visibility: QueryVisibility
+}
+
+/** A saved query as the API lists it: the spec plus who owns it and when it last changed. */
+export type SavedQueryRecord = SavedQuery & {
+  mine: boolean
+  ownerId: string | null
+  ownerName: string | null
+  updatedAt: string | null
+  updatedByName: string | null
+  archivedAt: string | null
+}
+
+export type SavedQueryRevisionAction = 'create' | 'update' | 'archive' | 'restore'
+
+/** One entry of a saved query's 修改记录: the query right after that change. */
+export type SavedQueryRevision = {
+  version: number
+  action: SavedQueryRevisionAction
+  name: string
+  visibility: QueryVisibility
+  spec: SavedQuery
+  editedBy: string | null
+  editedByName: string | null
+  editedAt: string
 }
 
 export type QueryRow = {
@@ -128,6 +176,9 @@ export type QueryRow = {
   source: SourceId
   regions: string[]
   coopBrands: string[]
+  categories?: string[]
+  collabCount?: number
+  xhsId?: string | null
   metrics: CreatorMetrics
   /** Precomputed (the pool stores them at publish); computed here when absent. */
   percentiles?: MetricPercentiles
@@ -180,11 +231,18 @@ export function defaultSavedQuery(overrides: Partial<SavedQuery> = {}): SavedQue
     health: [],
     regions: [],
     brandsAny: [],
+    categories: [],
+    hasCollaborated: null,
+    collabCountMin: null,
+    collabCountMax: null,
+    search: '',
     filters: [],
+    groups: [],
     sort: { key: 'cpe', dir: 'asc' },
     highlights: defaultHighlights(),
     columns: [...DEFAULT_QUERY_COLUMNS],
     serviceFee: 0,
+    visibility: 'team',
     ...overrides,
   }
 }
@@ -202,7 +260,12 @@ export function normalizeSavedQuery(value: unknown): Partial<SavedQuery> {
   if (!value || typeof value !== 'object') return {}
   const q = { ...(value as Record<string, any>) }
   if (Array.isArray(q.columns)) q.columns = [...new Set(q.columns.map(renamedKey))]
-  if (Array.isArray(q.filters)) q.filters = q.filters.map((f: any) => (f && typeof f === 'object' ? { ...f, key: renamedKey(f.key) } : f))
+  const renameFilters = (list: unknown[]) => list.map((f: any) => (f && typeof f === 'object' ? { ...f, key: renamedKey(f.key) } : f))
+  if (Array.isArray(q.filters)) q.filters = renameFilters(q.filters)
+  if (Array.isArray(q.groups)) {
+    q.groups = q.groups.map((g: any) => (g && typeof g === 'object' && Array.isArray(g.filters) ? { ...g, filters: renameFilters(g.filters) } : g))
+  }
+  if (typeof q.search === 'string') q.search = q.search.trim()
   if (Array.isArray(q.highlights)) {
     q.highlights = q.highlights.map((h: any) => (h && typeof h === 'object' && h.key !== 'health' ? { ...h, key: renamedKey(h.key) } : h))
   }
@@ -221,20 +284,62 @@ export function validateSavedQuery(q: unknown): string[] {
   if (typeof s.name !== 'string' || !s.name.trim()) errors.push('name.required')
   if (!Array.isArray(s.filters)) errors.push('filters.shape')
   else {
-    for (const f of s.filters) {
-      if (!f || !METRIC_KEYS.includes(f.key)) errors.push('filters.key')
-      else if (f.op === 'between') {
-        if (!Array.isArray(f.value) || f.value.length !== 2 || f.value[0] > f.value[1]) errors.push('filters.between')
-      } else if (typeof f.value !== 'number' || !Number.isFinite(f.value)) errors.push('filters.value')
-      else if (f.op === 'percentileGte' && (f.value < 0 || f.value > 100)) errors.push('filters.percentile')
+    if (s.filters.length > SAVED_QUERY_LIMITS.filters) errors.push('filters.tooMany')
+    errors.push(...filterErrors(s.filters))
+  }
+  if (s.groups !== undefined) {
+    if (!Array.isArray(s.groups) || s.groups.length > SAVED_QUERY_LIMITS.groups) errors.push('groups.shape')
+    else {
+      for (const g of s.groups) {
+        if (!g || !FILTER_GROUP_MODES.includes(g.mode) || !Array.isArray(g.filters) || g.filters.length > SAVED_QUERY_LIMITS.filtersPerGroup) {
+          errors.push('groups.shape')
+        } else errors.push(...filterErrors(g.filters))
+      }
     }
   }
+  if (s.categories !== undefined
+    && (!Array.isArray(s.categories) || s.categories.length > SAVED_QUERY_LIMITS.categories || s.categories.some((c) => typeof c !== 'string' || !c))) {
+    errors.push('categories')
+  }
+  if (s.hasCollaborated !== undefined && s.hasCollaborated !== null && typeof s.hasCollaborated !== 'boolean') errors.push('hasCollaborated')
+  const count = (v: unknown) => v === undefined || v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0)
+  if (!count(s.collabCountMin) || !count(s.collabCountMax)) errors.push('collabCount')
+  else if (s.collabCountMin != null && s.collabCountMax != null && s.collabCountMin > s.collabCountMax) errors.push('collabCount')
+  if (s.search !== undefined && (typeof s.search !== 'string' || s.search.length > SAVED_QUERY_LIMITS.search)) errors.push('search')
+  if (s.visibility !== undefined && !QUERY_VISIBILITIES.includes(s.visibility)) errors.push('visibility')
   if (!s.sort || (s.sort.key !== 'followers' && !METRIC_KEYS.includes(s.sort.key as NumericMetricKey))) errors.push('sort.key')
   if (!Array.isArray(s.columns) || !s.columns.length || s.columns.some((c) => !METRIC_KEYS.includes(c))) errors.push('columns')
   if (!Array.isArray(s.highlights) || s.highlights.some((h) => !validHighlight(h))) errors.push('highlights')
   if (s.serviceFee !== undefined && !SERVICE_FEE_RATES.includes(s.serviceFee as ServiceFeeRate)) errors.push('serviceFee')
   if (Array.isArray(s.health) && s.health.some((h) => !HEALTH_GRADES.includes(h as (typeof HEALTH_GRADES)[number]))) errors.push('health')
   return [...new Set(errors)]
+}
+
+function filterErrors(filters: readonly MetricFilter[]): string[] {
+  const errors: string[] = []
+  for (const f of filters) {
+    if (!f || !METRIC_KEYS.includes(f.key)) errors.push('filters.key')
+    else if (f.op === 'between') {
+      if (!Array.isArray(f.value) || f.value.length !== 2 || !f.value.every((v) => typeof v === 'number' && Number.isFinite(v)) || f.value[0] > f.value[1]) {
+        errors.push('filters.between')
+      }
+    } else if (f.op !== 'gte' && f.op !== 'lte' && f.op !== 'percentileGte') errors.push('filters.op')
+    else if (typeof f.value !== 'number' || !Number.isFinite(f.value)) errors.push('filters.value')
+    else if (f.op === 'percentileGte' && (f.value < 0 || f.value > 100)) errors.push('filters.percentile')
+  }
+  return errors
+}
+
+/** Every metric condition in the spec: `filters` and the ones inside groups. */
+export function allFilters(q: Pick<SavedQuery, 'filters'> & { groups?: FilterGroup[] }): MetricFilter[] {
+  return [...q.filters, ...(q.groups ?? []).flatMap((g) => g.filters)]
+}
+
+/** Name / creator key / 小红书号 contain the text (case-insensitive). */
+export function matchesSearch(row: { displayName: string; creatorKey: string; xhsId?: string | null }, text: string): boolean {
+  const needle = text.trim().toLowerCase()
+  if (!needle) return true
+  return [row.displayName, row.creatorKey, row.xhsId].filter((v) => v != null).join(' ').toLowerCase().includes(needle)
 }
 
 const HIGHLIGHT_TONES: readonly HighlightTone[] = ['good', 'warn', 'bad']
@@ -292,7 +397,7 @@ export function applySavedQuery<T extends QueryRow>(
       for (const [id, percentiles] of rankGroup(members, { target })) ranked.set(id, percentiles)
     }
   }
-  const keys = new Set([...q.columns, ...q.filters.map((f) => f.key), ...highlightKeys(q.highlights)])
+  const keys = new Set([...q.columns, ...allFilters(q).map((f) => f.key), ...highlightKeys(q.highlights)])
   let out: QueryResultRow<T>[] = derived.map((r) => {
     const all = r.percentiles ?? ranked.get(r.id) ?? {}
     const percentiles: MetricPercentiles = {}
@@ -319,7 +424,18 @@ export function applySavedQuery<T extends QueryRow>(
   if (q.health.length) out = out.filter((r) => r.metrics.health != null && q.health.includes(r.metrics.health))
   if (q.regions.length) out = out.filter((r) => r.regions.some((x) => q.regions.includes(x)))
   if (q.brandsAny.length) out = out.filter((r) => r.coopBrands.some((b) => q.brandsAny.includes(b)))
+  const categories = q.categories ?? []
+  if (categories.length) out = out.filter((r) => (r.categories ?? []).some((c) => categories.includes(c)))
+  if (q.hasCollaborated != null) out = out.filter((r) => ((r.collabCount ?? 0) > 0) === q.hasCollaborated)
+  if (q.collabCountMin != null) out = out.filter((r) => (r.collabCount ?? 0) >= q.collabCountMin!)
+  if (q.collabCountMax != null) out = out.filter((r) => (r.collabCount ?? 0) <= q.collabCountMax!)
+  if (q.search) out = out.filter((r) => matchesSearch(r, q.search))
   for (const f of q.filters) out = out.filter((r) => passes(r, f))
+  for (const g of q.groups ?? []) {
+    if (!g.filters.length) continue
+    if (g.mode === 'any') out = out.filter((r) => g.filters.some((f) => passes(r, f)))
+    else out = out.filter((r) => !g.filters.every((f) => passes(r, f)))
+  }
 
   const dir = q.sort.dir === 'asc' ? 1 : -1
   out.sort((a, b) => {

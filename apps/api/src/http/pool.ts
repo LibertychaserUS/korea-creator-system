@@ -25,7 +25,9 @@ import {
   cohortGroupKey,
   highlightFlags,
   highlightKeys,
+  allFilters,
   type CreatorMetrics,
+  type MetricFilter,
   type MetricPercentiles,
   type NumericMetricKey,
   type Paging,
@@ -380,13 +382,14 @@ export async function poolPage(
 
 /** Keys a saved query shows: its columns, filters and highlights, in that order. */
 export function savedQueryKeys(spec: SavedQuery): NumericMetricKey[] {
-  return [...new Set([...spec.columns, ...spec.filters.map((f) => f.key), ...highlightKeys(spec.highlights)])]
+  return [...new Set([...spec.columns, ...allFilters(spec).map((f) => f.key), ...highlightKeys(spec.highlights)])]
 }
 
 /**
  * POST /api/select/queries/run — `applySavedQuery` over the pool table, plus
- * the page's free-text `q` (name / creator key / 小红书号). Order: the spec's
- * sort (nulls last), then CPE ascending, then followers descending, then id.
+ * the page's free-text `q` (name / creator key / 小红书号, on top of the spec's
+ * own saved `search`). Order: the spec's sort (nulls last), then CPE
+ * ascending, then followers descending, then id.
  */
 export async function savedQueryPage(
   db: Db,
@@ -409,25 +412,34 @@ export async function savedQueryPage(
   // Thresholds on cost fields are read with the chosen service fee added, as shown.
   const valueSql = (key: NumericMetricKey) => (fee && COST_METRIC_KEYS.includes(key) ? `(${col(key)} * ${1 + fee})` : col(key))
   let fresh: string | null = null
-  for (const f of spec.filters) {
+  const filterSql = (f: MetricFilter): string => {
     if (f.op === 'percentileGte') {
-      if (!RANKED_METRIC_KEYS.includes(f.key)) {
-        where.push('false')
-        continue
-      }
+      if (!RANKED_METRIC_KEYS.includes(f.key)) return 'false'
       fresh ??= params.add(staleBefore(now))
-      where.push(`(p.fetched_at IS NULL OR p.fetched_at >= ${fresh}::timestamptz)`)
-      where.push(`p.${rankColumn(f.key)} >= ${params.add(Math.round(f.value * 10))}::int`)
-    } else if (f.op === 'between') {
-      where.push(`${valueSql(f.key)} BETWEEN ${params.add(f.value[0])}::float8 AND ${params.add(f.value[1])}::float8`)
-    } else {
-      where.push(`${valueSql(f.key)} ${f.op === 'gte' ? '>=' : '<='} ${params.add(f.value)}::float8`)
+      return `((p.fetched_at IS NULL OR p.fetched_at >= ${fresh}::timestamptz) AND p.${rankColumn(f.key)} >= ${params.add(Math.round(f.value * 10))}::int)`
     }
+    if (f.op === 'between') {
+      return `${valueSql(f.key)} BETWEEN ${params.add(f.value[0])}::float8 AND ${params.add(f.value[1])}::float8`
+    }
+    return `${valueSql(f.key)} ${f.op === 'gte' ? '>=' : '<='} ${params.add(f.value)}::float8`
   }
+  for (const f of spec.filters) where.push(filterSql(f))
+  for (const group of spec.groups ?? []) {
+    if (!group.filters.length) continue
+    const terms = group.filters.map(filterSql)
+    // A missing value fails its condition (NULL → false), in both kinds of group.
+    if (group.mode === 'any') where.push(`COALESCE((${terms.join(' OR ')}), false)`)
+    else where.push(`NOT COALESCE((${terms.join(' AND ')}), false)`)
+  }
+  if (spec.categories?.length) where.push(`p.categories && ${params.add(spec.categories)}::text[]`)
+  if (spec.hasCollaborated != null) where.push(spec.hasCollaborated ? 'p.collab_count > 0' : 'p.collab_count = 0')
+  if (spec.collabCountMin != null) where.push(`p.collab_count >= ${params.add(spec.collabCountMin)}::int`)
+  if (spec.collabCountMax != null) where.push(`p.collab_count <= ${params.add(spec.collabCountMax)}::int`)
+  const searchSql = (text: string) =>
+    `strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${params.add(text)})) > 0`
+  if (spec.search?.trim()) where.push(searchSql(spec.search.trim()))
   const search = (query.q ?? '').trim()
-  if (search) {
-    where.push(`strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${params.add(search)})) > 0`)
-  }
+  if (search) where.push(searchSql(search))
 
   const paging = parseCursorPaging(query)
   const cols = orderCols(spec.sort.key, spec.sort.dir === 'asc' ? 'ASC' : 'DESC', [

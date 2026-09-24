@@ -32,20 +32,30 @@
         <Bookmark class="size-4 text-primary" aria-hidden="true" />
         <span class="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{{ t('kcs.query.title') }}</span>
         <div class="flex flex-wrap items-center gap-1.5" role="tablist" :aria-label="t('kcs.query.title')">
-          <button
-            v-for="q in savedQueries"
-            :key="q.id"
-            type="button"
-            role="tab"
-            class="h-8 rounded-md border px-3 text-xs font-medium transition-colors"
-            :class="activeId === q.id && !dirty ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground hover:bg-muted'"
-            :aria-selected="activeId === q.id && !dirty"
-            :data-testid="`query-tab-${q.id}`"
-            @click="selectQuery(q)"
-          >
-            {{ q.name }}
-            <span class="ml-1 text-[10px] opacity-70">{{ t('kcs.query.version', { n: q.version }) }}</span>
-          </button>
+          <template v-for="shelf in shelves" :key="shelf.id">
+            <span
+              v-if="shelf.items.length"
+              class="ml-1 text-[11px] font-medium text-muted-foreground first:ml-0"
+              :data-testid="`query-shelf-${shelf.id}`"
+            >{{ t(`kcs.query.${shelf.id}`) }}</span>
+            <button
+              v-for="q in shelf.items"
+              :key="q.id"
+              type="button"
+              role="tab"
+              class="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs font-medium transition-colors"
+              :class="activeId === q.id && !dirty ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground hover:bg-muted'"
+              :aria-selected="activeId === q.id && !dirty"
+              :title="q.visibility === 'private' ? t('kcs.query.privateTag') : q.ownerName ? t('kcs.query.byOwner', { name: q.ownerName }) : undefined"
+              :data-testid="`query-tab-${q.id}`"
+              :data-visibility="q.visibility"
+              @click="selectQuery(q)"
+            >
+              <Lock v-if="q.visibility === 'private'" class="size-3 opacity-70" :aria-label="t('kcs.query.privateTag')" />
+              {{ q.name }}
+              <span class="text-[10px] opacity-70">{{ t('kcs.query.version', { n: q.version }) }}</span>
+            </button>
+          </template>
           <span
             v-if="dirty"
             class="inline-flex h-8 items-center rounded-md border border-dashed border-primary/50 px-3 text-xs font-medium text-primary"
@@ -133,8 +143,30 @@
           <Label for="pool-search" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.creators.search') }}</Label>
           <div class="relative">
             <Search class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input id="pool-search" v-model="search" data-testid="pool-search" class="h-9 pl-8" :placeholder="t('kcs.creators.search')" />
+            <Input id="pool-search" v-model="search" data-testid="pool-search" class="h-9 pl-8" :class="search.trim() ? 'pr-24' : ''" :placeholder="t('kcs.creators.search')" />
+            <Button
+              v-if="search.trim()"
+              variant="ghost"
+              size="sm"
+              class="absolute right-1 top-1/2 h-7 -translate-y-1/2 px-2 text-[11px]"
+              :title="t('kcs.query.savedSearchHint')"
+              data-testid="pool-search-save"
+              @click="keepSearch"
+            >
+              <BookmarkPlus class="size-3.5" />
+              {{ t('kcs.query.saveSearch') }}
+            </Button>
           </div>
+          <span
+            v-if="spec.search"
+            class="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+            data-testid="query-saved-search"
+          >
+            <span class="truncate">{{ t('kcs.query.savedSearchChip', { q: spec.search }) }}</span>
+            <button type="button" class="rounded hover:bg-primary/15" :aria-label="t('kcs.query.clearSavedSearch')" @click="spec.search = ''">
+              <X class="size-3" />
+            </button>
+          </span>
         </div>
 
         <div class="min-w-0">
@@ -187,7 +219,82 @@
       <!-- 方案编辑器 -->
       <div v-if="editorOpen" class="grid gap-6 border-t border-border/60 bg-muted/20 px-4 py-5 sm:px-5 lg:grid-cols-[1fr_1fr_minmax(16rem,0.8fr)]" data-testid="query-editor">
         <section class="flex flex-col gap-3">
-          <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold">{{ t('kcs.query.scope') }}</h3>
+          <fieldset v-if="categoryOptions.length" class="min-w-0" data-testid="query-categories">
+            <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.query.categories') }}</legend>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                class="h-7 rounded-md border px-2 text-[11px] font-medium transition-colors"
+                :class="!spec.categories.length ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:text-foreground'"
+                :aria-pressed="!spec.categories.length"
+                @click="spec.categories = []"
+              >
+                {{ t('kcs.query.anyCategory') }}
+              </button>
+              <button
+                v-for="c in categoryOptions"
+                :key="c.slug"
+                type="button"
+                class="h-7 rounded-md border px-2 text-[11px] font-medium transition-colors"
+                :class="spec.categories.includes(c.slug) ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:text-foreground'"
+                :aria-pressed="spec.categories.includes(c.slug)"
+                :data-testid="`query-category-${c.slug}`"
+                @click="toggleIn(spec.categories, c.slug)"
+              >
+                {{ c.name[locale] ?? c.slug }}
+              </button>
+            </div>
+          </fieldset>
+          <div class="flex flex-wrap items-end gap-3">
+            <fieldset class="min-w-0" data-testid="query-collab">
+              <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.query.collab') }}</legend>
+              <div class="inline-flex rounded-md border border-border bg-muted/40 p-0.5" role="group">
+                <button
+                  v-for="opt in collabOptions"
+                  :key="String(opt.value)"
+                  type="button"
+                  class="h-7 rounded-[6px] px-2.5 text-[11px] font-medium transition-colors"
+                  :class="spec.hasCollaborated === opt.value ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                  :aria-pressed="spec.hasCollaborated === opt.value"
+                  :data-testid="`query-collab-${opt.id}`"
+                  @click="spec.hasCollaborated = opt.value"
+                >
+                  {{ t(`kcs.query.${opt.label}`) }}
+                </button>
+              </div>
+            </fieldset>
+            <fieldset class="min-w-0" data-testid="query-collab-count">
+              <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.query.collabCount') }}</legend>
+              <div class="flex items-center gap-1">
+                <Input
+                  :model-value="spec.collabCountMin ?? ''"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="h-7 w-16 px-2 text-xs tabular-nums"
+                  :placeholder="t('kcs.query.collabCountMin')"
+                  :aria-label="t('kcs.query.collabCountMin')"
+                  data-testid="query-collab-min"
+                  @update:model-value="(v) => (spec.collabCountMin = countValue(v))"
+                />
+                <span class="text-muted-foreground/60">–</span>
+                <Input
+                  :model-value="spec.collabCountMax ?? ''"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="h-7 w-16 px-2 text-xs tabular-nums"
+                  :placeholder="t('kcs.query.collabCountMax')"
+                  :aria-label="t('kcs.query.collabCountMax')"
+                  data-testid="query-collab-max"
+                  @update:model-value="(v) => (spec.collabCountMax = countValue(v))"
+                />
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="mt-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold">{{ t('kcs.query.filters') }}</h3>
             <Button variant="ghost" size="sm" class="h-7 text-xs" data-testid="query-add-filter" @click="addFilter">
               <Plus class="size-3.5" />
@@ -197,34 +304,58 @@
           <p v-if="!spec.filters.length" class="rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
             {{ t('kcs.query.noFilters') }}
           </p>
-          <div v-for="(f, i) in spec.filters" :key="i" class="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-1.5" :data-testid="`query-filter-${i}`">
-            <select v-model="f.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
-              <option v-for="key in metricKeys" :key="key" :value="key">{{ label(key) }}</option>
-            </select>
-            <select v-model="f.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" @change="onOpChange(f)">
-              <option value="gte">{{ t('kcs.query.op.gte') }}</option>
-              <option value="lte">{{ t('kcs.query.op.lte') }}</option>
-              <option value="between">{{ t('kcs.query.op.between') }}</option>
-              <option value="percentileGte">{{ t('kcs.query.op.percentileGte') }}</option>
-            </select>
-            <div v-if="f.op === 'between'" class="flex min-w-0 items-center gap-1">
-              <Input v-model.number="(f.value as [number, number])[0]" type="number" step="any" class="h-8 min-w-0 px-2 text-xs tabular-nums" :aria-label="t('kcs.query.from')" />
-              <span class="text-muted-foreground/60">–</span>
-              <Input v-model.number="(f.value as [number, number])[1]" type="number" step="any" class="h-8 min-w-0 px-2 text-xs tabular-nums" :aria-label="t('kcs.query.to')" />
+          <p v-else-if="spec.groups.length" class="-mb-1 text-[11px] text-muted-foreground">{{ t('kcs.query.filtersAll') }}</p>
+          <FilterRow
+            v-for="(f, i) in spec.filters"
+            :key="`f-${i}`"
+            :filter="f"
+            :reference="referenceFor(f.key)"
+            :testid="`query-filter-${i}`"
+            @remove="spec.filters.splice(i, 1)"
+          />
+
+          <div
+            v-for="(g, gi) in spec.groups"
+            :key="`g-${gi}`"
+            class="flex flex-col gap-2 rounded-md border px-2.5 py-2"
+            :class="g.mode === 'exclude' ? 'border-destructive/30 bg-destructive/5' : 'border-primary/25 bg-primary/5'"
+            :data-testid="`query-group-${gi}`"
+            :data-mode="g.mode"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold" :class="g.mode === 'exclude' ? 'text-destructive' : 'text-primary'">
+                {{ g.mode === 'exclude' ? t('kcs.query.groupExclude') : t('kcs.query.groupAny') }}
+              </span>
+              <span class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                {{ g.mode === 'exclude' ? t('kcs.query.groupExcludeHint') : t('kcs.query.groupAnyHint') }}
+              </span>
+              <Button variant="ghost" size="sm" class="h-6 px-1.5 text-[11px]" :data-testid="`query-group-${gi}-add`" @click="g.filters.push({ key: 'cpe', op: 'lte', value: 3 })">
+                <Plus class="size-3" />
+                {{ t('kcs.query.addFilter') }}
+              </Button>
+              <Button variant="ghost" size="icon" class="size-6 text-muted-foreground" :aria-label="t('kcs.query.removeGroup')" @click="spec.groups.splice(gi, 1)">
+                <X class="size-3.5" />
+              </Button>
             </div>
-            <Input
-              v-else
-              v-model.number="f.value"
-              type="number"
-              step="any"
-              class="h-8 min-w-0 px-2 text-xs tabular-nums"
-              :aria-label="t('kcs.query.value')"
-              :placeholder="f.op === 'percentileGte' ? '75' : unitHint(f.key)"
+            <p v-if="!g.filters.length" class="text-[11px] text-muted-foreground">{{ t('kcs.query.emptyGroup') }}</p>
+            <FilterRow
+              v-for="(f, i) in g.filters"
+              :key="`g-${gi}-${i}`"
+              :filter="f"
+              :reference="referenceFor(f.key)"
+              :testid="`query-group-${gi}-filter-${i}`"
+              @remove="g.filters.splice(i, 1)"
             />
-            <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" :aria-label="t('kcs.query.removeFilter')" @click="spec.filters.splice(i, 1)">
-              <X class="size-3.5" />
+          </div>
+          <div v-if="spec.groups.length < SAVED_QUERY_LIMITS.groups" class="flex flex-wrap gap-1.5">
+            <Button variant="outline" size="sm" class="h-7 text-[11px]" data-testid="query-add-group-any" @click="addGroup('any')">
+              <Plus class="size-3" />
+              {{ t('kcs.query.addGroupAny') }}
             </Button>
-            <ReferenceChips v-if="f.op === 'gte' || f.op === 'lte'" class="col-span-full" :line="referenceFor(f.key)" :metric-key="f.key" @pick="(v) => (f.value = v)" />
+            <Button variant="outline" size="sm" class="h-7 text-[11px]" data-testid="query-add-group-exclude" @click="addGroup('exclude')">
+              <Plus class="size-3" />
+              {{ t('kcs.query.addGroupExclude') }}
+            </Button>
           </div>
         </section>
 
@@ -308,6 +439,32 @@
             <Label for="query-name" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.query.name') }}</Label>
             <Input id="query-name" v-model="spec.name" data-testid="query-name" class="h-9" :placeholder="t('kcs.query.namePlaceholder')" />
           </div>
+          <fieldset class="min-w-0" data-testid="query-visibility">
+            <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.query.visibility') }}</legend>
+            <div class="inline-flex rounded-md border border-border bg-muted/40 p-0.5" role="group" :title="canChangeVisibility ? undefined : t('kcs.query.visibilityOwnerOnly')">
+              <button
+                v-for="v in QUERY_VISIBILITIES"
+                :key="v"
+                type="button"
+                class="inline-flex h-7 items-center gap-1 rounded-[6px] px-2.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                :class="spec.visibility === v ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                :aria-pressed="spec.visibility === v"
+                :disabled="!canChangeVisibility"
+                :data-testid="`query-visibility-${v}`"
+                @click="spec.visibility = v"
+              >
+                <Lock v-if="v === 'private'" class="size-3" aria-hidden="true" />
+                <Users v-else class="size-3" aria-hidden="true" />
+                {{ v === 'private' ? t('kcs.query.visibilityPrivate') : t('kcs.query.visibilityTeam') }}
+              </button>
+            </div>
+            <p v-if="!canChangeVisibility" class="mt-1 text-[11px] text-muted-foreground">{{ t('kcs.query.visibilityOwnerOnly') }}</p>
+          </fieldset>
+          <div>
+            <Label for="query-search" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.query.savedSearch') }}</Label>
+            <Input id="query-search" v-model.trim="spec.search" data-testid="query-search" class="h-8 text-xs" :maxlength="SAVED_QUERY_LIMITS.search" :placeholder="t('kcs.creators.search')" />
+            <p class="mt-1 text-[11px] leading-relaxed text-muted-foreground">{{ t('kcs.query.savedSearchHint') }}</p>
+          </div>
           <ul v-if="errors.length" class="space-y-1 text-xs text-destructive" data-testid="query-errors">
             <li v-for="e in errors" :key="e">{{ te(`kcs.query.errors.${e}`) ? t(`kcs.query.errors.${e}`) : e }}</li>
           </ul>
@@ -325,7 +482,13 @@
               {{ t('kcs.query.delete') }}
             </Button>
           </div>
-          <p v-if="notice" class="text-xs text-muted-foreground" data-testid="query-notice">{{ notice }}</p>
+          <p v-if="notice" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="query-notice">
+            {{ notice }}
+            <Button v-if="undoId" variant="link" size="sm" class="h-auto p-0 text-xs" data-testid="query-undo-delete" @click="restore(undoId)">
+              {{ t('kcs.query.deletedUndo') }}
+            </Button>
+          </p>
+          <QueryRevisions v-if="activeId" :query-id="activeId" :current-version="activeVersion" @use="useRevision" />
           <p class="text-xs leading-relaxed text-muted-foreground">{{ t('kcs.tier.hint') }}</p>
         </section>
       </div>
@@ -532,16 +695,19 @@ import {
   ArrowLeft,
   ArrowUpNarrowWide,
   Bookmark,
+  BookmarkPlus,
   Check,
   ChevronDown,
   FolderKanban,
   Info,
+  Lock,
   Plus,
   Save,
   Search,
   SlidersHorizontal,
   Trash2,
   UserPlus,
+  Users,
   X,
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
@@ -561,21 +727,36 @@ import {
   defaultSavedQuery,
   metricField,
   validateSavedQuery,
+  QUERY_VISIBILITIES,
+  SAVED_QUERY_LIMITS,
   type CreatorTier,
+  type FilterGroup,
   type HealthGrade,
   type Highlight,
   type HighlightTone,
-  type MetricFilter,
   type MetricHighlight,
   type NumericMetricKey,
   type SavedQuery,
+  type SavedQueryRecord,
+  type SavedQueryRevision,
   type SourceId,
 } from '@kcs/contract'
+import FilterRow from '~/components/FilterRow.vue'
+import QueryRevisions from '~/components/QueryRevisions.vue'
 import ReferenceChips, { type ReferenceLine } from '~/components/ReferenceChips.vue'
 
-type SavedQueryRecord = { id: string; name: string; version: number; spec: SavedQuery }
+type CategoryOption = { slug: string; name: Record<string, string>; group: string | null }
 
-const { t, te } = useI18n()
+const SPEC_FIELDS = Object.keys(defaultSavedQuery()) as Array<keyof SavedQuery>
+
+/** 列表记录里除了方案本身还有归属、修改人等信息；编辑器和提交只带方案字段。 */
+function specOf(value: Partial<SavedQuery> & Record<string, unknown>): SavedQuery {
+  const base = defaultSavedQuery()
+  const picked = Object.fromEntries(SPEC_FIELDS.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]))
+  return { ...base, ...picked } as SavedQuery
+}
+
+const { t, te, locale } = useI18n()
 const { request } = useApi()
 const { user } = useSession()
 const { formatNumber } = useFormat()
@@ -589,6 +770,13 @@ const metricKeys = VISIBLE_METRIC_KEYS
 const sortableKeys = ['followers', ...VISIBLE_METRIC_KEYS.filter((k) => k !== 'followers')] as (NumericMetricKey | 'followers')[]
 
 const savedQueries = ref<SavedQueryRecord[]>([])
+const categoryOptions = ref<CategoryOption[]>([])
+const collabOptions = [
+  { id: 'any', value: null, label: 'collabAny' },
+  { id: 'yes', value: true, label: 'collabYes' },
+  { id: 'no', value: false, label: 'collabNo' },
+] as const
+const undoId = ref('')
 const activeId = ref('')
 const activeName = ref('')
 const baseline = ref('')
@@ -612,6 +800,14 @@ const projectId = computed(() => String(route.query.project || ''))
 const canAssign = computed(() => Boolean(user.value && can(user.value.role, 'select.assign')))
 const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'select.write')))
 const specJson = computed(() => JSON.stringify(spec))
+const activeRecord = computed(() => savedQueries.value.find((q) => q.id === activeId.value) ?? null)
+const activeVersion = computed(() => activeRecord.value?.version ?? 1)
+/** 谁能看到只有建方案的人能改；新方案随便选。 */
+const canChangeVisibility = computed(() => !activeId.value || Boolean(activeRecord.value?.mine))
+const shelves = computed(() => [
+  { id: 'mine' as const, items: savedQueries.value.filter((q) => q.mine) },
+  { id: 'team' as const, items: savedQueries.value.filter((q) => !q.mine) },
+])
 const dirty = computed(() => specJson.value !== baseline.value)
 
 /** 手机卡片只放三格：排序键优先，其余按方案列顺序补。 */
@@ -631,7 +827,8 @@ function applySpec(next: SavedQuery) {
 function selectQuery(q: SavedQueryRecord) {
   activeId.value = q.id
   activeName.value = q.name
-  applySpec({ ...q.spec, id: q.id, name: q.name, version: q.version })
+  undoId.value = ''
+  applySpec({ ...specOf(q), id: q.id, name: q.name, version: q.version })
   baseline.value = JSON.stringify(spec)
   errors.value = []
   notice.value = ''
@@ -676,11 +873,29 @@ function addFilter() {
   spec.filters.push({ key: 'cpe', op: 'lte', value: 3 })
 }
 
-function onOpChange(f: MetricFilter) {
-  if (f.op === 'between' && !Array.isArray(f.value)) (f as any).value = [0, Number(f.value) || 0]
-  else if (f.op !== 'between' && Array.isArray(f.value)) (f as any).value = f.value[1]
-  else if (f.op === 'percentileGte' && (Number(f.value) < 0 || Number(f.value) > 100)) (f as any).value = 75
+function addGroup(mode: FilterGroup['mode']) {
+  spec.groups.push({ mode, filters: [{ key: 'cpe', op: mode === 'exclude' ? 'gte' : 'lte', value: 3 }] })
 }
+
+function countValue(raw: string | number): number | null {
+  if (raw === '' || raw == null) return null
+  const n = Math.floor(Number(raw))
+  return Number.isFinite(n) ? Math.max(0, n) : null
+}
+
+/** 把搜索框里的词存进方案：之后每次打开这个方案都带上。 */
+function keepSearch() {
+  spec.search = search.value.trim().slice(0, SAVED_QUERY_LIMITS.search)
+  search.value = ''
+}
+
+function useRevision(revision: SavedQueryRevision) {
+  const visibility = canChangeVisibility.value ? revision.visibility : spec.visibility
+  applySpec({ ...specOf(revision.spec), id: activeId.value, version: activeVersion.value, name: revision.name, visibility })
+  editorOpen.value = true
+  notice.value = t('kcs.query.revisionLoaded', { n: revision.version })
+}
+
 
 const hasHealthGate = computed(() => spec.highlights.some(isHealthGate))
 
@@ -727,11 +942,6 @@ async function loadReferenceLines() {
   }
 }
 
-function unitHint(key: NumericMetricKey) {
-  const unit = metricField(key).unit
-  return unit === 'ratio' ? '0.03' : unit === 'cnyPerUnit' ? '3' : ''
-}
-
 /** 上一页 / 下一页走服务端给的游标（不按偏移数行，翻得再深也一样快）；跳页仍按页码。 */
 const cursors = { page: 0, next: null as string | null, prev: null as string | null }
 
@@ -765,8 +975,8 @@ async function run() {
 
 async function loadQueries() {
   try {
-    const res = await request<any>(API.queries.path)
-    savedQueries.value = (res.items ?? res ?? []).map((q: any) => ({ id: q.id, name: q.name, version: q.version ?? 1, spec: q.spec ?? q }))
+    const res = await request<{ items: SavedQueryRecord[] }>(API.queries.path)
+    savedQueries.value = res.items ?? []
   } catch {
     savedQueries.value = []
   }
@@ -774,6 +984,14 @@ async function loadQueries() {
   else if (!activeId.value) {
     applySpec(defaultSavedQuery({ name: '' }))
     baseline.value = ''
+  }
+}
+
+async function loadCategories() {
+  try {
+    categoryOptions.value = (await request<{ items: CategoryOption[] }>(API.poolCategories.path)).items ?? []
+  } catch {
+    categoryOptions.value = []
   }
 }
 
@@ -785,29 +1003,52 @@ async function save(asNew: boolean) {
   }
   saving.value = true
   notice.value = ''
+  undoId.value = ''
+  const patching = Boolean(activeId.value && !asNew)
   try {
-    const payload = { name: spec.name, spec: { ...spec, id: undefined } }
-    const res =
-      activeId.value && !asNew
-        ? await request<any>(apiPath(API.queryPatch, { id: activeId.value }), { method: 'PATCH', body: JSON.stringify(payload) })
-        : await request<any>(API.queryCreate.path, { method: 'POST', body: JSON.stringify(payload) })
+    // 改已有方案时带上版本号：别人刚保存过就会被拦下（409），不会悄悄覆盖。
+    const payload = { ...specOf(spec), id: undefined, version: patching ? activeVersion.value : undefined }
+    const res = patching
+      ? await request<SavedQueryRecord>(apiPath(API.queryPatch, { id: activeId.value }), { method: 'PATCH', body: JSON.stringify(payload) })
+      : await request<SavedQueryRecord>(API.queryCreate.path, { method: 'POST', body: JSON.stringify(payload) })
     await loadQueries()
     const saved = savedQueries.value.find((q) => q.id === (res.id ?? activeId.value))
     if (saved) selectQuery(saved)
     notice.value = t('kcs.query.saved')
   } catch (e: any) {
-    errors.value = e?.data?.errors ?? [String(e?.message ?? e)]
+    if (e?.status === 409 && e?.data?.current) {
+      await loadQueries()
+      const latest = savedQueries.value.find((q) => q.id === activeId.value)
+      if (latest) selectQuery(latest)
+      errors.value = []
+      notice.value = t('kcs.query.conflict', { n: e.data.current.version })
+      editorOpen.value = true
+    } else {
+      errors.value = e?.data?.errors ?? [String(e?.message ?? e)]
+    }
   } finally {
     saving.value = false
   }
 }
 
+/** 删除只是收起来：列表里看不到，修改记录都在，可以撤销。 */
 async function remove() {
   if (!activeId.value || !confirm(t('kcs.query.confirmDelete'))) return
-  await request(apiPath(API.queryDelete, { id: activeId.value }), { method: 'DELETE' })
+  const id = activeId.value
+  await request(apiPath(API.queryDelete, { id }), { method: 'DELETE' })
   activeId.value = ''
   await loadQueries()
   notice.value = t('kcs.query.deleted')
+  undoId.value = id
+}
+
+async function restore(id: string) {
+  await request(apiPath(API.queryRestore, { id }), { method: 'POST' })
+  await loadQueries()
+  const back = savedQueries.value.find((q) => q.id === id)
+  if (back) selectQuery(back)
+  notice.value = t('kcs.query.restored')
+  undoId.value = ''
 }
 
 async function loadProject() {
@@ -844,6 +1085,7 @@ onMounted(async () => {
   await run()
   loadProject()
   loadReferenceLines()
+  loadCategories()
 })
 const debouncedRun = useDebounceFn(run, 300)
 // 条件一变回到第一页；page 本身的变化（翻页）立即取数。

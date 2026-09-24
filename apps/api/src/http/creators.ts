@@ -336,8 +336,15 @@ export function metricsFromRow(row: Record<string, any>): CreatorMetrics {
   return deriveMetrics(metrics)
 }
 
+/**
+ * A posted or stored spec as a full `SavedQuery`. Accepts the flat shape and
+ * the `{ name, spec: {...} }` wrapper older select pages sent (whose rows keep
+ * the real spec nested under `spec`).
+ */
 export function coerceSavedQuery(value: unknown, id?: string, version?: number): SavedQuery {
-  const input = value && typeof value === 'object' ? normalizeSavedQuery(value) : {}
+  const normalized = normalizeSavedQuery(unwrapSavedQuery(value)) as Record<string, unknown>
+  // Only spec fields are kept: list metadata (mine, ownerName …) posted back is dropped.
+  const input = Object.fromEntries(SAVED_QUERY_FIELDS.filter((key) => normalized[key] !== undefined).map((key) => [key, normalized[key]])) as Partial<SavedQuery>
   return defaultSavedQuery({
     ...input,
     id: id ?? input.id ?? '',
@@ -346,21 +353,26 @@ export function coerceSavedQuery(value: unknown, id?: string, version?: number):
   })
 }
 
-export function coerceSourceQuery(value: unknown, source: SourceId): SourceQuery {
-  let parsed = value
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed)
-    } catch {
-      parsed = null
-    }
-  }
-  const input = parsed && typeof parsed === 'object' ? parsed as Partial<SourceQuery> : {}
-  return { ...input, source, window: input.window === 90 ? 90 : 30 }
+const SAVED_QUERY_FIELDS = Object.keys(defaultSavedQuery())
+
+export function unwrapSavedQuery(value: unknown): Record<string, any> {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, any>) } : {}
+  if (!raw.spec || typeof raw.spec !== 'object' || Array.isArray(raw.spec)) return raw
+  const { spec, ...outer } = raw
+  return { ...coerceNested(spec), ...pickDefined(outer, ['name', 'visibility', 'version']) }
+}
+
+function coerceNested(spec: Record<string, any>): Record<string, any> {
+  return spec.spec && typeof spec.spec === 'object' && !Array.isArray(spec.spec) ? coerceNested(spec.spec) : spec
+}
+
+function pickDefined(value: Record<string, any>, keys: string[]): Record<string, any> {
+  return Object.fromEntries(keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]))
 }
 
 export function savedQueryFromRow(row: Record<string, any>): SavedQuery {
   const spec = coerceSavedQuery(row.spec, String(row.id), Number(row.version))
   spec.name = String(row.name)
+  if (row.visibility === 'private' || row.visibility === 'team') spec.visibility = row.visibility
   return spec
 }

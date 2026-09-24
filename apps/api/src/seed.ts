@@ -15,6 +15,7 @@ import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
 import { ensurePublishedSnapshots } from './http/pool'
 import { refreshPublished } from './http/published'
+import { upsertSavedQuery } from './http/saved-queries'
 
 /** Until the 蒲公英 adapter fills `lowActive` itself, its `health` still means 低活跃. */
 function seedMetrics(metrics: CreatorMetrics, source: SourceId): CreatorMetrics {
@@ -296,14 +297,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
   await ensurePublishedSnapshots(db, { full: true })
   await refreshPublished(db, { full: true })
   await seedProjects(db, orgId, canonicalIds)
-  for (const spec of SAVED_QUERIES) {
-    await db.query(
-      `INSERT INTO saved_queries (id, org_id, name, version, spec, created_by)
-       VALUES ($1,$2,$3,1,$4,'user_selector')
-       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, version = 1, spec = EXCLUDED.spec, updated_at = now()`,
-      [spec.id, orgId, spec.name, JSON.stringify(spec)],
-    )
-  }
+  for (const spec of SAVED_QUERIES) await upsertSavedQuery(db, orgId, spec, 'user_selector')
 
   const [users, talents, unpublished, projects, assignments, ingestJobs] = await Promise.all([
     db.query('SELECT count(*)::int AS n FROM users WHERE email = ANY($1)', [SEED_USERS.map((u) => u.email)]),

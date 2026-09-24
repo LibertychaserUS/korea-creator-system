@@ -47,6 +47,23 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     })
   })
 
+  /** Categories a selector can filter by: enabled and meant for the front end (so never 黑名单). */
+  app.get('/api/select/categories', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'select.read')
+    if (denied) return denied
+    const { rows } = await env.db.query(
+      `SELECT slug, name_zh, name_en, name_ko, group_name FROM categories
+        WHERE enabled AND frontend_visible AND slug <> 'blacklist' ORDER BY builtin DESC, slug`,
+    )
+    return context.json({
+      items: rows.map((row) => ({
+        slug: String(row.slug),
+        name: { 'zh-CN': row.name_zh, en: row.name_en, ko: row.name_ko },
+        group: row.group_name ?? null,
+      })),
+    })
+  })
+
   /** 本库同组 25 / 50 / 75 分位（≥ 30 人才有），供方案编辑器填绝对值时参考。 */
   app.get('/api/select/reference-lines', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'select.read')

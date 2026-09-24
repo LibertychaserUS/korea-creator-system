@@ -90,13 +90,17 @@ export function queryRow(item: Record<string, any>) {
       ...(item.metrics.coopBrands ?? []),
       ...(item.collabBrands ?? []),
     ])] as string[],
+    categories: (item.categories ?? []) as string[],
+    collabCount: Number(item.collabCount ?? 0),
+    xhsId: (item.xhsId ?? null) as string | null,
     metrics: item.metrics as CreatorMetrics,
     stale: isStale(item.snapshotFetchedAt, new Date()),
   }
 }
 
 export function publicQueryResultRow(item: Record<string, any>) {
-  return { ...item, health: item.metrics.health, stale: Boolean(item.stale) }
+  const { categories: _categories, collabCount: _collabCount, xhsId: _xhsId, ...rest } = item
+  return { ...rest, health: item.metrics.health, stale: Boolean(item.stale) }
 }
 
 export async function queryPool(db: Db, query: Record<string, string>) {
