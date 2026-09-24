@@ -65,14 +65,24 @@ spec:
               valueFrom: { secretKeyRef: { name: kcs-api, key: cursor-secret, optional: true } }
             - name: WEB_ORIGIN
               value: https://kcs.example.com,https://legacy.kcs.example.com,https://ops.kcs.example.com,https://dev.kcs.example.com,https://select.kcs.example.com
+            # 蒲公英 via TikHub (default gateway). TIKHUB_BASE_URL: https://api.tikhub.io, or
+            # https://api.tikhub.dev from mainland China.
+            - name: TIKHUB_API_KEY
+              valueFrom: { secretKeyRef: { name: kcs-api, key: tikhub-api-key, optional: true } }
+            - name: TIKHUB_BASE_URL
+              value: https://api.tikhub.io
+            # Only for PGY_GATEWAY=justoneapi | official (older deployments may keep a TikHub key here).
             - name: PGY_ACCESS_TOKEN
-              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-access-token } }
+              valueFrom: { secretKeyRef: { name: kcs-api, key: pgy-access-token, optional: true } }
             # official | tikhub | justoneapi — all relay the same 蒲公英 solar JSON
             - name: PGY_GATEWAY
               value: tikhub
-            # leave empty to use the gateway default host; set for the official OpenAPI host
+            # JustOneAPI / official host; empty = the gateway default
             - name: PGY_BASE_URL
               value: ""
+            # Daily money cap for 蒲公英 calls (USD); "none" = calls quota only
+            - name: PGY_DAILY_BUDGET_USD
+              value: "5"
             - name: PGY_BRAND_USER_ID
               value: ""
             # "1" = also pull dataSummary/fansSummary/notesRate/fansProfile per creator on searches (4 billed calls each)

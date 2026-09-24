@@ -2045,6 +2045,9 @@ export const zhCN: Locale = {
       configured: "已接入",
       notConfigured: "尚未接入",
       configuredHint: "已接入，抓取结果是真实数据。",
+      via: "经 {gateway} · {host}",
+      legacyCredential: "沿用旧的接入设置，照常可用；换新设置时不影响已有数据。",
+      gateway: { tikhub: "TikHub", justoneapi: "JustOneAPI", official: "蒲公英开放平台" },
       notConfiguredHint: "尚未接入，先用演示数据；接入由管理员完成。",
       fetchedAt: "抓取时间",
       locked: "选入名单时的数据记录（原样保留）"

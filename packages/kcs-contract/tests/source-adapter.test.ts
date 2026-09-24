@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_COUNT, emptySignals, fieldPaths, healthFromLevel, toHealth, toHealthLevel, fieldUnit, isPlaceholder, normalizeXhsId, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
+import { MAX_COUNT, SOURCE_CREDENTIALS, TIKHUB_BASE_URLS, pgyAccess, emptySignals, fieldPaths, healthFromLevel, toHealth, toHealthLevel, fieldUnit, isPlaceholder, normalizeXhsId, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
 
 describe('toNumber: what vendors write for a number', () => {
   it.each([
@@ -172,5 +172,36 @@ describe('health level', () => {
 
   it('empty signals say nothing', () => {
     expect(emptySignals()).toMatchObject({ healthLevel: null, lowActive: null, platformRanks: {}, windowDays: {} })
+  })
+})
+
+describe('pgyAccess: how 蒲公英 is reached', () => {
+  it('prefers TIKHUB_API_KEY and TIKHUB_BASE_URL (default api.tikhub.io)', () => {
+    expect(pgyAccess({ TIKHUB_API_KEY: 'k' })).toEqual({
+      gateway: 'tikhub', token: 'k', baseUrl: 'https://api.tikhub.io', tokenVar: 'TIKHUB_API_KEY', legacy: false,
+    })
+    expect(pgyAccess({ TIKHUB_API_KEY: 'k', TIKHUB_BASE_URL: `${TIKHUB_BASE_URLS.mainland}/` })?.baseUrl).toBe('https://api.tikhub.dev')
+    expect(pgyAccess({ TIKHUB_API_KEY: 'k', PGY_ACCESS_TOKEN: 'old' })?.token).toBe('k')
+  })
+
+  it('still accepts the older PGY_ACCESS_TOKEN + PGY_GATEWAY=tikhub + PGY_BASE_URL, and says so', () => {
+    expect(pgyAccess({ PGY_ACCESS_TOKEN: 'old', PGY_GATEWAY: 'tikhub', PGY_BASE_URL: 'https://proxy.example/' })).toEqual({
+      gateway: 'tikhub', token: 'old', baseUrl: 'https://proxy.example', tokenVar: 'PGY_ACCESS_TOKEN', legacy: true,
+    })
+    expect(pgyAccess({ PGY_ACCESS_TOKEN: 'old', TIKHUB_BASE_URL: 'https://api.tikhub.dev', PGY_BASE_URL: 'https://x' })?.baseUrl).toBe('https://api.tikhub.dev')
+  })
+
+  it('JustOneAPI and official keep PGY_ACCESS_TOKEN; a TikHub key alone does not configure them', () => {
+    expect(pgyAccess({ PGY_GATEWAY: 'justoneapi', PGY_ACCESS_TOKEN: 't' })).toMatchObject({ gateway: 'justoneapi', baseUrl: 'https://api.justoneapi.com', legacy: false })
+    expect(pgyAccess({ PGY_GATEWAY: 'official', TIKHUB_API_KEY: 'k' })).toBeNull()
+    expect(pgyAccess({ PGY_GATEWAY: 'nonsense', TIKHUB_API_KEY: 'k' })?.gateway).toBe('tikhub')
+    expect(pgyAccess({ TIKHUB_API_KEY: '  ', PGY_ACCESS_TOKEN: '' })).toBeNull()
+  })
+
+  it('SOURCE_CREDENTIALS lists the new key first and the old one as an alternative', () => {
+    const pgy = SOURCE_CREDENTIALS.find((ref) => ref.source === 'pugongying')!
+    expect(pgy.envVars).toEqual(['TIKHUB_API_KEY'])
+    expect(pgy.alternatives).toEqual([['PGY_ACCESS_TOKEN']])
+    expect(pgy.optionalEnvVars).toEqual(expect.arrayContaining(['TIKHUB_BASE_URL', 'PGY_GATEWAY', 'PGY_TIMEOUT_MS', 'PGY_DAILY_BUDGET_USD']))
   })
 })

@@ -34,6 +34,7 @@ import {
   isPlaceholder,
   normalizeXhsId,
   parseRatio,
+  pgyAccess,
   pickPath,
   toCount,
   toNumber,
@@ -318,19 +319,12 @@ function official(token: string, base: string, context?: FetchContext): Gateway 
   }
 }
 
-const GATEWAY_BASE: Record<PgyGateway, string> = {
-  official: 'https://ad-market.xiaohongshu.com',
-  tikhub: 'https://api.tikhub.io',
-  justoneapi: 'https://api.justoneapi.com',
-}
-
 type ResolvedGateway = { name: PgyGateway; gateway: Gateway; scope: SourceScope }
 
 export function resolveGateway(context?: FetchContext): ResolvedGateway | null {
-  const token = process.env.PGY_ACCESS_TOKEN
-  if (!token) return null
-  const name = (process.env.PGY_GATEWAY || 'tikhub') as PgyGateway
-  const base = (process.env.PGY_BASE_URL || GATEWAY_BASE[name] || GATEWAY_BASE.tikhub).replace(/\/$/, '')
+  const access = pgyAccess(process.env)
+  if (!access) return null
+  const { gateway: name, token, baseUrl: base } = access
   const scope = context?.scope ?? SOURCE_SCOPE_DEFAULTS.pugongying!
   if (name === 'justoneapi') return { name, gateway: justoneapi(token, base, context), scope }
   if (name === 'official') return { name, gateway: official(token, base, context), scope }

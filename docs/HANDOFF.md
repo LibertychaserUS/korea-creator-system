@@ -66,9 +66,17 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `KCS_CAPACITY_DISK_BYTES` | 磁盘读不到时（托管 Postgres）按这个大小算，已用 = 数据库 + WAL |
 | `KCS_BACKUP_DIR` | 要量的备份目录（可选） |
 | `KCS_CAPACITY_INDEX_OVERHEAD` | 最坏情况里的索引开销比例，缺省用 `creator_raw` 实测的索引 ÷ 表 |
-| `PGY_ACCESS_TOKEN` | 蒲公英；网关 token（TikHub / JustOneAPI）或官方 access token |
-| `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official` |
-| `PGY_BASE_URL` `PGY_BRAND_USER_ID` `PGY_ENRICH` | 可选：自定义网关地址、官方品牌账号、搜索结果是否逐个补全详情 |
+| `TIKHUB_API_KEY` | 蒲公英经 TikHub（默认网关）的 API key，请求头 `Authorization: Bearer`。设了它就算已接入 |
+| `TIKHUB_BASE_URL` | TikHub 地址，默认 `https://api.tikhub.io`；国内网络用 `https://api.tikhub.dev` |
+| `PGY_ACCESS_TOKEN` | JustOneAPI / 官方开放平台的 token。兼容旧写法：没有 `TIKHUB_API_KEY` 且 `PGY_GATEWAY=tikhub`（或不设）时当作 TikHub key，数据源页注明「沿用旧的接入设置」 |
+| `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official`；写错按 `tikhub` |
+| `PGY_BASE_URL` | JustOneAPI / 官方的地址（旧部署里 TikHub 也认它，`TIKHUB_BASE_URL` 优先） |
+| `PGY_BRAND_USER_ID` `PGY_ENRICH` `PGY_DATE_TYPES` | 可选：官方品牌账号、搜索结果是否逐个补全（每人多 4 次计费调用）、`dateType` 覆盖表 |
+| `PGY_TIMEOUT_MS` | 蒲公英单次调用超时，默认 60000（超时的调用记「可能已扣费」） |
+| `PGY_DAILY_BUDGET_USD` | 蒲公英每日金额上限（美元），优先于 `ingest_sources.daily_budget_usd`（默认 5）；`none` = 不限，只看次数 |
+| `QIANGUA_DAILY_BUDGET_USD` `XINHONG_DAILY_BUDGET_USD` | 同上，默认不限 |
+| `KCS_VENDOR_PRICES` | 单价覆盖，JSON `{"<网关>:<路径前缀>": 美元}`，如 `{"tikhub:/api/v1/xiaohongshu/pgy/": 0.02}`；标价见契约 `VENDOR_PRICES_USD` |
+| `PGY_TRAFFIC_SCOPE` `PGY_BUSINESS_SCOPE` | 蒲公英取数口径：`all` / `organic`；`daily` / `coop`。优先于 `ingest_sources.traffic_scope` / `business_scope`，默认全部流量 · 日常笔记 |
 | `QIANGUA_TOKEN` `QIANGUA_BASE_URL` `QIANGUA_SEARCH_PATH` `QIANGUA_FIELD_MAP` | 千瓜合同接口；`FIELD_MAP` 是 `{ canonicalKey: ["path", ...] }` JSON |
 | `XINHONG_TOKEN` `XINHONG_BASE_URL` `XINHONG_SEARCH_PATH` `XINHONG_FIELD_MAP` | 新红同上（表单编码 POST，请求头 `Key`） |
 | `S3_*` / MinIO | 头像上传；缺省时 bytes 落库 |

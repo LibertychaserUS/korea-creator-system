@@ -72,6 +72,8 @@ services:
       S3_FORCE_PATH_STYLE: "true"
       WEB_ORIGIN: http://localhost:7002,http://localhost:7003,http://localhost:7004,http://localhost:7005
       AUTH_BASE_URL: http://select:7004
+      TIKHUB_API_KEY: ""
+      TIKHUB_BASE_URL: https://api.tikhub.io
       PGY_ACCESS_TOKEN: ""
       PGY_GATEWAY: tikhub
       PGY_BASE_URL: ""

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizePugongying, pugongyingAdapter } from '../src/adapters/pugongying'
 import { fixturePage } from '../src/adapters/common'
+import { adapterConfigured, adapterDescriptions } from '../src/adapters'
 import { recordingMeter } from './meter-stub'
 
 const fixtureUrl = new URL('../src/adapters/fixtures/pugongying.json', import.meta.url)
@@ -180,6 +181,8 @@ describe('蒲公英 gateways', () => {
   beforeEach(() => {
     calls = []
     process.env.PGY_ACCESS_TOKEN = 'test-token'
+    delete process.env.TIKHUB_API_KEY
+    delete process.env.TIKHUB_BASE_URL
     delete process.env.PGY_BASE_URL
     delete process.env.PGY_BRAND_USER_ID
     delete process.env.PGY_ENRICH
@@ -339,6 +342,36 @@ describe('蒲公英 gateways', () => {
     expect(page.nextCursor).toBeNull()
     expect(calls[0]!.url).toBe('https://openapi.example.test/api/solar/cooperator/blogger/v2')
     expect(JSON.parse(String(calls[0]!.init.body))).toMatchObject({ keyword: '护肤', fansNumberUpper: 80000, pageNum: 1, pageSize: 20 })
+  })
+
+  it('TIKHUB_API_KEY + TIKHUB_BASE_URL: Bearer key to the configured host; the ops page says which gateway and host, never the key', async () => {
+    delete process.env.PGY_ACCESS_TOKEN
+    delete process.env.PGY_GATEWAY
+    process.env.TIKHUB_API_KEY = 'th-key'
+    process.env.TIKHUB_BASE_URL = 'https://api.tikhub.dev/'
+    stubFetch(() => ({ code: 200, request_id: 'r', data: { code: 0, success: true, data: { kols: [], total: 5000 } } }))
+    await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, keyword: 'x' })
+    expect(calls[0]!.url).toBe('https://api.tikhub.dev/api/v1/xiaohongshu/pgy/get_blogger_list')
+    expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe('Bearer th-key')
+    expect(adapterConfigured('pugongying')).toBe(true)
+    const card = adapterDescriptions().find((a) => a.id === 'pugongying')!
+    expect(card).toMatchObject({ configured: true, envVars: ['TIKHUB_API_KEY'], access: { gateway: 'tikhub', host: 'api.tikhub.dev', legacyCredential: false } })
+    expect(JSON.stringify(card)).not.toContain('th-key')
+
+    // The older names still work, and the card says it is the older setup.
+    delete process.env.TIKHUB_API_KEY
+    delete process.env.TIKHUB_BASE_URL
+    process.env.PGY_ACCESS_TOKEN = 'old-key'
+    process.env.PGY_GATEWAY = 'tikhub'
+    calls = []
+    await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, keyword: 'x' })
+    expect(calls[0]!.url).toBe('https://api.tikhub.io/api/v1/xiaohongshu/pgy/get_blogger_list')
+    expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe('Bearer old-key')
+    expect(adapterDescriptions().find((a) => a.id === 'pugongying')!.access).toEqual({ gateway: 'tikhub', host: 'api.tikhub.io', legacyCredential: true })
+
+    delete process.env.PGY_ACCESS_TOKEN
+    expect(adapterConfigured('pugongying')).toBe(false)
+    expect(adapterDescriptions().find((a) => a.id === 'pugongying')!.access).toBeNull()
   })
 
   it('without PGY_ACCESS_TOKEN falls back to the fixture', async () => {

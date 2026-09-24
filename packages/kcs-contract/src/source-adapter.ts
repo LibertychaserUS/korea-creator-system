@@ -415,21 +415,61 @@ export type DeadLetter = {
  * How we reach 蒲公英. All three return the same `solar` JSON, so one
  * normalizer serves every gateway:
  *   official   — ad-market.xiaohongshu.com 开放平台 (docs behind partner login)
- *   tikhub     — api.tikhub.io  /api/v1/xiaohongshu/pgy/*   (Bearer, POST JSON)
+ *   tikhub     — api.tikhub.io (mainland: api.tikhub.dev) /api/v1/xiaohongshu/pgy/*   (Bearer, POST JSON)
  *   justoneapi — api.justoneapi.com /api/xiaohongshu-pgy/api/solar/*  (token query, GET)
  */
 export const PGY_GATEWAYS = ['official', 'tikhub', 'justoneapi'] as const
 export type PgyGateway = (typeof PGY_GATEWAYS)[number]
 
+/** TikHub hosts: the international one, and the one reachable from mainland China. */
+export const TIKHUB_BASE_URLS = { global: 'https://api.tikhub.io', mainland: 'https://api.tikhub.dev' } as const
+
+export const PGY_GATEWAY_BASE: Record<PgyGateway, string> = {
+  official: 'https://ad-market.xiaohongshu.com',
+  tikhub: TIKHUB_BASE_URLS.global,
+  justoneapi: 'https://api.justoneapi.com',
+}
+
+/** How the process reaches 蒲公英 right now; `tokenVar` names the variable in use (never its value). */
+export type PgyAccess = { gateway: PgyGateway; token: string; baseUrl: string; tokenVar: string; legacy: boolean }
+
+/**
+ * TikHub is the default gateway: `TIKHUB_API_KEY` + `TIKHUB_BASE_URL`
+ * (default api.tikhub.io, mainland api.tikhub.dev). The older
+ * `PGY_ACCESS_TOKEN` + `PGY_GATEWAY=tikhub` + `PGY_BASE_URL` still work
+ * (`legacy: true`). JustOneAPI and the official platform keep
+ * `PGY_ACCESS_TOKEN` / `PGY_BASE_URL`. `null` = no credential → fixture data.
+ */
+export function pgyAccess(env: Record<string, string | undefined>): PgyAccess | null {
+  const text = (name: string) => env[name]?.trim() || ''
+  const requested = text('PGY_GATEWAY').toLowerCase() || 'tikhub'
+  const gateway: PgyGateway = (PGY_GATEWAYS as readonly string[]).includes(requested) ? (requested as PgyGateway) : 'tikhub'
+  const trim = (url: string) => url.replace(/\/+$/, '')
+  if (gateway === 'tikhub') {
+    const key = text('TIKHUB_API_KEY')
+    const token = key || text('PGY_ACCESS_TOKEN')
+    if (!token) return null
+    const baseUrl = trim(text('TIKHUB_BASE_URL') || text('PGY_BASE_URL') || TIKHUB_BASE_URLS.global)
+    return { gateway, token, baseUrl, tokenVar: key ? 'TIKHUB_API_KEY' : 'PGY_ACCESS_TOKEN', legacy: !key }
+  }
+  const token = text('PGY_ACCESS_TOKEN')
+  if (!token) return null
+  return { gateway, token, baseUrl: trim(text('PGY_BASE_URL') || PGY_GATEWAY_BASE[gateway]), tokenVar: 'PGY_ACCESS_TOKEN', legacy: false }
+}
+
 /**
  * Credentials are referenced by env var name, never stored in the DB.
- * 蒲公英 needs one access token plus `PGY_GATEWAY` (defaults to tikhub);
+ * 蒲公英 goes through TikHub by default (`TIKHUB_API_KEY`, see `pgyAccess`
+ * for the older `PGY_ACCESS_TOKEN` and the other gateways);
  * 千瓜 / 新红 have no public API docs — tokens come from the vendor contract
  * and the endpoint/field map is configured via `*_BASE_URL` / `*_FIELD_MAP`.
  */
 export type SourceCredentialRef = {
   source: SourceId
+  /** The preferred credential: all of these set = configured. */
   envVars: string[]
+  /** Other complete credential sets that also count (older names, other gateways). */
+  alternatives?: string[][]
   /** Optional knobs shown next to the required ones on the ops page. */
   optionalEnvVars: string[]
 }
@@ -437,8 +477,12 @@ export type SourceCredentialRef = {
 export const SOURCE_CREDENTIALS: readonly SourceCredentialRef[] = [
   {
     source: 'pugongying',
-    envVars: ['PGY_ACCESS_TOKEN'],
-    optionalEnvVars: ['PGY_GATEWAY', 'PGY_BASE_URL', 'PGY_BRAND_USER_ID', 'PGY_ENRICH', 'PGY_DATE_TYPES'],
+    envVars: ['TIKHUB_API_KEY'],
+    alternatives: [['PGY_ACCESS_TOKEN']],
+    optionalEnvVars: [
+      'TIKHUB_BASE_URL', 'PGY_GATEWAY', 'PGY_BASE_URL', 'PGY_BRAND_USER_ID', 'PGY_ENRICH', 'PGY_DATE_TYPES',
+      'PGY_TIMEOUT_MS', 'PGY_DAILY_BUDGET_USD', 'PGY_TRAFFIC_SCOPE', 'PGY_BUSINESS_SCOPE',
+    ],
   },
   { source: 'qiangua', envVars: ['QIANGUA_TOKEN'], optionalEnvVars: ['QIANGUA_BASE_URL', 'QIANGUA_SEARCH_PATH', 'QIANGUA_FIELD_MAP'] },
   { source: 'xinhong', envVars: ['XINHONG_TOKEN'], optionalEnvVars: ['XINHONG_BASE_URL', 'XINHONG_SEARCH_PATH', 'XINHONG_FIELD_MAP'] },

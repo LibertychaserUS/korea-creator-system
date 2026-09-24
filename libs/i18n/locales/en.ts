@@ -2038,6 +2038,9 @@ export const en: Locale = {
       configured: "Connected",
       notConfigured: "Not connected",
       configuredHint: "Connected. Results reflect real platform data.",
+      via: "Via {gateway} · {host}",
+      legacyCredential: "Using the older connection settings; they keep working, and switching to the new ones leaves existing data untouched.",
+      gateway: { tikhub: "TikHub", justoneapi: "JustOneAPI", official: "Pugongying Open Platform" },
       notConfiguredHint: "Not connected yet. Showing sample data to preview layout; connection is set up by admins.",
       fetchedAt: "Fetched at",
       locked: "Recorded data at shortlist (kept as-is)"

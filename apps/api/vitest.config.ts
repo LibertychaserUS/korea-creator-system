@@ -8,6 +8,7 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 30000,
     hookTimeout: 30000,
-    env: { LOG_REQUESTS: '0' },
+    // Vendor credentials from the shell must never reach a test: every vendor call here is a stub.
+    env: { LOG_REQUESTS: '0', TIKHUB_API_KEY: '', PGY_ACCESS_TOKEN: '', QIANGUA_TOKEN: '', XINHONG_TOKEN: '' },
   },
 })

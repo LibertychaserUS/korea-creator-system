@@ -171,6 +171,9 @@ export const ko: Locale = {
       configured: "연동 완료",
       notConfigured: "연동 미완료",
       configuredHint: "연동 완료. 수집 결과는 실제 데이터입니다.",
+      via: "{gateway} · {host} 경유",
+      legacyCredential: "이전 연동 설정을 그대로 쓰고 있습니다. 계속 사용할 수 있으며, 새 설정으로 바꿔도 기존 데이터는 그대로입니다.",
+      gateway: { tikhub: "TikHub", justoneapi: "JustOneAPI", official: "푸궁잉 오픈 플랫폼" },
       notConfiguredHint: "아직 연동되지 않았습니다. 화면 미리보기용 샘플 데이터를 표시하며 연동은 관리자가 설정합니다.",
       fetchedAt: "수집 시각",
       locked: "후보 선정 당시 데이터 (원형 보존)"

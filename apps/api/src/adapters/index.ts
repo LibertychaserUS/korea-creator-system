@@ -1,4 +1,5 @@
 import {
+  pgyAccess,
   SOURCE_CREDENTIALS,
   SOURCE_IDS,
   SOURCE_ROUTE,
@@ -20,8 +21,24 @@ export function getAdapter(id: string): SourceAdapter | null {
 }
 
 export function adapterConfigured(id: SourceId): boolean {
+  if (id === 'pugongying') return pgyAccess(process.env) != null
   const ref = SOURCE_CREDENTIALS.find((item) => item.source === id)
-  return Boolean(ref?.envVars.every((name) => process.env[name]))
+  if (!ref) return false
+  return [ref.envVars, ...(ref.alternatives ?? [])].some((set) => set.length > 0 && set.every((name) => process.env[name]?.trim()))
+}
+
+/** Which gateway and host a configured source goes through (names and hosts only, never tokens). */
+function accessOf(id: SourceId): { gateway: string; host: string; legacyCredential: boolean } | null {
+  if (id !== 'pugongying') return null
+  const access = pgyAccess(process.env)
+  if (!access) return null
+  let host = access.baseUrl
+  try {
+    host = new URL(access.baseUrl).host
+  } catch {
+    // An unparsable base URL is shown as written; the first call will say what is wrong with it.
+  }
+  return { gateway: access.gateway, host, legacyCredential: access.legacy }
 }
 
 export function adapterDescriptions() {
@@ -35,7 +52,9 @@ export function adapterDescriptions() {
       provides: adapter.provides,
       configured: adapterConfigured(id),
       envVars: ref?.envVars ?? [],
+      alternatives: ref?.alternatives ?? [],
       optionalEnvVars: ref?.optionalEnvVars ?? [],
+      access: accessOf(id),
     }
   })
 }

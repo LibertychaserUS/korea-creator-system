@@ -45,6 +45,12 @@
             <dd class="mt-1 text-foreground">
               {{ a.configured ? t('kcs.source.configuredHint') : t('kcs.source.notConfiguredHint') }}
             </dd>
+            <dd v-if="a.configured && a.access" class="mt-1 text-muted-foreground" data-testid="source-access">
+              {{ t('kcs.source.via', { gateway: gatewayName(a.access.gateway), host: a.access.host }) }}
+            </dd>
+            <dd v-if="a.access?.legacyCredential" class="mt-1 text-muted-foreground" data-testid="source-legacy-credential">
+              {{ t('kcs.source.legacyCredential') }}
+            </dd>
           </div>
         </dl>
       </Card>
@@ -224,7 +230,21 @@
 import { ChevronDown, KeyRound, Play, Radar, RotateCcw, TriangleAlert, X } from 'lucide-vue-next'
 import { API, apiPath, SOURCE_IDS, type HealthGrade, type SourceDictionaries, type SourceId, type SourceQuery } from '@kcs/contract'
 
-type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
+type AdapterInfo = {
+  id: SourceId
+  route: 'official' | 'vendor'
+  supports: string[]
+  provides: string[]
+  configured: boolean
+  envVars: string[]
+  optionalEnvVars?: string[]
+  access?: { gateway: string; host: string; legacyCredential: boolean } | null
+}
+
+function gatewayName(gateway: string): string {
+  const key = `kcs.source.gateway.${gateway}`
+  return te(key) ? t(key) : gateway
+}
 
 const { t, te, locale } = useI18n()
 const { request } = useApi()
