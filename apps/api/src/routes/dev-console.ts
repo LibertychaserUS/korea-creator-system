@@ -13,6 +13,7 @@ import {
 import { validationError } from '../http/body'
 import { quotaDay, quotaTimeZone } from '../ingest/worker'
 import { dailyBudget } from '../ingest/meter'
+import { sourceScope } from '../ingest/scope'
 import { auditLogView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -43,7 +44,7 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
         (SELECT count(*) FROM creators WHERE needs_review)::int AS review,
         (SELECT count(*) FROM creators WHERE status = 'released')::int AS released
     `),
-    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz, daily_budget_usd, paused_at, paused_code FROM ingest_sources ORDER BY id'),
+    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz, daily_budget_usd, traffic_scope, business_scope, paused_at, paused_code FROM ingest_sources ORDER BY id'),
     // Zones are at most a day apart, so this window covers every source's last 7 days.
     env.db.query(
       `SELECT source, to_char(day, 'YYYY-MM-DD') AS day, calls, cost_micros, requests, maybe_billed, empty_results, unpriced_calls
@@ -107,6 +108,7 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
       maybeBilledToday: Number(todayRow?.maybe_billed ?? 0),
       emptyToday: Number(todayRow?.empty_results ?? 0),
       unpricedToday: Number(todayRow?.unpriced_calls ?? 0),
+      scope: sourceScope(row.id, row),
       recentDays,
       lastSuccessAt: iso(job?.last_success_at),
       lastFailureAt: iso(job?.last_failure_at),

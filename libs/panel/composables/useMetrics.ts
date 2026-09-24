@@ -1,6 +1,7 @@
 import {
   FIVE_BAND_MIN_SAMPLE,
   METRIC_FIELDS,
+  SCOPED_METRIC_KEYS,
   formatMetricValue,
   type MetricGroup,
   type MetricPercentile,
@@ -21,6 +22,25 @@ export function useMetrics() {
   function help(key: NumericMetricKey): string {
     const k = `kcs.metricHelp.${key}`
     return te(k) ? t(k) : ''
+  }
+
+  /** 「全部流量 · 日常笔记」 from `metrics.basis`, or '' when the record was not fetched under a scope. */
+  function scopeLine(basis?: Record<string, string> | null): string {
+    const traffic = basis?.trafficScope
+    const business = basis?.businessScope
+    if (!traffic || !business || !te(`kcs.scope.traffic.${traffic}`) || !te(`kcs.scope.business.${business}`)) return ''
+    return t('kcs.scope.line', { traffic: t(`kcs.scope.traffic.${traffic}`), business: t(`kcs.scope.business.${business}`) })
+  }
+
+  /** `help(key)`, plus which traffic and notes the number describes when it depends on that. */
+  function helpIn(key: NumericMetricKey, basis?: Record<string, string> | null): string {
+    const base = help(key)
+    if (!SCOPED_METRIC_KEYS.includes(key) || !scopeLine(basis)) return base
+    const hint = t('kcs.scope.hint', {
+      traffic: t(`kcs.scope.traffic.${basis!.trafficScope}`),
+      business: t(`kcs.scope.business.${basis!.businessScope}`),
+    })
+    return base ? `${base} ${hint}` : hint
   }
 
   function groupLabel(group: MetricGroup): string {
@@ -106,5 +126,5 @@ export function useMetrics() {
     return METRIC_FIELDS.filter((f) => f.group === group && !f.hidden)
   }
 
-  return { label, help, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
+  return { label, help, helpIn, scopeLine, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
 }

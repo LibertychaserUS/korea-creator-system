@@ -61,11 +61,14 @@ export type CreatorMetrics = {
   followers: number | null
   followerGrowth: number | null
   followerGrowthRate: number | null
-  /** 粉丝阅读占比：阅读里来自粉丝的比例（蒲公英）。只描述，不排位。 */
+  /**
+   * 阅读粉丝占比：近 30 天读过其笔记的粉丝 ÷ 粉丝总数（蒲公英 `readFansIn30` / `fansNum`）。
+   * 不是「阅读里有多少来自粉丝」。只描述，不排位。
+   */
   readFanRatio: number | null
-  /** 蒲公英：近 28 天。 */
+  /** 活跃粉丝占比：近 28 天活跃的粉丝 ÷ 粉丝总数（蒲公英 `activeFansL28`）。 */
   activeFanRatio: number | null
-  /** 蒲公英：近 28 天。 */
+  /** 互动粉丝占比：近 30 天点赞、收藏或评论过其笔记的粉丝 ÷ 粉丝总数（蒲公英 `engageFansL30`）。 */
   engagedFanRatio: number | null
   /** 新红「互动粉丝比」：口径无公开定义，单独存放、只描述。 */
   fanInteractionRatio: number | null
@@ -128,7 +131,10 @@ export type CreatorMetrics = {
   platformRanks: Record<string, number> | null
   /** Metric keys this record computed itself (not read from the source). */
   derived: string[]
-  /** How each derived value was computed, e.g. `cpe: 'priceImage/interactionMedian'`. */
+  /**
+   * How each derived value was computed, e.g. `cpe: 'priceImage/interactionMedian'`; also
+   * `trafficScope` / `businessScope` when the source fetched under a scope (see `SourceScope`).
+   */
   basis: Record<string, string>
   /** When the image price came from a manual quote: its original currency and the rate used. */
   priceQuote: { amount: number; currency: string; fxToCny: number | null } | null
@@ -164,7 +170,7 @@ export type MetricField = {
  * marketing "what we collect" section. Labels live in i18n under
  * `kcs.metric.<key>`; descriptions under `kcs.metricHelp.<key>`.
  *
- * Directions follow docs/03: 粉丝阅读占比 (healthy is a middle band), search /
+ * Directions follow docs/03: 阅读粉丝占比 (healthy is a middle band), search /
  * recommend traffic shares (they add up to about 1) and 发文数 describe only.
  */
 export const METRIC_FIELDS: readonly MetricField[] = [

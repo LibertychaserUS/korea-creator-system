@@ -20,6 +20,7 @@ import { recordRefreshMisses } from './data-status'
 import { deadLetterJob, failureOf } from './dead-letters'
 import { createMeter, dailyBudgetUsd } from './meter'
 import { isSourcePaused, pauseSource } from './pause'
+import { sourceScope } from './scope'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
 import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
@@ -171,7 +172,7 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     const adapter = resolveAdapter(env, source)
     if (!adapter) throw new Error(`unsupported adapter: ${source}`)
     const sourceRow = await env.db.query(
-      'SELECT rate_limit, quota, quota_tz, daily_budget_usd FROM ingest_sources WHERE id = $1',
+      'SELECT rate_limit, quota, quota_tz, daily_budget_usd, traffic_scope, business_scope FROM ingest_sources WHERE id = $1',
       [source],
     )
     const quotaTz = quotaTimeZone(sourceRow.rows[0]?.quota_tz)
@@ -188,6 +189,8 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
           deps: { quotaDay, takeToken: takePgToken },
         })
       : null
+    const scope = sourceScope(source, sourceRow.rows[0])
+    const context = meter || scope ? { meter: meter ?? undefined, scope: scope ? { traffic: scope.traffic, business: scope.business } : null } : undefined
 
     const baseQuery = parseQuery(claimed.rows[0].query, source as SourceId)
     let cursor = claimed.rows[0].cursor ?? baseQuery.cursor ?? null
@@ -227,7 +230,7 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       }
       let page: SourcePage
       try {
-        page = await adapter.fetch({ ...baseQuery, cursor }, meter ? { meter } : undefined)
+        page = await adapter.fetch({ ...baseQuery, cursor }, context)
       } catch (error) {
         // Refused before anything was fetched (the first call of the page).
         if (!isMeterStop(error)) throw error

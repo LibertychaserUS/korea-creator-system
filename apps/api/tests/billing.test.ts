@@ -5,6 +5,7 @@ import { pgyTimeoutMs, pugongyingAdapter } from '../src/adapters/pugongying'
 import { pipelineReport } from '../src/routes/dev-console'
 import { processJob } from '../src/ingest/worker'
 import { dailyBudget, vendorPriceOverrides } from '../src/ingest/meter'
+import { sourceScope } from '../src/ingest/scope'
 import { createTestApp, type TestCtx } from './helpers'
 import { recordingMeter } from './meter-stub'
 
@@ -435,5 +436,34 @@ describe('billedCall', () => {
   it('reads price overrides from KCS_VENDOR_PRICES and ignores a broken value', () => {
     expect(vendorPriceOverrides({ KCS_VENDOR_PRICES: '{"justoneapi:/api/":0.015,"bad":-1}' })).toEqual({ 'justoneapi:/api/': 0.015 })
     expect(vendorPriceOverrides({ KCS_VENDOR_PRICES: 'nope' })).toEqual({})
+  })
+})
+
+describe('fetch scope (蒲公英 business / advertise_switch)', () => {
+  it('the queue asks with the source row\'s scope, env overrides it, and the ops console shows which one is in force', async () => {
+    const context = await setup()
+    delete process.env.PGY_TRAFFIC_SCOPE
+    delete process.env.PGY_BUSINESS_SCOPE
+    await context.db.query("UPDATE ingest_sources SET traffic_scope = 'organic', business_scope = 'coop' WHERE id = 'pugongying'")
+    const sent = healthyVendor()
+    const job = await refreshJob(context, ['u1'])
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', writtenCount: 1 })
+    expect(sent.find((c) => c.path.endsWith('get_blogger_notes_rate'))!.body).toMatchObject({ business: 1, advertise_switch: 0 })
+    expect(sent.find((c) => c.path.endsWith('get_blogger_data_summary'))!.body).toMatchObject({ business: 1 })
+    const { rows } = await context.db.query("SELECT metrics FROM creators WHERE creator_key LIKE '%u1'")
+    expect(rows[0].metrics.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'coop' })
+    let pgy = (await pipelineReport(context.env)).sources.find((s) => s.id === 'pugongying')!
+    expect(pgy.scope).toEqual({ traffic: 'organic', business: 'coop', from: { traffic: 'source', business: 'source' } })
+
+    process.env.PGY_TRAFFIC_SCOPE = 'all'
+    pgy = (await pipelineReport(context.env)).sources.find((s) => s.id === 'pugongying')!
+    expect(pgy.scope).toEqual({ traffic: 'all', business: 'coop', from: { traffic: 'env', business: 'source' } })
+    expect((await pipelineReport(context.env)).sources.find((s) => s.id === 'qiangua')!.scope).toBeNull()
+
+    // Unknown values are skipped, not guessed; the column is checked by the database too.
+    expect(sourceScope('pugongying', { traffic_scope: 'paid', business_scope: null }, { PGY_BUSINESS_SCOPE: 'x' })).toEqual({
+      traffic: 'all', business: 'daily', from: { traffic: 'default', business: 'default' },
+    })
+    await expect(context.db.query("UPDATE ingest_sources SET traffic_scope = 'paid' WHERE id = 'pugongying'")).rejects.toThrow()
   })
 })

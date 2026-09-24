@@ -1,4 +1,5 @@
 import type { AuditLogView } from './responses'
+import type { SourceScopeView } from './source-adapter'
 
 /**
  * Response shapes for the ops console (运维端): per-source calls and quota,
@@ -44,6 +45,8 @@ export type PipelineSourceView = {
   emptyToday: number
   /** Billed calls today on endpoints with no known price (not in the money total). */
   unpricedToday: number
+  /** Which traffic and notes the source is asked for, and where each came from; `null` = no such switches. */
+  scope: SourceScopeView | null
   /** Oldest first, one row per quota day that had calls, last 7 days including today. */
   recentDays: { day: string; calls: number; costUsd: number }[]
   lastSuccessAt: string | null

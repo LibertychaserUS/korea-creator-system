@@ -152,10 +152,12 @@
         <Card v-for="group in groups" :key="group" class="gap-0 border-border/60 py-0 shadow-xs">
           <div class="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <h3 class="text-sm font-semibold">{{ groupLabel(group) }}</h3>
-            <span class="text-[11px] text-muted-foreground">{{ t(`kcs.ingest.window${metrics.window === 90 ? 90 : 30}`) }}</span>
+            <span class="text-right text-[11px] text-muted-foreground">
+              {{ t(`kcs.ingest.window${metrics.window === 90 ? 90 : 30}`) }}<template v-if="scope"> · <span data-testid="creator-scope">{{ scope }}</span></template>
+            </span>
           </div>
           <dl class="divide-y divide-border/40">
-            <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="help(field.key)">
+            <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="helpIn(field.key, metrics.basis)">
               <dt class="min-w-0">
                 <span class="block truncate text-sm text-foreground">{{ label(field.key) }}</span>
                 <span v-if="percentiles[field.key]" class="mt-1 block h-1 w-28 overflow-hidden rounded-full bg-muted">
@@ -269,7 +271,7 @@ const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'sele
 const inShortlist = ref(false)
 const shortlisting = ref(false)
 const shortlistError = ref('')
-const { label, help, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
+const { label, helpIn, scopeLine, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)
@@ -286,6 +288,7 @@ const loadingHistory = ref(true)
 const historyWindow = ref<30 | 90>(30)
 
 const metrics = computed<CreatorMetrics>(() => ({ ...emptyMetrics(), ...(creator.value?.metrics ?? {}) }))
+const scope = computed(() => scopeLine(metrics.value.basis))
 const percentiles = computed<MetricPercentiles>(() => creator.value?.percentiles ?? {})
 /** 本库同组同量级的 25/50/75 分位（组内 ≥ 30 人才有）。 */
 const references = computed<Partial<Record<NumericMetricKey, { n: number; p25: number; p50: number; p75: number }>>>(

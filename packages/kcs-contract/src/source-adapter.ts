@@ -48,6 +48,39 @@ export const SOURCE_BUDGET_ENV: Record<SourceId, string> = {
   xinhong: 'XINHONG_DAILY_BUDGET_USD',
 }
 
+/**
+ * Which notes and which traffic a source's numbers describe (蒲公英 `business`
+ * and `advertise_switch`). `traffic`: `all` = 全部流量 including paid boosts,
+ * `organic` = 仅自然流量. `business`: `daily` = 日常笔记, `coop` = 合作笔记 — it
+ * also moves the platform's cost estimates. Sources without such switches
+ * have `null` defaults. The scope a record was fetched with is kept in its
+ * payload (`kcsScope`) and in `metrics.basis.trafficScope` / `businessScope`.
+ */
+export const TRAFFIC_SCOPES = ['all', 'organic'] as const
+export type TrafficScope = (typeof TRAFFIC_SCOPES)[number]
+export const BUSINESS_SCOPES = ['daily', 'coop'] as const
+export type BusinessScope = (typeof BUSINESS_SCOPES)[number]
+export type SourceScope = { traffic: TrafficScope; business: BusinessScope }
+export type SourceScopeView = SourceScope & { from: { traffic: 'env' | 'source' | 'default'; business: 'env' | 'source' | 'default' } }
+
+export const SOURCE_SCOPE_DEFAULTS: Record<SourceId, SourceScope | null> = {
+  pugongying: { traffic: 'all', business: 'daily' },
+  qiangua: null,
+  xinhong: null,
+}
+
+/** Env overrides, read before `ingest_sources.traffic_scope` / `business_scope`. */
+export const SOURCE_SCOPE_ENV: Partial<Record<SourceId, { traffic: string; business: string }>> = {
+  pugongying: { traffic: 'PGY_TRAFFIC_SCOPE', business: 'PGY_BUSINESS_SCOPE' },
+}
+
+/** Metrics whose value depends on the scope (the rest are fan facts, prices or fixed-window counts). */
+export const SCOPED_METRIC_KEYS: readonly NumericMetricKey[] = [
+  'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
+  'engagementRate', 'completionRate', 'read3sRate', 'noteCount', 'viralCount', 'viralRate',
+  'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'cpr', 'cpe', 'cpeVideo', 'cpm',
+]
+
 /** Parameters ops fill in on the ingest page; every adapter accepts the same shape. */
 export type SourceQuery = {
   source: SourceId

@@ -11,6 +11,7 @@
  * So a page that fans out to 81 calls is 81 reservations, and the daily call
  * quota and money budget stop the job at the exact call that would pass them.
  */
+import type { SourceScope } from './source-adapter'
 
 export type BillingOutcome = 'billed' | 'unbilled' | 'maybe'
 
@@ -40,6 +41,8 @@ export interface CallMeter {
 /** What the queue hands an adapter with each page. Adapters called without one run unmetered (tests, tools). */
 export type FetchContext = {
   meter?: CallMeter
+  /** The source's configured scope; adapters without scope switches ignore it. */
+  scope?: SourceScope | null
 }
 
 export const METER_STOP_REASONS = ['quota', 'budget', 'paused', 'stopping'] as const

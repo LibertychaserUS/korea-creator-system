@@ -1902,7 +1902,7 @@ export const en: Locale = {
       followers: "Followers",
       followerGrowth: "Follower gain",
       followerGrowthRate: "Growth rate",
-      readFanRatio: "Share of reads from fans",
+      readFanRatio: "Fans who read",
       activeFanRatio: "Active fans",
       engagedFanRatio: "Engaged fans",
       fanInteractionRatio: "Interacting fan ratio",
@@ -1942,11 +1942,11 @@ export const en: Locale = {
       followers: "Total followers shown on profile. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       followerGrowth: "Net new followers within the period. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       followerGrowthRate: "New followers ÷ start followers. Calculated by system; shown as — if unavailable.",
-      readFanRatio: "Share of everyday reads that come from followers. Neither high nor low is simply better, so it is shown for reference and not ranked. Provided by Pugongying; shown as — if unavailable.",
+      readFanRatio: "Share of followers who read at least one of the creator's posts in the last 30 days (not the share of reads that come from followers). Neither high nor low is simply better, so it is shown for reference and not ranked. Provided by Pugongying; shown as — if unavailable.",
       fanInteractionRatio: "Interacting fan ratio as given by Xinhong. Xinhong does not publish how it is calculated, so it is shown for reference and not ranked. Shown as — if unavailable.",
       activeFanRatio: "Followers active on Xiaohongshu in the past 28 days. Provided by Pugongying; shown as — if unavailable.",
-      engagedFanRatio: "Followers who liked, saved or commented on a post in the past 28 days. Provided by Pugongying; shown as — if unavailable.",
-      impressionMedian: "Median public feed impressions per post in the period. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
+      engagedFanRatio: "Share of followers who liked, saved or commented on a post in the last 30 days. Provided by Pugongying; shown as — if unavailable.",
+      impressionMedian: "Median impressions per post in the period. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       readMedian: "Median actual reads per post in the period. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       interactionMedian: "Median sum of likes, saves, and comments per post. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       likeMedian: "Median likes per post. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
@@ -2165,6 +2165,13 @@ export const en: Locale = {
         "visibility": "“Who can see it” is not valid",
         "columns": "Select at least one item to show"
       }
+    },
+    scope: {
+      traffic: { all: "All traffic (incl. paid boosts)", organic: "Organic traffic only" },
+      business: { daily: "Everyday posts", coop: "Sponsored posts" },
+      line: "{traffic} · {business}",
+      hint: "These figures come from Pugongying for {traffic} · {business}.",
+      fromEnv: "Scope set by environment variable"
     },
     ingest: {
       queued: "Collection started. The background will finish steadily within allowed limits and show in the records below.",

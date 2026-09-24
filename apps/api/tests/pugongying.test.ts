@@ -42,12 +42,17 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.read3sRate).toBeCloseTo(0.7, 3)
     expect(m.noteCount).toBe(33)
     expect(m.viralRate).toBeCloseTo(0.212, 3)
-    expect(m.viralCount).toBeNull()
+    // 21.2% of 33 notes, read back from the same notesRate answer.
+    expect(m.viralCount).toBe(7)
+    expect(m.basis.viralCount).toBe('notesRate.thousandLikePercent*noteNumber')
     expect(m.priceImage).toBe(16800)
     expect(m.priceVideo).toBe(26000)
     expect(m.cpr).toBe(0.18)
     expect(m.cpe).toBe(3)
     expect(m.cpm).toBe(91.3)
+    // estimateVideoEngageCost is 0 (not shown), so the video CPE is derived from the video price.
+    expect(m.cpeVideo).toBeCloseTo(26000 / 5100, 6)
+    expect(m.basis.cpeVideo).toBe('priceVideo/coopInteractionMedian')
     expect(m.trafficSearchRatio).toBe(0.18)
     expect(m.trafficRecommendRatio).toBe(0.75)
     expect(m.trafficFollowRatio).toBe(0.03)
@@ -76,6 +81,54 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.cpe).toBe(2.39)
     expect(m.health).toBeNull()
     expect(m.audience).toBeNull()
+  })
+
+  it('a 90-day record carries only what notesRate returned for 90 days — no 30-day number under a 90 label', () => {
+    const base = record(0).payload
+    const notesRate = { noteNumber: 40, readMedian: 50000, interactionMedian: 3000, thousandLikePercent: '10.0' }
+    const at = (window: 30 | 90) => {
+      const result = normalizePugongying({ ...record(0), payload: { ...base, kcsWindow: window, notesRate } })
+      if (!result.ok) throw new Error(result.errors.join())
+      return result.creator
+    }
+    const long = at(90)
+    const m = long.metrics
+    expect(m.window).toBe(90)
+    expect(m.readMedian).toBe(50000)
+    expect(m.interactionMedian).toBe(3000)
+    expect(m.noteCount).toBe(40)
+    expect(m.viralRate).toBeCloseTo(0.1, 6)
+    expect(m.viralCount).toBe(4)
+    // The list and 数据概览 carry 30-day values for all of these; none may stand in.
+    expect(m.impressionMedian).toBeNull()
+    expect(m.coopReadMedian).toBeNull()
+    expect(m.coopInteractionMedian).toBeNull()
+    expect(m.likeMedian).toBeNull()
+    expect(m.completionRate).toBeNull()
+    expect(m.cpm).toBeNull()
+    // The platform's 30-day unit costs give way to ones derived from the 90-day medians.
+    expect(m.cpe).toBeCloseTo(16800 / 3000, 6)
+    expect(m.basis.cpe).toBe('priceImage/interactionMedian')
+    expect(m.cpr).toBeCloseTo(16800 / 50000, 6)
+    expect(m.platformRanks?.readMedian).toBeUndefined()
+    expect(m.platformRanks?.engagementRate).toBeUndefined()
+    // Fan facts keep their own fixed window, and say so.
+    expect(m.followerGrowth).toBe(18200)
+    expect(m.activeFanRatio).toBeCloseTo(0.78, 3)
+    expect(long.signals?.windowDays).toMatchObject({ followerGrowth: 30, activeFanRatio: 28, engagedFanRatio: 30, readFanRatio: 30 })
+
+    // The same payload read for 30 days may use the list and 数据概览 values.
+    const short = at(30).metrics
+    expect(short.impressionMedian).toBe(180000)
+    expect(short.coopReadMedian).toBe(84000)
+    expect(short.cpe).toBe(3)
+    expect(short.platformRanks?.readMedian).toBeCloseTo(0.9, 6)
+  })
+
+  it('a record without any 健康等级 field has unknown health, never 健康', () => {
+    const result = normalizePugongying({ ...record(0), payload: { ...record(0).payload, lowActive: true } })
+    expect(result.ok && result.creator.metrics.health).toBeNull()
+    expect(result.ok && result.creator.metrics.lowActive).toBe(true)
   })
 
   it('keeps 低活跃 as its own flag instead of turning it into a health grade', () => {
@@ -223,6 +276,44 @@ describe('蒲公英 gateways', () => {
     expect(await notesParams('tikhub', 30)).toEqual({ sent: 'DAY_30', stored: 'DAY_30' })
     process.env.PGY_DATE_TYPES = 'not json'
     expect(await notesParams('tikhub', 90)).toEqual({ sent: 2, stored: 2 })
+  })
+
+  it('scope: business / advertise_switch follow the source scope and are recorded on the payload and in basis', async () => {
+    const detail = record(1).payload
+    const refresh = async (gateway: string, scope?: { traffic: 'all' | 'organic'; business: 'daily' | 'coop' }) => {
+      calls = []
+      process.env.PGY_GATEWAY = gateway
+      stubFetch((url) => (/detail|user\/blogger/.test(url)
+        ? { data: { data: detail, ...detail } }
+        : { data: { data: { noteNumber: 10, readMedian: 900 } }, code: 0 }))
+      const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, externalIds: ['pgy_002'] }, scope ? { scope } : undefined)
+      const params = (pattern: RegExp) => {
+        const call = calls.find((c) => pattern.test(c.url))!
+        if (call.init.body) return JSON.parse(String(call.init.body))
+        return Object.fromEntries(new URL(call.url).searchParams)
+      }
+      const result = pugongyingAdapter.normalize(page.records[0]!)
+      if (!result.ok) throw new Error(result.errors.join())
+      return { notes: params(/notes_?[rR]ate/), summary: params(/data_?[sS]ummary/), stored: page.records[0]!.payload.kcsScope, basis: result.creator.metrics.basis }
+    }
+    const byDefault = await refresh('tikhub')
+    expect(byDefault.notes).toMatchObject({ business: 0, advertise_switch: 1 })
+    expect(byDefault.summary).toMatchObject({ business: 0 })
+    expect(byDefault.stored).toEqual({ traffic: 'all', business: 'daily' })
+    expect(byDefault.basis).toMatchObject({ trafficScope: 'all', businessScope: 'daily' })
+
+    const organicCoop = await refresh('tikhub', { traffic: 'organic', business: 'coop' })
+    expect(organicCoop.notes).toMatchObject({ business: 1, advertise_switch: 0 })
+    expect(organicCoop.summary).toMatchObject({ business: 1 })
+    expect(organicCoop.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'coop' })
+
+    const official = await refresh('official', { traffic: 'organic', business: 'coop' })
+    expect(official.notes).toMatchObject({ business: '1', advertiseSwitch: '0' })
+    expect(official.summary).toMatchObject({ business: '1' })
+
+    // A record fetched before scopes existed (or from a fixture) says nothing rather than guessing.
+    const bare = normalizePugongying(record(0))
+    expect(bare.ok && bare.creator.metrics.basis.trafficScope).toBeUndefined()
   })
 
   it('justoneapi: GET with token query and one-layer data', async () => {
