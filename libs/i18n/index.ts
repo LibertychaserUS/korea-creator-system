@@ -1,12 +1,10 @@
 import { en, zhCN, ko } from './locales'
+import type { SupportedLocale } from './codes'
 
 // Re-export from config for consistency
 export { config } from '@config'
 
-export const defaultLocale = 'zh-CN'
-export const locales = ['en', 'zh-CN', 'ko'] as const
-
-export type SupportedLocale = typeof locales[number]
+export { defaultLocale, locales, isValidLocale, type SupportedLocale } from './codes'
 
 // 基于英文翻译自动推断类型
 export type Translations = typeof en
@@ -16,10 +14,6 @@ export const translations = {
   'zh-CN': zhCN,
   ko,
 } as const
-
-export function isValidLocale(locale: string): locale is SupportedLocale {
-  return locales.includes(locale as SupportedLocale)
-}
 
 // 类型安全的翻译函数
 export function getTranslation(locale: SupportedLocale): Translations {

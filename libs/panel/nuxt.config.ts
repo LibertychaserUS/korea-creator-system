@@ -1,8 +1,10 @@
 // 听潮 shared panel layer — TinyShip host config consumed by the four apps
 // (marketing / select / ops / dev). Each app extends this layer and only adds
 // its own pages, port, and appConfig.kcs.
-import { dirname, resolve } from 'path'
+import { dirname, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
+import { addPluginTemplate } from '@nuxt/kit'
+import type { Nuxt } from '@nuxt/schema'
 import { loadEnv } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import svgLoader from 'vite-svg-loader'
@@ -17,6 +19,36 @@ Object.assign(process.env, env)
 process.env.SQLITE_DB_PATH = resolve(rootDir, process.env.SQLITE_DB_PATH || './data/local.sqlite')
 
 import { config as appConfig } from '../../config'
+
+// Lazy locale chunks are imported only once the entry has run, a network round
+// trip before hydration. @nuxtjs/i18n strips preload from every language file so
+// that none is preloaded; this puts it back and lets SSR preload just the
+// languages the page renders (current + default, which is also the fallback).
+function localePreload(_: unknown, nuxt: Nuxt) {
+  const files = Object.fromEntries(
+    appConfig.app.i18n.locales.map(code => [code, relative(nuxt.options.srcDir, resolve(layerDir, 'i18n/locales', `${code}.ts`))]),
+  )
+  // i18n registers its manifest hook on modules:done; registering ours there too runs it after.
+  nuxt.hook('modules:done', () => {
+    nuxt.hook('build:manifest', (manifest) => {
+      for (const id of Object.values(files)) if (manifest[id]) manifest[id].preload = true
+    })
+  })
+  addPluginTemplate({
+    filename: 'kcs-locale-preload.server.mjs',
+    mode: 'server',
+    getContents: () => `import { defineNuxtPlugin } from '#app'
+const files = ${JSON.stringify(files)}
+export default defineNuxtPlugin((nuxtApp) => {
+  nuxtApp.hook('app:rendered', () => {
+    const modules = nuxtApp.ssrContext?.modules
+    if (!modules) return
+    for (const code of [nuxtApp.$i18n.locale.value, ${JSON.stringify(appConfig.app.i18n.defaultLocale)}]) if (files[code]) modules.add(files[code])
+  })
+})
+`,
+  })
+}
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
@@ -156,7 +188,7 @@ export default defineNuxtConfig({
     transpile: ['pg', 'drizzle-orm'],
   },
 
-  modules: ['shadcn-nuxt', '@pinia/nuxt', '@nuxtjs/i18n', 'nuxt-charts', 'motion-v/nuxt'],
+  modules: ['shadcn-nuxt', '@pinia/nuxt', '@nuxtjs/i18n', 'nuxt-charts', 'motion-v/nuxt', localePreload],
 
   components: {
     dirs: [
@@ -173,9 +205,14 @@ export default defineNuxtConfig({
       optimizeTranslationDirective: false,
     },
     vueI18n: resolve(layerDir, 'i18n/i18n.config.ts'),
+    // Only the 听潮 copy (i18n/locales/<code>.ts: common, actions, kcs), one chunk per
+    // language; the page loads the default language plus the current one.
+    lazy: true,
+    langDir: 'locales',
     locales: appConfig.app.i18n.locales.map(code => ({
       code,
       name: ({ en: 'English', 'zh-CN': '中文', ko: '한국어' } as const)[code] ?? code,
+      file: `${code}.ts`,
     })),
     defaultLocale: appConfig.app.i18n.defaultLocale,
     strategy: 'prefix',

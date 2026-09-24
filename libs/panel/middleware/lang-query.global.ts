@@ -1,4 +1,4 @@
-import { isValidLocale } from '@libs/i18n'
+import { isValidLocale } from '@libs/i18n/codes'
 
 export default defineNuxtRouteMiddleware((to) => {
   const raw = to.query.lang

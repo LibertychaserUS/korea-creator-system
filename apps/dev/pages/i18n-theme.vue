@@ -80,10 +80,13 @@
 <script setup lang="ts">
 import { AlertTriangle, CheckCircle2, Monitor, Moon, Sun } from 'lucide-vue-next'
 import { API, SCREEN_TESTID, checkLocaleKeys, type DevI18nReport, type LocaleCheck } from '@kcs/contract'
+import { enKcs } from '@libs/i18n/locales/kcs/en'
+import { koKcs } from '@libs/i18n/locales/kcs/ko'
+import { zhCNKcs } from '@libs/i18n/locales/kcs/zh-CN'
 
 const KINDS = ['missing', 'extra', 'empty', 'placeholderMismatch'] as const
 
-const { t, te, messages } = useI18n()
+const { t, te } = useI18n()
 const { request } = useApi()
 const { formatNumber, formatDateTime } = useFormat()
 const { theme, setTheme, isHydrated } = useTheme()
@@ -92,12 +95,11 @@ const current = computed(() => (isHydrated.value ? theme.value : null))
 
 const report = ref<DevI18nReport | null>(null)
 
-/** 界面文案随页面打包，直接在浏览器里对；导出表头由接口生成，交给接口对。 */
-const screenCheck = computed<LocaleCheck>(() => {
-  const all = messages.value as Record<string, { kcs?: unknown }>
-  const order = ['zh-CN', ...Object.keys(all).filter((code) => code !== 'zh-CN')]
-  return checkLocaleKeys(Object.fromEntries(order.filter((code) => all[code]).map((code) => [code, all[code]!.kcs ?? {}])), 'zh-CN')
-})
+/**
+ * 界面文案随页面打包，直接在浏览器里对；导出表头由接口生成，交给接口对。
+ * 平时每端只加载当前语言，这一页要三种都在，所以直接引入三份。
+ */
+const screenCheck = computed<LocaleCheck>(() => checkLocaleKeys({ 'zh-CN': zhCNKcs, en: enKcs, ko: koKcs }, 'zh-CN'))
 
 const blocks = computed(() => [
   { id: 'screen', title: t('kcs.console.i18n.screen'), check: screenCheck.value },
