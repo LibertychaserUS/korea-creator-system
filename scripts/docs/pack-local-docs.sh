@@ -7,6 +7,7 @@
 # node_modules / build output), writes MANIFEST.txt (path, bytes, sha256), and encrypts with
 # 7z AES-256 with encrypted file names (-mhe=on). The passphrase is read from the terminal
 # (asked twice) or from the first line of --password-file; it never appears on a command line.
+# The default name is docs-archive/kcs-docs-<UTC date>.7z, with -2, -3 … when that day's name is taken.
 # --update-readme rewrites the package name, date, file count, size and sha256 in docs-archive/README.md.
 set -euo pipefail
 
@@ -26,7 +27,7 @@ DOC_PATHSPECS=(
 )
 
 usage() {
-  sed -n '2,10s/^# \{0,1\}//p' "$0"
+  sed -n '2,11s/^# \{0,1\}//p' "$0"
   exit "${1:-0}"
 }
 
@@ -60,7 +61,15 @@ sevenzip=$(command -v 7zz || command -v 7z || true)
 [ -n "$sevenzip" ] || { echo "需要 7-Zip（7z 或 7zz）。" >&2; exit 1; }
 
 today=$(date -u +%Y-%m-%d)
-out=${out:-$root/docs-archive/kcs-docs-$(date -u +%Y%m%d).7z}
+if [ -z "$out" ]; then
+  stem=$root/docs-archive/kcs-docs-$(date -u +%Y%m%d)
+  out=$stem.7z
+  n=2
+  while [ -e "$out" ]; do
+    out=$stem-$n.7z
+    n=$((n + 1))
+  done
+fi
 if [ -e "$out" ]; then
   echo "$out 已存在（7z 会往旧包里追加）。先删掉它或用 --out 指定新文件名。" >&2
   exit 1
@@ -125,7 +134,7 @@ echo "sha256：${sha}"
 readme=$root/docs-archive/README.md
 if [ "$update_readme" -eq 1 ] && [ -f "$readme" ]; then
   sed -i -E \
-    -e "s/kcs-docs-[0-9]{8}\.7z/${name}/g" \
+    -e "s/kcs-docs-[0-9]{8}(-[0-9]+)?\.7z/${name}/g" \
     -e "s/^- 生成时间：.*/- 生成时间：${today}（UTC）/" \
     -e "s/^- 大小：.*/- 大小：${size_fmt} 字节/" \
     -e "s/^- sha256：.*/- sha256：\`${sha}\`/" \
