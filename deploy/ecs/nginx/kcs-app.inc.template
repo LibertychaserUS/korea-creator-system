@@ -1,0 +1,14 @@
+# A workspace app: everything — pages, /_nuxt assets, /__login, /__logout and its
+# own better-auth routes under /api/auth/* — goes to that app, never to the API.
+# Expects $kcs_up set by the including server block.
+client_max_body_size 2m;
+
+location /_nuxt/ {
+    proxy_pass $kcs_up;
+    include /etc/nginx/conf.d/kcs-headers.inc;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+}
+
+location / {
+    proxy_pass $kcs_up;
+}

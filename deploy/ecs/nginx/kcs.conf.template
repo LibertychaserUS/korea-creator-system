@@ -1,0 +1,112 @@
+# 全球达人情报系统 — nginx edge proxy (alternative to Caddy; COMPOSE_PROFILES=nginx).
+# Rendered by the official image's envsubst step; only variables matched by
+# NGINX_ENVSUBST_FILTER are substituted, so nginx's own $vars survive.
+# Certificates: /etc/nginx/certs/<host>.pem + <host>.key for every host
+# (Aliyun SSL "Nginx" download). A wildcard cert can be copied under each name.
+
+# Docker's embedded DNS, re-resolved so a recreated container's new IP is picked up.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# The client IP is the TCP peer. X-Forwarded-For / X-Real-IP are *overwritten*,
+# never appended: better-auth's sign-in throttle keys on X-Forwarded-For, so a
+# client-supplied value must not survive. Behind Aliyun SLB / CDN, use
+# set_real_ip_from <SLB/CDN ranges> + real_ip_header X-Forwarded-For first.
+proxy_http_version 1.1;
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+proxy_read_timeout 120s;
+proxy_hide_header X-Powered-By;
+
+server_tokens off;
+gzip on;
+gzip_vary on;
+gzip_proxied any;
+gzip_min_length 1024;
+gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+ssl_session_cache shared:kcs_ssl:10m;
+ssl_session_timeout 1d;
+
+server {
+    listen 80 default_server;
+    server_name _;
+    return 301 https://$host$request_uri;
+}
+
+# Unknown Host on 443: close without answering.
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${MARKETING_HOST};
+    ssl_certificate     /etc/nginx/certs/${MARKETING_HOST}.pem;
+    ssl_certificate_key /etc/nginx/certs/${MARKETING_HOST}.key;
+    include /etc/nginx/conf.d/kcs-headers.inc;
+    set $kcs_up http://marketing:3000;
+    include /etc/nginx/conf.d/kcs-app.inc;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${SELECT_HOST};
+    ssl_certificate     /etc/nginx/certs/${SELECT_HOST}.pem;
+    ssl_certificate_key /etc/nginx/certs/${SELECT_HOST}.key;
+    include /etc/nginx/conf.d/kcs-headers.inc;
+    set $kcs_up http://select:3000;
+    include /etc/nginx/conf.d/kcs-app.inc;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${OPS_HOST};
+    ssl_certificate     /etc/nginx/certs/${OPS_HOST}.pem;
+    ssl_certificate_key /etc/nginx/certs/${OPS_HOST}.key;
+    include /etc/nginx/conf.d/kcs-headers.inc;
+    set $kcs_up http://ops:3000;
+    include /etc/nginx/conf.d/kcs-app.inc;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DEV_HOST};
+    ssl_certificate     /etc/nginx/certs/${DEV_HOST}.pem;
+    ssl_certificate_key /etc/nginx/certs/${DEV_HOST}.key;
+    include /etc/nginx/conf.d/kcs-headers.inc;
+    set $kcs_up http://dev:3000;
+    include /etc/nginx/conf.d/kcs-app.inc;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${API_HOST};
+    ssl_certificate     /etc/nginx/certs/${API_HOST}.pem;
+    ssl_certificate_key /etc/nginx/certs/${API_HOST}.key;
+    include /etc/nginx/conf.d/kcs-headers.inc;
+    # Workbook uploads are capped at 20 MB by the API itself; leave room for multipart.
+    client_max_body_size 25m;
+    location / {
+        set $kcs_up http://api:7100;
+        proxy_pass $kcs_up;
+    }
+}

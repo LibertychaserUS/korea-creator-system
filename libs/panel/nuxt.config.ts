@@ -91,6 +91,9 @@ export default defineNuxtConfig({
     externals: {
       inline: ['zod'],
     },
+    // .br / .gz siblings for /_nuxt assets; Nitro serves them by Accept-Encoding,
+    // so the edge proxy never has to compress static files itself.
+    compressPublicAssets: { gzip: true, brotli: true },
     dev: process.env.NODE_ENV === 'development',
   },
 

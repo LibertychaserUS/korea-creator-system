@@ -1,0 +1,77 @@
+# 全球达人情报系统 — edge proxy. Hosts come from .env via compose.
+# Automatic HTTPS (Let's Encrypt / ZeroSSL) needs DNS for every host pointing at
+# this ECS and ports 80 + 443 open. Local verification sets
+# CADDY_EXTRA_GLOBAL=local_certs (Caddy's internal CA).
+{
+	email {$ACME_EMAIL}
+	{$CADDY_EXTRA_GLOBAL}
+}
+
+(common) {
+	# br for static files comes precompressed from Nitro (compressPublicAssets);
+	# Caddy compresses the rest on the fly and never re-encodes an encoded body.
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "{$HSTS_VALUE}"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+# The client IP is the TCP peer. X-Forwarded-For / X-Real-IP are *overwritten*,
+# never appended: better-auth's sign-in throttle keys on X-Forwarded-For, so a
+# client-supplied value must not survive. Behind Aliyun SLB / CDN, add
+#   servers { trusted_proxies static <SLB/CDN ranges> }
+# to the global block and use {client_ip} instead of {remote_host}.
+(upstream) {
+	reverse_proxy {args[0]} {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+	}
+}
+
+# A workspace app: everything — pages, /_nuxt assets, /__login, /__logout and its
+# own better-auth routes under /api/auth/* — goes to that app, never to the API.
+(app) {
+	import common
+	@hashed path /_nuxt/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@icons path /favicon.ico /favicon-*.png /apple-touch-icon.png /android-chrome-*.png /logo.svg /site.webmanifest /robots.txt
+	header @icons Cache-Control "public, max-age=86400"
+	import upstream {args[0]}
+}
+
+{$MARKETING_HOST} {
+	import app marketing:3000
+}
+
+{$SELECT_HOST} {
+	import app select:3000
+}
+
+{$OPS_HOST} {
+	import app ops:3000
+}
+
+{$DEV_HOST} {
+	import app dev:3000
+}
+
+{$API_HOST} {
+	import common
+	# Workbook uploads are capped at 20 MB by the API itself; leave room for multipart.
+	request_body {
+		max_size 25MB
+	}
+	import upstream api:7100
+}

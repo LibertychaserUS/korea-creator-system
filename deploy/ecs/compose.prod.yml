@@ -1,0 +1,421 @@
+# 全球达人情报系统 — single Aliyun ECS, docker compose.
+#
+#   cd deploy/ecs && cp .env.example .env   # fill in every 必填 value
+#   docker compose -f compose.prod.yml build            # or pull from your registry
+#   docker compose -f compose.prod.yml up -d
+#
+# Topology: only the proxy publishes ports (80/443). The API, the four Nuxt apps,
+# the one-off init job, the backup loop and the optional Postgres talk over
+# private networks; Postgres sits on an `internal` network with no egress.
+#
+# Profiles (set COMPOSE_PROFILES in .env):
+#   caddy        Caddy with automatic HTTPS (default)
+#   nginx        nginx with your own certificates (Aliyun SSL) instead of Caddy
+#   localdb      self-hosted Postgres 16 in this compose; leave out for RDS
+#   split-worker a second API process that only drains the ingest queue (see `api-worker`)
+
+name: kcs
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: ${LOG_MAX_FILE:-5}
+
+x-web-env: &web-env
+  NODE_ENV: production
+  NITRO_HOST: 0.0.0.0
+  NITRO_PORT: "3000"
+  TZ: ${TZ:-Asia/Shanghai}
+  DB_DIALECT: pg
+  DATABASE_URL: ${IDENTITY_DATABASE_URL:-postgres://kcs:${POSTGRES_PASSWORD:-}@postgres:5432/tinyship}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+  AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:?AUTH_COOKIE_DOMAIN is required, e.g. .example.com}
+  NUXT_PUBLIC_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN}
+  NUXT_PUBLIC_API_BASE: https://${API_HOST:?API_HOST is required}${PUBLIC_PORT_SUFFIX:-}
+  NUXT_API_INTERNAL_BASE: http://api:7100
+  NUXT_PUBLIC_MARKETING_URL: https://${MARKETING_HOST:?MARKETING_HOST is required}${PUBLIC_PORT_SUFFIX:-}
+  NUXT_PUBLIC_SELECT_URL: https://${SELECT_HOST:?SELECT_HOST is required}${PUBLIC_PORT_SUFFIX:-}
+  NUXT_PUBLIC_OPS_URL: https://${OPS_HOST:?OPS_HOST is required}${PUBLIC_PORT_SUFFIX:-}
+  NUXT_PUBLIC_DEV_URL: https://${DEV_HOST:?DEV_HOST is required}${PUBLIC_PORT_SUFFIX:-}
+  AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-}
+  # Email for password reset (optional; TinyShip providers, see env.example at the repo root)
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  EMAIL_DEFAULT_FROM: ${EMAIL_DEFAULT_FROM:-}
+
+x-api-env: &api-env
+  NODE_ENV: production
+  PORT: "7100"
+  TZ: ${TZ:-Asia/Shanghai}
+  DATABASE_URL: ${KCS_DATABASE_URL:-postgres://kcs:${POSTGRES_PASSWORD:-}@postgres:5432/kcs}
+  # TinyShip session introspection over the private network (any workspace app works).
+  AUTH_BASE_URL: http://select:3000
+  API_PUBLIC_URL: https://${API_HOST}${PUBLIC_PORT_SUFFIX:-}
+  WEB_ORIGIN: https://${MARKETING_HOST}${PUBLIC_PORT_SUFFIX:-},https://${SELECT_HOST}${PUBLIC_PORT_SUFFIX:-},https://${OPS_HOST}${PUBLIC_PORT_SUFFIX:-},https://${DEV_HOST}${PUBLIC_PORT_SUFFIX:-}
+  KCS_CURSOR_SECRET: ${KCS_CURSOR_SECRET:?KCS_CURSOR_SECRET is required}
+  # Production never loads demo data, whatever .env says.
+  KCS_SEED: ""
+  KCS_DEV_TOKENS: "0"
+  KCS_VERSION: ${KCS_TAG:-latest}
+  SHUTDOWN_TIMEOUT_MS: "25000"
+  LOG_REQUESTS: ${LOG_REQUESTS:-1}
+  SESSION_CACHE_MS: ${SESSION_CACHE_MS:-10000}
+  # Collection vendors (all optional; without credentials every source stays `fixture`)
+  TIKHUB_API_KEY: ${TIKHUB_API_KEY:-}
+  TIKHUB_BASE_URL: ${TIKHUB_BASE_URL:-https://api.tikhub.io}
+  TIKHUB_BALANCE_ALERT_USD: ${TIKHUB_BALANCE_ALERT_USD:-5}
+  PGY_GATEWAY: ${PGY_GATEWAY:-tikhub}
+  PGY_ACCESS_TOKEN: ${PGY_ACCESS_TOKEN:-}
+  PGY_BASE_URL: ${PGY_BASE_URL:-}
+  PGY_BRAND_USER_ID: ${PGY_BRAND_USER_ID:-}
+  PGY_ENRICH: ${PGY_ENRICH:-0}
+  PGY_TIMEOUT_MS: ${PGY_TIMEOUT_MS:-60000}
+  PGY_SLOW_REFRESH_DAYS: ${PGY_SLOW_REFRESH_DAYS:-30}
+  PGY_TRAFFIC_SCOPE: ${PGY_TRAFFIC_SCOPE:-}
+  PGY_BUSINESS_SCOPE: ${PGY_BUSINESS_SCOPE:-}
+  PGY_DAILY_BUDGET_USD: ${PGY_DAILY_BUDGET_USD:-}
+  QIANGUA_TOKEN: ${QIANGUA_TOKEN:-}
+  QIANGUA_BASE_URL: ${QIANGUA_BASE_URL:-https://api.qian-gua.com}
+  QIANGUA_DAILY_BUDGET_USD: ${QIANGUA_DAILY_BUDGET_USD:-}
+  XINHONG_TOKEN: ${XINHONG_TOKEN:-}
+  XINHONG_BASE_URL: ${XINHONG_BASE_URL:-https://api.newrank.cn}
+  XINHONG_DAILY_BUDGET_USD: ${XINHONG_DAILY_BUDGET_USD:-}
+  KCS_VENDOR_PRICES: ${KCS_VENDOR_PRICES:-}
+  INGEST_SCHEDULER: ${INGEST_SCHEDULER:-0}
+  DAILY_TASKS_TZ: ${DAILY_TASKS_TZ:-Asia/Shanghai}
+  DAILY_TASKS_HOUR: ${DAILY_TASKS_HOUR:-4}
+  # Retention: everything is kept for now (0 = keep all)
+  RETENTION_RAW_PER_SOURCE: ${RETENTION_RAW_PER_SOURCE:-0}
+  RETENTION_DEAD_LETTER_DAYS: ${RETENTION_DEAD_LETTER_DAYS:-0}
+  RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-0}
+  RETENTION_JOB_DAYS: ${RETENTION_JOB_DAYS:-0}
+  # Capacity page (运维端 → 容量): backups are mounted read-only at KCS_BACKUP_DIR.
+  # With self-hosted Postgres every volume is on the ECS data disk, so measuring
+  # the backup mount measures that disk. RDS: set KCS_CAPACITY_DATA_PATH= (empty)
+  # and KCS_CAPACITY_DISK_BYTES to the instance's storage size.
+  KCS_BACKUP_DIR: /var/backups/kcs
+  KCS_CAPACITY_DATA_PATH: ${KCS_CAPACITY_DATA_PATH-/var/backups/kcs}
+  KCS_CAPACITY_DISK_BYTES: ${KCS_CAPACITY_DISK_BYTES:-}
+  # Object storage (Aliyun OSS private bucket; reads go through the API)
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_REGION: ${S3_REGION:-}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+  S3_READ_MODE: ${S3_READ_MODE:-proxy}
+
+x-tools-env: &tools-env
+  TZ: ${TZ:-Asia/Shanghai}
+  KCS_DATABASE_URL: ${KCS_DATABASE_URL:-postgres://kcs:${POSTGRES_PASSWORD:-}@postgres:5432/kcs}
+  IDENTITY_DATABASE_URL: ${IDENTITY_DATABASE_URL:-postgres://kcs:${POSTGRES_PASSWORD:-}@postgres:5432/tinyship}
+
+services:
+  # One-off, idempotent: KCS migrations, TinyShip identity tables, first platform
+  # admin. Every `up` re-runs it; the apps wait for it to exit 0.
+  init:
+    image: ${KCS_REGISTRY:-kcs}/tools:${KCS_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.tools
+    command: ["init"]
+    restart: "no"
+    environment:
+      <<: *tools-env
+      NODE_ENV: production
+      DB_DIALECT: pg
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      KCS_ADMIN_EMAIL: ${KCS_ADMIN_EMAIL:-}
+      KCS_ADMIN_PASSWORD: ${KCS_ADMIN_PASSWORD:-}
+      KCS_ADMIN_NAME: ${KCS_ADMIN_NAME:-平台管理员}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    networks: [backend, edge]
+    logging: *logging
+
+  api:
+    image: ${KCS_REGISTRY:-kcs}/api:${KCS_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+      # The web process also drains the ingest queue (one process = simplest).
+      # To split: set API_INGEST_WORKER=0 in .env and add `split-worker` to
+      # COMPOSE_PROFILES — `api-worker` then drains alone. The queue's advisory
+      # lock keeps a single drainer either way.
+      INGEST_WORKER: ${API_INGEST_WORKER:-1}
+    volumes:
+      - backups:/var/backups/kcs:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    # SHUTDOWN_TIMEOUT_MS (25 s) + margin: SIGTERM drains in-flight requests and
+    # hands the running ingest job back before Docker sends SIGKILL.
+    stop_grace_period: 35s
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-1.5}"
+          memory: ${API_MEMORY:-1536m}
+    networks: [backend, edge]
+    logging: *logging
+
+  api-worker:
+    image: ${KCS_REGISTRY:-kcs}/api:${KCS_TAG:-latest}
+    profiles: [split-worker]
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+      INGEST_WORKER: "1"
+    volumes:
+      - backups:/var/backups/kcs:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    stop_grace_period: 35s
+    deploy:
+      resources:
+        limits:
+          cpus: "${WORKER_CPUS:-1}"
+          memory: ${WORKER_MEMORY:-1024m}
+    networks: [backend, edge]
+    logging: *logging
+
+  marketing:
+    image: ${KCS_REGISTRY:-kcs}/marketing:${KCS_TAG:-latest}
+    build: &web-build
+      context: ../..
+      dockerfile: deploy/Dockerfile.workspace-app
+      args:
+        APP: marketing
+    restart: unless-stopped
+    environment:
+      <<: *web-env
+      BETTER_AUTH_URL: https://${MARKETING_HOST}${PUBLIC_PORT_SUFFIX:-}
+      APP_BASE_URL: https://${MARKETING_HOST}${PUBLIC_PORT_SUFFIX:-}
+    depends_on: &web-depends
+      init:
+        condition: service_completed_successfully
+    stop_grace_period: 15s
+    deploy: &web-deploy
+      resources:
+        limits:
+          cpus: "${WEB_CPUS:-0.5}"
+          memory: ${WEB_MEMORY:-512m}
+    networks: [backend, edge]
+    logging: *logging
+
+  select:
+    image: ${KCS_REGISTRY:-kcs}/select:${KCS_TAG:-latest}
+    build:
+      <<: *web-build
+      args:
+        APP: select
+    restart: unless-stopped
+    environment:
+      <<: *web-env
+      BETTER_AUTH_URL: https://${SELECT_HOST}${PUBLIC_PORT_SUFFIX:-}
+      APP_BASE_URL: https://${SELECT_HOST}${PUBLIC_PORT_SUFFIX:-}
+    depends_on: *web-depends
+    stop_grace_period: 15s
+    deploy: *web-deploy
+    networks: [backend, edge]
+    logging: *logging
+
+  ops:
+    image: ${KCS_REGISTRY:-kcs}/ops:${KCS_TAG:-latest}
+    build:
+      <<: *web-build
+      args:
+        APP: ops
+    restart: unless-stopped
+    environment:
+      <<: *web-env
+      BETTER_AUTH_URL: https://${OPS_HOST}${PUBLIC_PORT_SUFFIX:-}
+      APP_BASE_URL: https://${OPS_HOST}${PUBLIC_PORT_SUFFIX:-}
+    depends_on: *web-depends
+    stop_grace_period: 15s
+    deploy: *web-deploy
+    networks: [backend, edge]
+    logging: *logging
+
+  dev:
+    image: ${KCS_REGISTRY:-kcs}/dev:${KCS_TAG:-latest}
+    build:
+      <<: *web-build
+      args:
+        APP: dev
+    restart: unless-stopped
+    environment:
+      <<: *web-env
+      BETTER_AUTH_URL: https://${DEV_HOST}${PUBLIC_PORT_SUFFIX:-}
+      APP_BASE_URL: https://${DEV_HOST}${PUBLIC_PORT_SUFFIX:-}
+    depends_on: *web-depends
+    stop_grace_period: 15s
+    deploy: *web-deploy
+    networks: [backend, edge]
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: [caddy]
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      CADDY_EXTRA_GLOBAL: ${CADDY_EXTRA_GLOBAL:-}
+      MARKETING_HOST: ${MARKETING_HOST}
+      SELECT_HOST: ${SELECT_HOST}
+      OPS_HOST: ${OPS_HOST}
+      DEV_HOST: ${DEV_HOST}
+      API_HOST: ${API_HOST}
+      HSTS_VALUE: ${HSTS_VALUE:-max-age=31536000}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, marketing, select, ops, dev]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks: [edge]
+    logging: *logging
+
+  nginx:
+    image: nginx:1.28-alpine
+    profiles: [nginx]
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      MARKETING_HOST: ${MARKETING_HOST}
+      SELECT_HOST: ${SELECT_HOST}
+      OPS_HOST: ${OPS_HOST}
+      DEV_HOST: ${DEV_HOST}
+      API_HOST: ${API_HOST}
+      HSTS_VALUE: ${HSTS_VALUE:-max-age=31536000}
+      NGINX_ENVSUBST_FILTER: "^(MARKETING_HOST|SELECT_HOST|OPS_HOST|DEV_HOST|API_HOST|HSTS_VALUE)$$"
+    volumes:
+      - ./nginx:/etc/nginx/templates:ro
+      # Blank out the image's welcome server.
+      - /dev/null:/etc/nginx/conf.d/default.conf:ro
+      # One <host>.pem + <host>.key per host, as downloaded from Aliyun SSL (Nginx format).
+      - ${NGINX_CERT_DIR:-./certs}:/etc/nginx/certs:ro
+    depends_on: [api, marketing, select, ops, dev]
+    healthcheck:
+      test: ["CMD", "nginx", "-t", "-q"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks: [edge]
+    logging: *logging
+
+  postgres:
+    image: postgres:16-bookworm
+    profiles: [localdb]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kcs
+      # Not ":?" — compose interpolates profile-disabled services too, and RDS setups
+      # leave it empty. With localdb, an empty value stops postgres at first start.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: kcs
+      TZ: ${TZ:-Asia/Shanghai}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=top
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-512MB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-1536MB}
+      - -c
+      - work_mem=${PG_WORK_MEM:-16MB}
+      - -c
+      - maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-128MB}
+      - -c
+      - max_connections=${PG_MAX_CONNECTIONS:-100}
+      - -c
+      - log_min_duration_statement=${PG_LOG_MIN_DURATION_MS:-1000}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kcs -d kcs"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "${PG_CPUS:-1.5}"
+          memory: ${PG_MEMORY:-2048m}
+    networks: [backend]
+    logging: *logging
+
+  # Daily pg_dump of both databases → gzip-level custom format → OSS, kept
+  # BACKUP_RETENTION_DAYS locally and remotely. Same volume the API measures.
+  backup:
+    image: ${KCS_REGISTRY:-kcs}/tools:${KCS_TAG:-latest}
+    command: ["backup-daemon"]
+    restart: unless-stopped
+    environment:
+      <<: *tools-env
+      BACKUP_DIR: /var/backups/kcs
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-${S3_ENDPOINT:-}}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-${S3_REGION:-}}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-backups/}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-${S3_ACCESS_KEY:-}}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-${S3_SECRET_KEY:-}}
+      BACKUP_S3_FORCE_PATH_STYLE: ${BACKUP_S3_FORCE_PATH_STYLE:-${S3_FORCE_PATH_STYLE:-false}}
+    volumes:
+      - backups:/var/backups/kcs
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+    networks: [backend, edge]
+    logging: *logging
+
+networks:
+  edge: {}
+  backend:
+    internal: true
+
+volumes:
+  pgdata:
+  backups:
+  caddy_data:
+  caddy_config:

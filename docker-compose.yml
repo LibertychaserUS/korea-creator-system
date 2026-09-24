@@ -1,13 +1,16 @@
+# Local development stack only — every port binds to 127.0.0.1 and the
+# credentials below are dev defaults. Production (Aliyun ECS) uses
+# deploy/ecs/compose.prod.yml with secrets from deploy/ecs/.env.
 services:
   postgres:
     image: postgres:16-alpine
     container_name: kcs-postgres
     environment:
       POSTGRES_USER: kcs
-      POSTGRES_PASSWORD: kcs
+      POSTGRES_PASSWORD: ${KCS_DEV_PG_PASSWORD:-kcs}
       POSTGRES_DB: kcs
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${KCS_DEV_PG_PORT:-5432}:5432"
     volumes:
       - kcs_pg:/var/lib/postgresql/data
       - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -22,11 +25,11 @@ services:
     container_name: kcs-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: kcsminio
-      MINIO_ROOT_PASSWORD: kcsminio123
+      MINIO_ROOT_USER: ${KCS_DEV_MINIO_USER:-kcsminio}
+      MINIO_ROOT_PASSWORD: ${KCS_DEV_MINIO_PASSWORD:-kcsminio123}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - kcs_minio:/data
     healthcheck:
@@ -42,12 +45,16 @@ services:
     depends_on:
       minio:
         condition: service_started
+    environment:
+      MC_USER: ${KCS_DEV_MINIO_USER:-kcsminio}
+      MC_PASSWORD: ${KCS_DEV_MINIO_PASSWORD:-kcsminio123}
+    # The bucket stays private: avatars and exports are read through the API.
     entrypoint: >
       /bin/sh -c "
       sleep 3;
-      mc alias set local http://minio:9000 kcsminio kcsminio123;
+      mc alias set local http://minio:9000 $$MC_USER $$MC_PASSWORD;
       mc mb -p local/kcs-assets || true;
-      mc anonymous set download local/kcs-assets || true;
+      mc anonymous set none local/kcs-assets || true;
       "
 
   api:
@@ -61,18 +68,19 @@ services:
       minio:
         condition: service_started
     environment:
-      DATABASE_URL: postgres://kcs:kcs@postgres:5432/kcs
+      DATABASE_URL: postgres://kcs:${KCS_DEV_PG_PASSWORD:-kcs}@postgres:5432/kcs
+      KCS_CURSOR_SECRET: ${KCS_CURSOR_SECRET:-local-dev-cursor-secret-change-me}
       # Local demo stack: load sample creators / projects / jobs on start. Never set in production.
       KCS_SEED: demo
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
       S3_BUCKET: kcs-assets
-      S3_ACCESS_KEY: kcsminio
-      S3_SECRET_KEY: kcsminio123
+      S3_ACCESS_KEY: ${KCS_DEV_MINIO_USER:-kcsminio}
+      S3_SECRET_KEY: ${KCS_DEV_MINIO_PASSWORD:-kcsminio123}
       S3_FORCE_PATH_STYLE: "true"
-      WEB_ORIGIN: http://localhost:7002,http://localhost:7003,http://localhost:7004,http://localhost:7005
+      WEB_ORIGIN: http://localhost:7000,http://localhost:7002,http://localhost:7003,http://localhost:7004
       AUTH_BASE_URL: http://select:7004
-      TIKHUB_API_KEY: ""
+      TIKHUB_API_KEY: ${TIKHUB_API_KEY:-}
       TIKHUB_BASE_URL: https://api.tikhub.io
       PGY_ACCESS_TOKEN: ""
       PGY_GATEWAY: tikhub
@@ -86,10 +94,9 @@ services:
       XINHONG_BASE_URL: https://api.newrank.cn
       XINHONG_SEARCH_PATH: /api/sync/xh/account/search
     ports:
-      - "7100:7100"
+      - "127.0.0.1:7100:7100"
     profiles:
       - full
-
 
   marketing:
     build:
@@ -101,19 +108,19 @@ services:
     depends_on:
       - api
     environment:
-      NITRO_PORT: "7005"
+      NITRO_PORT: "7000"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
       DB_DIALECT: pg
-      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
-      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
-      BETTER_AUTH_URL: http://localhost:7005
-      APP_BASE_URL: http://localhost:7005
+      DATABASE_URL: postgres://kcs:${KCS_DEV_PG_PASSWORD:-kcs}@postgres:5432/tinyship
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
+      BETTER_AUTH_URL: http://localhost:7000
+      APP_BASE_URL: http://localhost:7000
     ports:
-      - "7005:7005"
+      - "127.0.0.1:7000:7000"
     profiles:
       - full
 
@@ -129,17 +136,17 @@ services:
     environment:
       NITRO_PORT: "7002"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
       DB_DIALECT: pg
-      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
-      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      DATABASE_URL: postgres://kcs:${KCS_DEV_PG_PASSWORD:-kcs}@postgres:5432/tinyship
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
       BETTER_AUTH_URL: http://localhost:7002
       APP_BASE_URL: http://localhost:7002
     ports:
-      - "7002:7002"
+      - "127.0.0.1:7002:7002"
     profiles:
       - full
 
@@ -155,17 +162,17 @@ services:
     environment:
       NITRO_PORT: "7003"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
       DB_DIALECT: pg
-      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
-      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      DATABASE_URL: postgres://kcs:${KCS_DEV_PG_PASSWORD:-kcs}@postgres:5432/tinyship
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
       BETTER_AUTH_URL: http://localhost:7003
       APP_BASE_URL: http://localhost:7003
     ports:
-      - "7003:7003"
+      - "127.0.0.1:7003:7003"
     profiles:
       - full
 
@@ -181,17 +188,17 @@ services:
     environment:
       NITRO_PORT: "7004"
       NUXT_PUBLIC_API_BASE: http://localhost:7100
-      NUXT_PUBLIC_MARKETING_URL: http://localhost:7005
+      NUXT_PUBLIC_MARKETING_URL: http://localhost:7000
       NUXT_PUBLIC_OPS_URL: http://localhost:7002
       NUXT_PUBLIC_DEV_URL: http://localhost:7003
       NUXT_PUBLIC_SELECT_URL: http://localhost:7004
       DB_DIALECT: pg
-      DATABASE_URL: postgres://kcs:kcs@postgres:5432/tinyship
-      BETTER_AUTH_SECRET: local-dev-better-auth-secret-change-me
+      DATABASE_URL: postgres://kcs:${KCS_DEV_PG_PASSWORD:-kcs}@postgres:5432/tinyship
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
       BETTER_AUTH_URL: http://localhost:7004
       APP_BASE_URL: http://localhost:7004
     ports:
-      - "7004:7004"
+      - "127.0.0.1:7004:7004"
     profiles:
       - full
 
