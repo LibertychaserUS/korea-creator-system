@@ -8,7 +8,7 @@
     </template>
 
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      <KpiTile :label="t('kcs.panel.storage')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
+      <KpiTile :label="t('kcs.console.health.database')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
         <span class="flex items-center gap-2 text-xl md:text-2xl">
           <span class="relative flex size-2.5" aria-hidden="true">
             <span v-if="health.ok" class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />

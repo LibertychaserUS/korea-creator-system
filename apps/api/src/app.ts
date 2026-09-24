@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { API } from '@kcs/contract'
+import { auditTrail } from './http/audit-trail'
 import { createRouteHelpers } from './http/auth'
 import { validationError } from './http/body'
 import { jsonError } from './http/responses'
@@ -10,6 +11,7 @@ import { errorMessage, logEvent } from './log'
 import { registerAuthRoutes } from './routes/auth'
 import { registerDevRoutes } from './routes/dev'
 import { registerDevCohortRoutes } from './routes/dev-cohorts'
+import { registerDevConsoleRoutes } from './routes/dev-console'
 import { registerIngestRoutes } from './routes/ingest'
 import { registerOpsRoutes } from './routes/ops'
 import { registerPublicRoutes } from './routes/public'
@@ -64,6 +66,7 @@ export function createApp(env: AppEnv) {
   })
 
   const helpers = createRouteHelpers(env)
+  app.use('*', auditTrail(env, helpers))
   registerPublicRoutes(app, env, helpers)
   registerAuthRoutes(app, env, helpers)
   registerOpsRoutes(app, env, helpers)
@@ -73,6 +76,7 @@ export function createApp(env: AppEnv) {
   registerSelectProjectRoutes(app, env, helpers)
   registerDevRoutes(app, env, helpers)
   registerDevCohortRoutes(app, env, helpers)
+  registerDevConsoleRoutes(app, env, helpers)
 
   app.onError((error, context) => {
     if (error instanceof HTTPException) return error.getResponse()

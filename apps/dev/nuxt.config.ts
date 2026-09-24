@@ -11,6 +11,10 @@ export default defineNuxtConfig({
       perm: 'dev.read',
       nav: [
         { to: '/', labelKey: 'kcs.panel.health' },
+        { to: '/pipeline', labelKey: 'kcs.console.nav.pipeline' },
+        { to: '/audit', labelKey: 'kcs.console.nav.audit' },
+        { to: '/cohorts', labelKey: 'kcs.console.nav.cohorts' },
+        { to: '/i18n-theme', labelKey: 'kcs.console.nav.i18n' },
         { to: '/accounts', labelKey: 'kcs.nav.accounts', perm: 'admin.users' },
       ],
     },
