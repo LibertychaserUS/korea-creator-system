@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { exportLocale, projectSheet, RANKED_METRIC_KEYS } from '@kcs/contract'
+import { exportLocale, projectSheet } from '@kcs/contract'
 import { audit } from '../http/audit'
 import {
   asPublished,
@@ -53,7 +53,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       `SELECT a.id, a.creator_id, a.status, a.pool_gone, a.assigned_at,
               c.display_name, c.followers, c.creator_key, c.status AS creator_status,
               c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
-              c.metrics, c.metrics_locked, c.metrics_locked_at, c.source, c.external_id, c.metrics_fetched_at
+              c.metrics, c.metrics_locked, c.metrics_locked_at, c.metrics_locked_fetched_at, c.source, c.external_id, c.metrics_fetched_at
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1 ORDER BY a.assigned_at DESC, a.id`,
       [context.req.param('id')],
@@ -74,16 +74,14 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
         metrics: row.metrics,
         metrics_locked: row.metrics_locked,
         metrics_locked_at: row.metrics_locked_at,
+        metrics_locked_fetched_at: row.metrics_locked_fetched_at,
         source: row.source,
         external_id: row.external_id,
         metrics_fetched_at: row.metrics_fetched_at,
       })),
       false,
     )
-    const enriched = await withPercentiles(env.db, meta.map(asPublished), {
-      nullSourceCohort: false,
-      keys: RANKED_METRIC_KEYS,
-    })
+    const enriched = await withPercentiles(env.db, meta.map(asPublished))
     return context.json({
       ...projectView({ ...rows[0], member_count: assigned.rows.length }),
       assignments: enriched.map((item, index) => {

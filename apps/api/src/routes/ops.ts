@@ -29,6 +29,7 @@ import {
   saveRelations,
 } from '../http/creators'
 import { pageRows } from '../http/lists'
+import { inTransaction, recomputeGroups, republish, syncPublished } from '../http/published'
 import { jsonError } from '../http/responses'
 import { categoryView, overviewJobView, reviewView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
@@ -258,6 +259,8 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (body.categories || body.collaborations || body.price) {
       await saveRelations(env.db, id, body)
     }
+    // Name, regions, quotes… follow by trigger; a blacklist change re-ranks the group.
+    await republish(env.db, [id])
     await audit(env.db, user!.id, 'creator.update', 'creator', id, 'update')
     return context.json({ ok: true })
   })
@@ -285,18 +288,24 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       })
     }
     // `item.metrics` is the latest record with followers / price folded in, so
-    // the snapshot stands on its own even if those columns change later.
-    const { rows } = await env.db.query(
-      `UPDATE creators SET status = 'released', needs_review = false,
-         metrics_locked = $2, metrics_locked_at = now(), updated_at = now()
-       WHERE id = $1 RETURNING metrics_locked_at`,
-      [id, JSON.stringify(item.metrics)],
-    )
-    await env.db.query(
-      "UPDATE reviews SET status = 'passed' WHERE creator_id = $1 AND status = 'pending'",
-      [id],
-    )
-    await env.db.query('UPDATE assignments SET pool_gone = false WHERE creator_id = $1', [id])
+    // the snapshot stands on its own even if those columns change later. The
+    // pool row and its group's percentiles are written in the same transaction.
+    const rows = await inTransaction(env.db, async (client) => {
+      const result = await client.query(
+        `UPDATE creators SET status = 'released', needs_review = false,
+           metrics_locked = $2, metrics_locked_at = now(),
+           metrics_locked_fetched_at = LEAST(COALESCE(metrics_fetched_at, now()), now()), updated_at = now()
+         WHERE id = $1 RETURNING metrics_locked_at`,
+        [id, JSON.stringify(item.metrics)],
+      )
+      await client.query(
+        "UPDATE reviews SET status = 'passed' WHERE creator_id = $1 AND status = 'pending'",
+        [id],
+      )
+      await client.query('UPDATE assignments SET pool_gone = false WHERE creator_id = $1', [id])
+      await recomputeGroups(client, await syncPublished(client, [id]))
+      return result.rows
+    })
     await audit(
       env.db,
       user!.id,
@@ -319,12 +328,17 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { user, denied } = await helpers.requireAuth(context, 'ops.publish')
     if (denied) return denied
     const id = context.req.param('id')
-    const updated = await env.db.query(
-      "UPDATE creators SET status = 'ready', updated_at = now() WHERE id = $1 RETURNING id",
-      [id],
-    )
+    const updated = await inTransaction(env.db, async (client) => {
+      const result = await client.query(
+        "UPDATE creators SET status = 'ready', updated_at = now() WHERE id = $1 RETURNING id",
+        [id],
+      )
+      if (!result.rowCount) return result
+      await client.query('UPDATE assignments SET pool_gone = true WHERE creator_id = $1', [id])
+      await recomputeGroups(client, await syncPublished(client, [id]))
+      return result
+    })
     if (!updated.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    await env.db.query('UPDATE assignments SET pool_gone = true WHERE creator_id = $1', [id])
     await audit(env.db, user!.id, 'creator.unpublish', 'creator', id, 'unpublish')
     return context.json({ ok: true, status: 'ready' })
   })
@@ -389,6 +403,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     await env.db.query("UPDATE creators SET needs_review = false, status = 'ready' WHERE id = $1", [
       rows[0].creator_id,
     ])
+    await republish(env.db, [String(rows[0].creator_id)])
     await audit(env.db, user!.id, 'review.pass', 'review', id, 'pass')
     return context.json({ ok: true })
   })

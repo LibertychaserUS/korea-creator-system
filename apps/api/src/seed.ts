@@ -14,6 +14,7 @@ import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
 import { ensurePublishedSnapshots } from './http/pool'
+import { refreshPublished } from './http/published'
 
 /** Until the 蒲公英 adapter fills `lowActive` itself, its `health` still means 低活跃. */
 function seedMetrics(metrics: CreatorMetrics, source: SourceId): CreatorMetrics {
@@ -293,6 +294,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
   }
   const canonicalIds = await seedCreators(db)
   await ensurePublishedSnapshots(db, { full: true })
+  await refreshPublished(db, { full: true })
   await seedProjects(db, orgId, canonicalIds)
   for (const spec of SAVED_QUERIES) {
     await db.query(

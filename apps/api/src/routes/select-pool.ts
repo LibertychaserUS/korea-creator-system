@@ -1,4 +1,3 @@
-import { RANKED_METRIC_KEYS } from '@kcs/contract'
 import {
   asPublished,
   attachCreatorMeta,
@@ -26,10 +25,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
     const published = asPublished(item)
-    const [enriched] = await withPercentiles(env.db, [published], {
-      nullSourceCohort: false,
-      keys: RANKED_METRIC_KEYS,
-    })
+    const [enriched] = await withPercentiles(env.db, [published])
     const raw = await env.db.query(
       'SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1',
       [item.id],
@@ -58,7 +54,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     const { rows } = await env.db.query(
       `SELECT s.org_id, s.creator_id, s.added_at, c.display_name, c.followers, c.creator_key,
               c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
-              c.metrics, c.metrics_locked, c.metrics_locked_at, c.source, c.external_id, c.metrics_fetched_at
+              c.metrics, c.metrics_locked, c.metrics_locked_at, c.metrics_locked_fetched_at, c.source, c.external_id, c.metrics_fetched_at
        FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
        WHERE s.org_id = $1 ORDER BY s.added_at DESC, s.creator_id`,
       [user!.orgId],
@@ -79,16 +75,14 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
         metrics: row.metrics,
         metrics_locked: row.metrics_locked,
         metrics_locked_at: row.metrics_locked_at,
+        metrics_locked_fetched_at: row.metrics_locked_fetched_at,
         source: row.source,
         external_id: row.external_id,
         metrics_fetched_at: row.metrics_fetched_at,
       })),
       false,
     )
-    const enriched = await withPercentiles(env.db, meta.map(asPublished), {
-      nullSourceCohort: false,
-      keys: RANKED_METRIC_KEYS,
-    })
+    const enriched = await withPercentiles(env.db, meta.map(asPublished))
     return context.json({
       items: enriched.map((item, index) => ({
         ...publicPoolRow(item),

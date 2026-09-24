@@ -76,6 +76,18 @@ describe('request errors', () => {
     expect(after).toBe(before)
   })
 
+  it('a metric of 1e400 (Infinity once parsed) or "12" is 400 on create and edit, and nothing is written', async () => {
+    const creator = (await ctx.db.query('SELECT id, metrics FROM creators LIMIT 1')).rows[0]
+    const before = (await ctx.db.query('SELECT count(*)::int AS n FROM creators')).rows[0].n
+    const created = await call(ops, 'POST', '/api/ops/creators', '{"displayName":"inf","regions":["x"],"metrics":{"window":30,"cpe":1e400}}')
+    expect(created.status).toBe(400)
+    expect((await created.json()).error.fields.map((f: { path: string }) => f.path)).toContain('metrics.cpe')
+    const patched = await call(ops, 'PATCH', `/api/ops/creators/${creator.id}`, '{"metrics":{"window":30,"readMedian":"12"}}')
+    expect(patched.status).toBe(400)
+    expect((await ctx.db.query('SELECT count(*)::int AS n FROM creators')).rows[0].n).toBe(before)
+    expect((await ctx.db.query('SELECT metrics FROM creators WHERE id = $1', [creator.id])).rows[0].metrics).toEqual(creator.metrics)
+  })
+
   it('an unknown category slug is 400 with the slug, not a foreign-key 500 or a half-written creator', async () => {
     const res = await call(ops, 'POST', '/api/ops/creators', JSON.stringify({
       displayName: '分类不存在',

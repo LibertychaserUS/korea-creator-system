@@ -559,12 +559,19 @@ export type MetricPercentile = {
   /** Follower range of those creators. */
   followersMin?: number
   followersMax?: number
+  /**
+   * `library`: our own rank among similar creators in this library (「本库」).
+   * `platform`: the platform's own 同类排位 (蒲公英 `*BeyondRate`), preferred when given;
+   * our rank then stays next to it as `library`.
+   */
+  scope?: 'library' | 'platform'
+  library?: Omit<MetricPercentile, 'library' | 'scope'>
 }
 
 export type MetricPercentiles = Partial<Record<NumericMetricKey, MetricPercentile>>
 
 /** Only metrics with a "better" direction are ranked. */
-export const RANKED_METRIC_KEYS = METRIC_FIELDS.filter((f) => f.better).map((f) => f.key) as readonly NumericMetricKey[]
+export const RANKED_METRIC_KEYS = METRIC_FIELDS.filter((f) => f.better && !f.hidden).map((f) => f.key) as readonly NumericMetricKey[]
 
 /**
  * Directed percentile from cohort counts, in tenths: higher is always better.

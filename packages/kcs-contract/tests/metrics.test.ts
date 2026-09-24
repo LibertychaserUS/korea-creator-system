@@ -110,16 +110,19 @@ describe('SavedQuery replaces scoring', () => {
     expect(res[1]!.flags.map((f) => f.key)).toEqual(expect.arrayContaining(['cpe', 'collectLikeRatio']))
   })
 
-  it('percentile filters see the whole tier, not the filtered subset', () => {
+  it('percentile filters rank against the whole group, not the filtered subset', () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      row(`m${i}`, { followers: 60_000 + i * 1_000, readMedian: 10_000, interactionMedian: 100 + i * 10, health: i % 2 ? 'healthy' : 'abnormal' }))
     const q = defaultSavedQuery({
       name: 'q',
-      health: [],
-      tiers: ['mid'],
+      health: ['healthy'],
       filters: [{ key: 'engagementRate', op: 'percentileGte', value: 50 }],
     })
-    const res = applySavedQuery(rows, q)
-    expect(res.map((r) => r.id).sort()).toEqual(['a', 'c'])
-    expect(res.every((r) => r.percentiles.engagementRate!.percentile >= 50)).toBe(true)
+    const res = applySavedQuery(many, q)
+    expect(res.every((r) => r.metrics.health === 'healthy' && r.percentiles.engagementRate!.percentile >= 50)).toBe(true)
+    expect(res.map((r) => r.id).sort()).toEqual(many.filter((_, i) => i % 2 && i >= 20).map((r) => r.id).sort())
+    expect(res[0]!.percentiles.engagementRate!.n).toBe(40)
+    expect(applySavedQuery(rows, q).every((r) => !r.percentiles.engagementRate)).toBe(true)
   })
 
   it('validates name, keys and between ranges', () => {

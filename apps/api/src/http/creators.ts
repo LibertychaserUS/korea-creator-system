@@ -49,6 +49,8 @@ export function publicPoolRow(item: Record<string, any>) {
     externalId: item.externalId,
     sources: item.sources,
     metricsFetchedAt: item.metricsFetchedAt,
+    /** When the published (locked) numbers were fetched; the 60-day staleness runs from here. */
+    snapshotFetchedAt: item.snapshotFetchedAt ?? null,
     tier: item.tier,
     cohort: item.cohort,
     metrics: item.metrics,
@@ -56,6 +58,8 @@ export function publicPoolRow(item: Record<string, any>) {
     health: item.metrics.health,
     metricsLocked: item.metricsLocked,
     metricsLockedAt: item.metricsLockedAt,
+    /** Snapshot older than 60 days: still listed, no percentiles. */
+    stale: Boolean(item.stale),
   }
 }
 
@@ -195,7 +199,7 @@ export async function creatorHistory(
 }
 
 export async function attachCreatorMeta(
-  db: Db,
+  db: Queryable,
   rows: Array<Record<string, any>>,
   full: boolean,
 ): Promise<Array<Record<string, any>>> {
@@ -243,6 +247,7 @@ export async function attachCreatorMeta(
       metrics,
       metricsLocked: parseMetrics(row.metrics_locked, row.source),
       metricsLockedAt: isoOrNull(row.metrics_locked_at),
+      snapshotFetchedAt: isoOrNull(row.metrics_locked_fetched_at ?? row.metrics_locked_at),
       stage: creatorStage({ status: row.status, metricsLockedAt: row.metrics_locked_at }),
       metricsFetchedAt: row.metrics_fetched_at ?? null,
       updatedAt: isoOrNull(row.updated_at),
@@ -271,7 +276,7 @@ export async function attachCreatorMeta(
   })
 }
 
-export async function loadCreator(db: Db, id: string, full: boolean) {
+export async function loadCreator(db: Queryable, id: string, full: boolean) {
   const { rows } = await db.query('SELECT * FROM creators WHERE id = $1', [id])
   if (!rows[0]) return null
   return (await attachCreatorMeta(db, rows, full))[0]

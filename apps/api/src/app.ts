@@ -9,6 +9,7 @@ import type { AppEnv } from './http/types'
 import { errorMessage, logEvent } from './log'
 import { registerAuthRoutes } from './routes/auth'
 import { registerDevRoutes } from './routes/dev'
+import { registerDevCohortRoutes } from './routes/dev-cohorts'
 import { registerIngestRoutes } from './routes/ingest'
 import { registerOpsRoutes } from './routes/ops'
 import { registerPublicRoutes } from './routes/public'
@@ -71,6 +72,7 @@ export function createApp(env: AppEnv) {
   registerSelectQueryRoutes(app, env, helpers)
   registerSelectProjectRoutes(app, env, helpers)
   registerDevRoutes(app, env, helpers)
+  registerDevCohortRoutes(app, env, helpers)
 
   app.onError((error, context) => {
     if (error instanceof HTTPException) return error.getResponse()

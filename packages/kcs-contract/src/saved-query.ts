@@ -4,9 +4,10 @@
  * no composite score: ops express what they want in platform terms
  * (CPE ≤ 3, health = healthy, 收藏/点赞 ≥ 0.8, tier = mid …).
  */
+import { COHORT_RULES, cohortGroupKey, rankGroup, type CohortMember } from './cohort'
 import {
-  cohortPercentiles,
   deriveMetrics,
+  withServiceFee,
   normalizeHealth,
   RENAMED_METRIC_KEYS,
   SERVICE_FEE_RATES,
@@ -62,17 +63,23 @@ export type QueryRow = {
   regions: string[]
   coopBrands: string[]
   metrics: CreatorMetrics
+  /** Precomputed (the pool stores them at publish); computed here when absent. */
+  percentiles?: MetricPercentiles
+  stale?: boolean
 }
 
 /**
- * Percentiles are only comparable inside one data source (蒲公英 / 千瓜 / 新红
- * measure "阅读中位数" differently) and one follower tier. The cohort a row
- * was ranked against is returned so the UI can say "同源同量级 N 人".
+ * Percentiles are only comparable inside one group: data source (蒲公英 / 千瓜 /
+ * 新红 measure "阅读中位数" differently) × window × content form, then among
+ * creators of similar size (cohort.ts). `size` is the group's size; each
+ * percentile carries its own n and follower range.
  */
 export type PercentileCohort = {
-  source: SourceId
+  source: SourceId | null
   tier: CreatorTier
   size: number
+  window: number
+  contentForm: string | null
 }
 
 export type QueryResultRow<T extends QueryRow = QueryRow> = T & {
@@ -182,28 +189,55 @@ function passes(row: QueryResultRow, f: MetricFilter): boolean {
  * input grouped by source × tier (so percentile filters see the full
  * cohort), then filter, flag, sort.
  */
-export function applySavedQuery<T extends QueryRow>(rows: readonly T[], q: SavedQuery): QueryResultRow<T>[] {
+export function applySavedQuery<T extends QueryRow>(
+  rows: readonly T[],
+  q: SavedQuery,
+  options: { target?: (source: string | null) => number } = {},
+): QueryResultRow<T>[] {
+  const fee = q.serviceFee ?? 0
   const derived = rows.map((r) => ({ ...r, metrics: deriveMetrics(r.metrics), tier: tierOf(r.metrics.followers) }))
-  const byCohort = new Map<string, CreatorMetrics[]>()
+  const groupOf = (r: (typeof derived)[number]) =>
+    cohortGroupKey({ source: r.source ?? null, window: r.metrics.window, contentForm: r.metrics.contentForm ?? null })
+  const groups = new Map<string, CohortMember[]>()
   for (const r of derived) {
-    const key = cohortKey(r.source, r.tier)
-    const list = byCohort.get(key) ?? []
-    list.push(r.metrics)
-    byCohort.set(key, list)
+    const key = groupOf(r)
+    groups.set(key, [...(groups.get(key) ?? []), { id: r.id, followers: r.metrics.followers, metrics: r.metrics, stale: r.stale }])
   }
-  const keys = [...new Set([...q.columns, ...q.filters.map((f) => f.key), ...q.highlights.map((h) => h.key)])]
-  let out: QueryResultRow<T>[] = derived.map((r) => ({
+  const ranked = new Map<string, MetricPercentiles>()
+  if (derived.some((r) => !r.percentiles)) {
+    const sourceOf = new Map(derived.map((r) => [r.id, r.source ?? null]))
+    for (const members of groups.values()) {
+      const source = sourceOf.get(members[0].id) ?? null
+      const target = options.target?.(source) ?? COHORT_RULES.analyticSample
+      for (const [id, percentiles] of rankGroup(members, { target })) ranked.set(id, percentiles)
+    }
+  }
+  const keys = new Set([...q.columns, ...q.filters.map((f) => f.key), ...q.highlights.map((h) => h.key)])
+  let out: QueryResultRow<T>[] = derived.map((r) => {
+    const all = r.percentiles ?? ranked.get(r.id) ?? {}
+    const percentiles: MetricPercentiles = {}
+    for (const key of keys) if (all[key]) percentiles[key] = all[key]
+    const metrics = withServiceFee(r.metrics, fee)
+    return {
     ...(r as T),
+    metrics,
     tier: r.tier,
-    cohort: { source: r.source, tier: r.tier, size: byCohort.get(cohortKey(r.source, r.tier))?.length ?? 0 },
-    percentiles: cohortPercentiles(r.metrics, byCohort.get(cohortKey(r.source, r.tier)) ?? [], keys),
+    cohort: {
+      source: r.source ?? null,
+      tier: r.tier,
+      size: groups.get(groupOf(r))?.length ?? 0,
+      window: r.metrics.window,
+      contentForm: r.metrics.contentForm ?? null,
+    },
+    percentiles,
     flags: q.highlights
       .filter((h) => {
-        const v = r.metrics[h.key]
+        const v = metrics[h.key]
         return v != null && (h.op === 'gte' ? v >= h.value : v <= h.value)
       })
       .map((h) => ({ key: h.key, tone: h.tone })),
-  }))
+    }
+  })
 
   if (q.sources.length) out = out.filter((r) => q.sources.includes(r.source))
   if (q.tiers.length) out = out.filter((r) => q.tiers.includes(r.tier))

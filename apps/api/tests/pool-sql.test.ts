@@ -13,12 +13,13 @@ import { createTestApp, type TestCtx } from './helpers'
 import { enrichPoolItems, legacyRun, queryPool } from './legacy-pool'
 import { publicPoolRow, asPublished, loadCreator } from '../src/http/creators'
 import { ensurePublishedSnapshots } from '../src/http/pool'
+import { loadTargets, refreshPublished } from '../src/http/published'
 
 /**
- * Break: the SQL pool drifts from the contract's cohort semantics — a tie,
- * a null, a source-less row or a blacklisted row ranked differently than
- * `cohortPercentiles` / `applySavedQuery` would, or a page boundary drops or
- * repeats a row.
+ * Break: the pool table drifts from `creators` or from the contract's cohort
+ * engine — a tie, a null, a source-less row or a blacklisted row ranked
+ * differently than `rankGroup` / `applySavedQuery` would, or a page boundary
+ * drops or repeats a row.
  */
 describe('select pool in SQL matches the in-memory contract evaluation', () => {
   let ctx: TestCtx
@@ -152,20 +153,24 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     return [...rows].sort(cmp)
   }
 
-  it('heals released rows whose snapshot is missing or partial, and only once', async () => {
-    const missing = (await ctx.db.query(
-      "SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL",
-    )).rows[0].n
+  it('heals released rows whose snapshot is missing or partial, and only once; reads write nothing', async () => {
+    const count = async (sql: string) => (await ctx.db.query(sql)).rows[0].n
+    const missing = await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL")
+    const tableRows = await count('SELECT count(*)::int AS n FROM creator_published')
     expect(missing).toBeGreaterThan(0)
     await get(`/api/select/pool?region=${tag}`)
     await get(`/api/select/shortlist`)
-    const afterRead = (await ctx.db.query(
-      "SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL",
-    )).rows[0].n
-    expect(afterRead).toBe(missing)
+    expect(await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL")).toBe(missing)
+    expect(await count('SELECT count(*)::int AS n FROM creator_published')).toBe(tableRows)
     expect(await ensurePublishedSnapshots(ctx.db)).toBe(missing)
     expect(await ensurePublishedSnapshots(ctx.db, { full: true })).toBeGreaterThan(0)
     expect(await ensurePublishedSnapshots(ctx.db, { full: true })).toBe(0)
+    const refreshed = await refreshPublished(ctx.db)
+    expect(refreshed.written).toBeGreaterThan(0)
+    expect(await count("SELECT count(*)::int AS n FROM creator_published WHERE creator_key LIKE '" + tag + "%'"))
+      .toBe(await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND creator_key LIKE '" + tag + "%'"))
+    const again = await refreshPublished(ctx.db)
+    expect(again).toMatchObject({ written: 0, removed: 0, changed: 0 })
   })
 
   const poolQueries: Array<Record<string, string>> = [
@@ -268,11 +273,12 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
 
   it('detail percentiles equal the whole-pool evaluation without loading the pool', async () => {
     const pool = await queryPool(ctx.db, {})
+    const targets = await loadTargets(ctx.db)
     const sample = pool.filter((item) => String(item.creatorKey).startsWith(tag)).slice(0, 25)
     for (const item of sample) {
       const detail = await get(`/api/select/creators/${item.id}`)
       const published = asPublished((await loadCreator(ctx.db, item.id, false))!)
-      const expected = json(publicPoolRow(enrichPoolItems([published], pool)[0]))
+      const expected = json(publicPoolRow(enrichPoolItems([published], pool, targets)[0]))
       expect({ ...detail, metricsLatest: undefined, rawAvailable: undefined }).toEqual({
         ...expected,
         metricsLatest: undefined,
