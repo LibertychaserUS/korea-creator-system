@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CREATOR_EVENT_KINDS } from '@kcs/contract'
 import { createTestApp, type TestCtx } from './helpers'
 import { readEvents, recordEvents } from '../src/http/events'
+import { outcomeEvents } from '../src/ingest/outcome-events'
 
 /**
  * Break: a publish / take-down / assignment / removal / export / detail view
@@ -130,5 +131,21 @@ describe('outcome events', () => {
     expect(assigns.map((e) => [e.creatorId, e.source]).sort()).toEqual([[id, 'pugongying'], [`none-${tag}`, null]].sort())
     expect(await readEvents(ctx.db, { creatorIds: [id], since: new Date(Date.now() + 60_000) })).toEqual([])
     expect(await readEvents(ctx.db, { creatorIds: [id], limit: 1 })).toHaveLength(1)
+  })
+
+  it('the ingest side (value tiers, scheduler rewards) reads these events under its own kinds', async () => {
+    const id = await create(`${tag}-抓取侧`)
+    await recordEvents(ctx.db, [
+      { kind: 'assign', creatorId: id, projectId: 'p_y' },
+      { kind: 'unassign', creatorId: id, projectId: 'p_y' },
+      { kind: 'export', creatorId: id },
+      { kind: 'detail_view', creatorId: id, actorId: 'user_selector' },
+    ])
+    expect((await outcomeEvents(ctx.db, { creatorIds: [id] })).map((e) => e.kind).sort())
+      .toEqual(['assign', 'export', 'publish', 'remove', 'view'])
+
+    const legacy = await create(`${tag}-旧发布`, false)
+    await ctx.db.query('UPDATE creators SET metrics_locked_at = now() WHERE id = $1', [legacy])
+    expect((await outcomeEvents(ctx.db, { creatorIds: [legacy] })).map((e) => e.kind)).toEqual(['publish'])
   })
 })
