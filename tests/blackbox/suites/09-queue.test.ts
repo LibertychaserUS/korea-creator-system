@@ -279,17 +279,27 @@ describe('队列 — worker 自动处理', () => {
     expect(Number(history[0].n)).toBe(job.writtenCount + job.skippedDupes)
   })
 
-  it('同一批博主再抓一次：全部算「已有」而不是新写入，历史快照照样多一份', async () => {
+  it('同一批博主当天再抓一次：全部算「已有」而不是新写入，当天的历史快照被新的一份覆盖、原文各留一条', async () => {
     const body = params('dupes', { maxPages: 1 })
     const first = await fetchJob(ops, body, true)
     const again = await fetchJob(ops, body, true)
     expect(again.job.writtenCount).toBe(0)
     expect(again.job.skippedDupes).toBe(first.job.writtenCount + first.job.skippedDupes)
-    const snapshots = await sqlRead<{ n: string }>(
-      'SELECT count(*) AS n FROM creator_metrics_history WHERE job_id = ANY($1::text[])',
+    const snapshots = await sqlRead<{ job_id: string; n: string }>(
+      'SELECT job_id, count(*) AS n FROM creator_metrics_history WHERE job_id = ANY($1::text[]) GROUP BY job_id',
       [[first.job.id, again.job.id]],
     )
-    expect(Number(snapshots[0].n)).toBe(2 * again.job.skippedDupes)
+    const count = (id: string) => Number(snapshots.find((row) => row.job_id === id)?.n ?? 0)
+    expect(count(again.job.id)).toBe(again.job.skippedDupes)
+    expect(count(first.job.id)).toBe(0)
+    const raws = await sqlRead<{ n: string }>(
+      `SELECT min(n) AS n FROM (
+         SELECT count(*) AS n FROM creator_raw
+          WHERE source = $2 AND creator_id IN (SELECT creator_id FROM creator_metrics_history WHERE job_id = $1)
+          GROUP BY creator_id) per_creator`,
+      [again.job.id, SOURCE],
+    )
+    expect(Number(raws[0].n)).toBeGreaterThanOrEqual(2)
   })
 
   it('演示数据（无凭证）不消耗日配额：quotaUsed 为 0，当日用量不变', async (ctx) => {

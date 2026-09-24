@@ -157,6 +157,12 @@ async function seedCreators(db: Db) {
       )
       await db.query('DELETE FROM creator_categories WHERE creator_id = $1', [id])
       const latestAt = new Date(raw.fetchedAt)
+      // Demo history is rewritten on every seed; a real fetch already holding
+      // one of those days (one snapshot per day) keeps it.
+      await db.query(
+        "DELETE FROM creator_metrics_history WHERE creator_id = $1 AND id LIKE $1 || '\\_history\\_%'",
+        [id],
+      )
       for (let weeksAgo = 3; weeksAgo >= 0; weeksAgo -= 1) {
         const fetchedAt = new Date(latestAt)
         fetchedAt.setUTCDate(fetchedAt.getUTCDate() - weeksAgo * 7)
@@ -179,11 +185,7 @@ async function seedCreators(db: Db) {
           `INSERT INTO creator_metrics_history
             (id, creator_id, source, "window", fetched_at, job_id, metrics)
            VALUES ($1,$2,$3,$4,$5,NULL,$6)
-           ON CONFLICT (id) DO UPDATE SET
-             source = EXCLUDED.source,
-             "window" = EXCLUDED."window",
-             fetched_at = EXCLUDED.fetched_at,
-             metrics = EXCLUDED.metrics`,
+           ON CONFLICT DO NOTHING`,
           [
             `${id}_history_${weeksAgo}`,
             id,

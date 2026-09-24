@@ -33,8 +33,8 @@ import { materialChanges } from './tiering'
  *   `needs_review = true`. `status`, `metrics_locked` and `metrics_locked_at`
  *   (the publish snapshot) are never touched — only publish moves those;
  * - side records, only for data that came from a source: the
- *   (source, externalId) link, the untouched payload in `creator_raw`, and one
- *   `creator_metrics_history` row. A workbook is typed in by ops, not measured
+ *   (source, externalId) link, the untouched payload in `creator_raw`, and the
+ *   day's `creator_metrics_history` row (see `writeSnapshot`). A workbook is typed in by ops, not measured
  *   by a platform, so it leaves no history; the file itself stays in object
  *   storage under `batches/<jobId>/`;
  * - one transaction per creator: a failure leaves nothing half-written.
@@ -189,26 +189,7 @@ async function upsertInTransaction(
         JSON.stringify(origin.raw.payload),
       ],
     )
-    const previous = await client.query(
-      `SELECT metrics, fetched_at FROM creator_metrics_history
-        WHERE creator_id = $1 AND source = $2 AND fetched_at < $3
-        ORDER BY fetched_at DESC LIMIT 1`,
-      [creatorId, origin.source, incoming.fetchedAt],
-    )
-    const before = previous.rows[0] as { metrics: Record<string, unknown>; fetched_at: Date } | undefined
-    const changed = before ? materialChanges(before.metrics, metrics as unknown as Record<string, unknown>) : null
-    await client.query(
-      `INSERT INTO creator_metrics_history
-         (id, creator_id, source, "window", fetched_at, job_id, metrics, signals, material_change, changed_metrics)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [
-        randomUUID(), creatorId, origin.source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics),
-        incoming.signals ? JSON.stringify(incoming.signals) : null,
-        changed ? changed.length > 0 : null,
-        changed,
-      ],
-    )
-    await updateRefreshStats(client, origin.source, origin.externalId, incoming.fetchedAt, before?.fetched_at ?? null, changed)
+    await writeSnapshot(client, creatorId, jobId, origin.source, origin.externalId, incoming, metrics)
   } else if (!existing) {
     // A hand-typed row starts life like a hand-made draft: unknown cooperation
     // history, the quoted price, and a pending proof-read.
@@ -228,6 +209,65 @@ async function upsertInTransaction(
   return { creatorId, created: !existing }
 }
 
+/** The calendar a snapshot's day is counted in (same expression as migration 0049). */
+export const SNAPSHOT_DAY_SQL = (timestamp: string) => `(${timestamp} AT TIME ZONE 'Asia/Shanghai')::date`
+
+/**
+ * One snapshot per creator, source, window and Beijing day: a later fetch the
+ * same day overwrites the earlier one (the raw fetch keeps its own row), an
+ * older one arriving late leaves the day's latest alone. "Did the numbers
+ * move" compares with the last snapshot of an earlier day, so fetching twice
+ * in a day neither counts as two observations nor hides a change.
+ */
+async function writeSnapshot(
+  client: PoolClient,
+  creatorId: string,
+  jobId: string | null,
+  source: SourceId,
+  externalId: string,
+  incoming: IncomingCreator,
+  metrics: CreatorMetrics,
+) {
+  const day = SNAPSHOT_DAY_SQL('$4::timestamptz')
+  const sameDay = await client.query(
+    `SELECT fetched_at, material_change FROM creator_metrics_history
+      WHERE creator_id = $1 AND source = $2 AND "window" = $3 AND snapshot_day = ${day}
+      FOR UPDATE`,
+    [creatorId, source, metrics.window, incoming.fetchedAt],
+  )
+  const replaced = sameDay.rows[0] as { fetched_at: Date; material_change: boolean | null } | undefined
+  if (replaced && replaced.fetched_at.getTime() > new Date(incoming.fetchedAt).getTime()) return
+
+  const previous = await client.query(
+    `SELECT metrics, fetched_at FROM creator_metrics_history
+      WHERE creator_id = $1 AND source = $2 AND "window" = $3 AND snapshot_day < ${day}
+      ORDER BY fetched_at DESC LIMIT 1`,
+    [creatorId, source, metrics.window, incoming.fetchedAt],
+  )
+  const before = previous.rows[0] as { metrics: Record<string, unknown>; fetched_at: Date } | undefined
+  const changed = before ? materialChanges(before.metrics, metrics as unknown as Record<string, unknown>) : null
+  await client.query(
+    `INSERT INTO creator_metrics_history
+       (id, creator_id, source, "window", fetched_at, job_id, metrics, signals, material_change, changed_metrics)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (creator_id, source, "window", snapshot_day) DO UPDATE SET
+       fetched_at = EXCLUDED.fetched_at, job_id = EXCLUDED.job_id, metrics = EXCLUDED.metrics,
+       signals = EXCLUDED.signals, material_change = EXCLUDED.material_change,
+       changed_metrics = EXCLUDED.changed_metrics,
+       value_tier = NULL, tier_features = NULL, tiered_at = NULL
+     WHERE EXCLUDED.fetched_at >= creator_metrics_history.fetched_at`,
+    [
+      randomUUID(), creatorId, source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics),
+      incoming.signals ? JSON.stringify(incoming.signals) : null,
+      changed ? changed.length > 0 : null,
+      changed,
+    ],
+  )
+  await updateRefreshStats(client, source, externalId, incoming.fetchedAt, before?.fetched_at ?? null, changed, replaced
+    ? { fetchedAt: replaced.fetched_at, changed: replaced.material_change }
+    : null)
+}
+
 /**
  * One more observation for the Poisson change model of this (source, id):
  * compared with the previous snapshot, did the numbers move? Then the next
@@ -240,6 +280,7 @@ async function updateRefreshStats(
   fetchedAt: string,
   previousAt: Date | null,
   changed: string[] | null,
+  replaced: { fetchedAt: Date; changed: boolean | null } | null,
 ) {
   const { rows } = await client.query(
     'SELECT refresh_visits, refresh_changes, observed_days FROM creator_sources WHERE source = $1 AND external_id = $2',
@@ -250,6 +291,15 @@ async function updateRefreshStats(
     visits: Number(rows[0].refresh_visits),
     changes: Number(rows[0].refresh_changes),
     observedDays: Number(rows[0].observed_days),
+  }
+  // A same-day overwrite takes back that day's earlier observation first.
+  if (previousAt && replaced && replaced.changed != null) {
+    const gap = (replaced.fetchedAt.getTime() - previousAt.getTime()) / 86_400_000
+    if (gap > 0) {
+      stats.visits = Math.max(0, stats.visits - 1)
+      stats.changes = Math.max(0, stats.changes - (replaced.changed ? 1 : 0))
+      stats.observedDays = Math.max(0, stats.observedDays - gap)
+    }
   }
   if (previousAt && changed) {
     const gap = (new Date(fetchedAt).getTime() - new Date(previousAt).getTime()) / 86_400_000
