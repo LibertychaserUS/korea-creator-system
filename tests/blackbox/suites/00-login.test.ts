@@ -176,7 +176,7 @@ describe('登录 — 邮箱 + 密码（TinyShip）', () => {
 })
 
 describe('登录 — 工作端表单 /__login', () => {
-  it('选人端：正确账号 → 302 到本端首页，同时下发 better-auth 会话 cookie（httpOnly）与 kcs_session 镜像（非 httpOnly）', async () => {
+  it('选人端：正确账号 → 302 到本端首页，同时下发 better-auth 会话 cookie（httpOnly）与 kcs_session（同样 httpOnly，页面脚本读不到）', async () => {
     const res = await formLogin(SELECT_URL, { email: SEED_USERS.selector.email, password: SEED_PASSWORD, app: 'select' })
     expect(res.status).toBe(302)
     expect(res.location).toBe('/zh-CN/')
@@ -185,7 +185,7 @@ describe('登录 — 工作端表单 /__login', () => {
     expect(ba!.toLowerCase()).toContain('httponly')
     const mirror = cookieNamed(res.cookies, 'kcs_session')
     expect(mirror, 'kcs_session mirror').toBeDefined()
-    expect(mirror!.toLowerCase()).not.toContain('httponly')
+    expect(mirror!.toLowerCase()).toContain('httponly')
     expect(mirror!.split(';')[0]!.split('=')[1]!.length).toBeGreaterThan(16)
   })
 

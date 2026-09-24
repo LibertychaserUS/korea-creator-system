@@ -20,13 +20,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const publicPaths = ['/login', '/signin', '/denied']
   const bare = to.path.replace(/^\/(zh-CN|en|ko)/, '') || '/'
-  const { user, refresh, token } = useSession()
-  if (!user.value && token.value) await refresh()
+  const { user, refresh, hasSession } = useSession()
+  if (!user.value && hasSession.value) await refresh()
 
   if (publicPaths.includes(bare)) return
   // Session cookie still present after refresh → signed in but no KCS role (API said 403);
   // an expired session would have cleared the cookie and belongs on /login.
-  if (!user.value) return navigateTo(localePath(token.value ? '/denied' : '/login'))
+  if (!user.value) return navigateTo(localePath(hasSession.value ? '/denied' : '/login'))
   if (!can(user.value.role, perm)) return navigateTo(localePath('/denied'))
   // 侧栏条目自带的权限（如 /accounts 要 admin.users）同样按路径把门，不能靠藏按钮。
   const guarded = kcs?.nav?.find((item) => item.perm && item.to !== '/' && (bare === item.to || bare.startsWith(`${item.to}/`)))
@@ -36,7 +36,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (import.meta.client && kcs?.key) {
     const { allowsPreferences } = useConsent()
     if (allowsPreferences.value) {
-      const last = useCookie<string | null>('kcs_last_ws', { sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 180 })
+      // Read by the marketing origin's /__login, so it lives on the shared parent domain.
+      const domain = (useRuntimeConfig().public.cookieDomain as string) || undefined
+      const last = useCookie<string | null>('kcs_last_ws', { sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 180, domain })
       last.value = kcs.key
     }
   }

@@ -36,7 +36,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | malformed email → 400 | 05 状态码约定 | same |
 | random token and `dev:` token → 401 `AUTH-LOGIN`, pool not leaked | 05 §认证「API 只认 TinyShip 会话」 | `GET /api/auth/me` `GET /api/select/pool` |
 | sign-out revokes at TinyShip immediately and at the API within its cache window (≤ 15 s) | 07「退出后…再访问工作端跳登录」 | `POST /api/auth/sign-out` `GET /api/auth/get-session` `GET /api/auth/me` |
-| `/__login` on select: 302 `/zh-CN/`, httpOnly better-auth cookie + non-httpOnly `kcs_session` | 05 §认证 流程图 | `POST /__login` |
+| `/__login` on select: 302 `/zh-CN/`, httpOnly better-auth cookie + httpOnly `kcs_session` | 05 §认证 流程图 | `POST /__login` |
 | `/__login` wrong password: 302 `/zh-CN/login?error=1`, no session cookies | 06 登录页 | `POST /__login` |
 | `/__login` locale follows the form (`/en/login?error=1`) | 06 登录页 | `POST /__login` |
 | marketing `/__login` hands each role to its workspace origin | 06 宣传页登录交接 | `POST {marketing}/__login` |
@@ -269,8 +269,12 @@ images); set `BLACKBOX_WORKSPACE_DEV=1` when pointing at `nuxt dev`.
 | case | spec | HTTP |
 |------|------|------|
 | `/__login` with `locale` = `/evil…`, `//evil…`, `\evil…`, `https://evil…`, `zh-CN/../..`, `fr` and a wrong password → 302 `/zh-CN/login?error=1` every time | 05 §认证「跳转只拼站内相对路径」 | `POST /__login` |
-| successful `/__login` with `locale=//evil…` → 302 `/zh-CN/`; `kcs_session` carries `Secure`, not `HttpOnly` | 05 §认证 `kcs_session` | `POST /__login` |
-| `/__logout` clears `kcs_session` with the same attributes (`Secure` in production) | 05 §认证 退出 | `POST /__logout` |
+| successful `/__login` with `locale=//evil…` → 302 `/zh-CN/`; `kcs_session` carries `HttpOnly` + `SameSite=Lax`, and `Secure` in production | 05 §认证 `kcs_session` | `POST /__login` |
+| `/__logout` clears `kcs_session` with the same attributes (`HttpOnly`; `Secure` in production) | 05 §认证 退出 | `POST /__logout` |
+| API accepts the `kcs_session` cookie alone (no `Authorization`) | 05 §认证 `kcs_session` | `GET /api/auth/me` |
+| cookie-authenticated write from a foreign `Origin` → 403 `AUTH-DENIED` `origin_not_allowed`, nothing created | 05 §认证 CORS 与来源校验 | `POST /api/select/projects` |
+| cookie-authenticated write from an app origin is processed | 05 §认证 CORS 与来源校验 | `POST /api/select/projects` |
+| CORS preflight: app origin → echoed + `Allow-Credentials: true`; foreign origin → no allow header | 05 §认证 CORS 与来源校验 | `OPTIONS /api/select/projects` |
 | marketing hand-off with an evil `locale` still lands on the configured select origin `/zh-CN/` | 05 §认证「目标源站只取服务端配置」 | `POST {marketing}/__login` |
 
 ### 上传

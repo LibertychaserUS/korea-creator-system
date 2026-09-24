@@ -114,6 +114,9 @@ export default defineNuxtConfig({
       selectUrl: 'http://localhost:7004',
       opsUrl: 'http://localhost:7002',
       devUrl: 'http://localhost:7003',
+      // Parent domain shared by the apps and the API (`.example.com`), same value
+      // as AUTH_COOKIE_DOMAIN; empty = host-only cookies.
+      cookieDomain: '',
       captchaEnabled: String(appConfig.captcha.enabled),
       turnstileSiteKey: appConfig.captcha.cloudflare.siteKey || '0x4AAAAAAABkMYinukNdH9ly',
       wechatAppId: appConfig.auth.socialProviders.wechat.appId || '',

@@ -3,10 +3,19 @@ import { jsonError } from './responses'
 import { SessionCache } from './session-cache'
 import type { AppEnv, RouteHelpers, SessionUser, VerifiedIdentity } from './types'
 
+/**
+ * The session token: `Authorization: Bearer` (SSR, scripts) first, else the
+ * httpOnly `kcs_session` cookie the browser sends with `credentials: 'include'`.
+ */
 export function bearer(header: string | undefined, cookie: string | undefined): string | undefined {
   if (header?.startsWith('Bearer ')) return header.slice(7)
   const match = cookie?.match(/(?:^|;\s*)kcs_session=([^;]+)/)
-  return match?.[1]
+  if (!match?.[1]) return undefined
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
 }
 
 /**

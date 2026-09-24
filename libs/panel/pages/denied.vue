@@ -20,8 +20,7 @@
 <script setup lang="ts">
 const { t } = useI18n()
 const localePath = useLocalePath()
-const { token } = useApi()
-const { user } = useSession()
+const { clear } = useSession()
 
 /** 账号没有分工时首页会一直弹回这里；给一条换账号的出路。 */
 async function switchAccount() {
@@ -30,8 +29,7 @@ async function switchAccount() {
   } catch {
     // 会话可能已失效，本地照样清
   }
-  token.value = null
-  user.value = null
+  clear()
   await navigateTo(localePath('/login'))
 }
 </script>

@@ -1,4 +1,4 @@
 export default defineNuxtPlugin(async () => {
-  const { user, refresh, token } = useSession()
-  if (token.value && !user.value) await refresh()
+  const { user, refresh, hasSession } = useSession()
+  if (hasSession.value && !user.value) await refresh()
 })

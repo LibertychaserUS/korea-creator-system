@@ -5,10 +5,13 @@ type ApiOrigin = 'api' | 'self'
 export function useApi() {
   const config = useRuntimeConfig()
   /**
-   * `kcs_session` 是 TinyShip（better-auth）会话 token 的非 httpOnly 镜像，
-   * 由本端 `/__login` 写入；API 只拿它去 TinyShip 校验并换回 KCS 角色。
+   * `kcs_session`（TinyShip / better-auth 会话 token）是 httpOnly cookie，由本端
+   * `/__login` 写入，页面脚本读不到：浏览器请求 API 时带 `credentials: 'include'`
+   * 自动附上；服务端渲染时这里读请求里的 cookie，改成 `Authorization: Bearer` 转给 API。
    */
-  const token = useCookie<string | null>('kcs_session', { sameSite: 'lax', path: '/' })
+  const serverToken = import.meta.server ? useCookie<string | null>('kcs_session', { readonly: true }) : null
+  /** 这个请求有没有带会话 cookie；服务端渲染时定下来，随 payload 带到浏览器。 */
+  const hasSession = useState<boolean>('kcs-has-session', () => Boolean(serverToken?.value))
   const localePath = useLocalePath()
   // useSession 在路由中间件里调这里，useI18n() 只能在组件 setup 顶层用
   const { t, te } = useNuxtApp().$i18n
@@ -21,7 +24,7 @@ export function useApi() {
     const headers = new Headers(opts.headers)
     const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
     if (!isForm && !headers.has('content-type')) headers.set('content-type', 'application/json')
-    if (token.value) headers.set('authorization', `Bearer ${token.value}`)
+    if (serverToken?.value) headers.set('authorization', `Bearer ${serverToken.value}`)
     const apiBase = (import.meta.server && config.apiInternalBase) || config.public.apiBase
     const res = await fetch(`${origin === 'self' ? '' : apiBase}${path}`, {
       ...opts,
@@ -29,7 +32,7 @@ export function useApi() {
       credentials: 'include',
     })
     if (res.status === 401) {
-      token.value = null
+      hasSession.value = false
       await navigateTo(localePath('/login'))
       throw new Error('unauthenticated')
     }
@@ -79,5 +82,5 @@ export function useApi() {
     return te(key) ? t(key) : message
   }
 
-  return { request, download, token, errorText }
+  return { request, download, hasSession, errorText }
 }

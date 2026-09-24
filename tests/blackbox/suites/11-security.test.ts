@@ -114,7 +114,7 @@ describe('安全 — 登录跳转只留在本站', () => {
     }
   }, 60_000)
 
-  it('登录成功时同样：恶意 locale 落到 /zh-CN/，kcs_session 在生产带 Secure、不带 HttpOnly', async () => {
+  it('登录成功时同样：恶意 locale 落到 /zh-CN/，kcs_session 带 HttpOnly + SameSite=Lax，生产带 Secure', async () => {
     const res = await until(
       () => formLogin(SELECT_URL, {
         email: SEED_USERS.selector.email,
@@ -129,7 +129,8 @@ describe('安全 — 登录跳转只留在本站', () => {
     expect(res.location).toBe('/zh-CN/')
     const mirror = res.cookies.find((c) => c.startsWith('kcs_session='))
     expect(mirror, 'kcs_session').toBeDefined()
-    expect(mirror!.toLowerCase()).not.toContain('httponly')
+    expect(mirror!.toLowerCase()).toContain('httponly')
+    expect(mirror!.toLowerCase()).toContain('samesite=lax')
     if (!WORKSPACE_DEV) expect(mirror!.toLowerCase()).toContain('secure')
   }, 40_000)
 
@@ -143,6 +144,7 @@ describe('安全 — 登录跳转只留在本站', () => {
     const cleared = res.headers.getSetCookie().find((c) => c.startsWith('kcs_session='))
     expect(cleared, 'kcs_session cleared').toBeDefined()
     expect(cleared!).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i)
+    expect(cleared!.toLowerCase()).toContain('httponly')
     if (!WORKSPACE_DEV) expect(cleared!.toLowerCase()).toContain('secure')
   })
 
@@ -161,6 +163,69 @@ describe('安全 — 登录跳转只留在本站', () => {
     expect(res.status).toBe(302)
     expect(res.location).toBe(`${SELECT_URL}/zh-CN/`)
   }, 40_000)
+})
+
+describe('安全 — 浏览器会话只走 httpOnly cookie，写操作认来源', () => {
+  let selector: Session
+  const FOREIGN = 'https://evil.example.net'
+
+  beforeAll(async () => {
+    selector = await login('selector')
+  })
+
+  const withCookie = (init: RequestInit & { headers?: Record<string, string> } = {}) => ({
+    ...init,
+    headers: { cookie: `kcs_session=${encodeURIComponent(selector.token)}`, ...(init.headers ?? {}) },
+    redirect: 'manual' as const,
+  })
+
+  it('只带 kcs_session cookie（没有 Authorization）也能认出是谁', async () => {
+    const res = await fetch(`${BASE_URL}${PATHS.me}`, withCookie())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { user?: { email?: string } }
+    expect(body.user?.email).toBe(SEED_USERS.selector.email)
+  })
+
+  it('外站页面借 cookie 发写请求 → 403 origin_not_allowed，数据不变', async () => {
+    const name = `csrf-${runId()}`
+    const res = await fetch(`${BASE_URL}${PATHS.projects}`, withCookie({
+      method: 'POST',
+      headers: { origin: FOREIGN, 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }))
+    const body = (await res.json()) as Json
+    expect(res.status).toBe(403)
+    expect(errorCode(body)).toBe(ERROR.DENIED)
+    expect((body.error as { message?: string }).message).toBe('origin_not_allowed')
+    const list = await request('GET', PATHS.projects, { token: selector.token })
+    expect(itemsOf(list.json).some((row) => row.name === name)).toBe(false)
+  })
+
+  it('本系统的源站带 cookie 发写请求照常处理', async () => {
+    const res = await fetch(`${BASE_URL}${PATHS.projects}`, withCookie({
+      method: 'POST',
+      headers: { origin: SELECT_URL, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: `cookie-write-${runId()}` }),
+    }))
+    await res.text()
+    expect([200, 201]).toContain(res.status)
+  })
+
+  it('CORS 只对本系统源站放行并允许带凭证；外站拿不到放行头', async () => {
+    const preflight = (origin: string) => fetch(`${BASE_URL}${PATHS.projects}`, {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type',
+      },
+    })
+    const ok = await preflight(SELECT_URL)
+    expect(ok.headers.get('access-control-allow-origin')).toBe(SELECT_URL)
+    expect(ok.headers.get('access-control-allow-credentials')).toBe('true')
+    const foreign = await preflight(FOREIGN)
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull()
+  })
 })
 
 describe('安全 — 上传只收图片，读回不会被当网页执行', () => {

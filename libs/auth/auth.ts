@@ -39,12 +39,37 @@ function getRefererInfo(request?: Request): { locale: string; lastSegment: strin
   }
 }
 
+/**
+ * Every app origin may call this origin's auth endpoints: its own URL, the four
+ * workspace URLs, and any extra `AUTH_TRUSTED_ORIGINS` (comma separated).
+ */
+function trustedOriginsFromEnv(): string[] {
+  const env = process.env
+  const candidates = [
+    env.APP_BASE_URL,
+    env.BETTER_AUTH_URL,
+    env.NUXT_PUBLIC_MARKETING_URL,
+    env.NUXT_PUBLIC_SELECT_URL,
+    env.NUXT_PUBLIC_OPS_URL,
+    env.NUXT_PUBLIC_DEV_URL,
+    ...(env.AUTH_TRUSTED_ORIGINS || '').split(','),
+  ]
+  return [...new Set(candidates.map((origin) => origin?.trim().replace(/\/+$/, '')).filter((origin): origin is string => Boolean(origin)))]
+}
+
+/**
+ * `AUTH_COOKIE_DOMAIN=.example.com` scopes the session cookies to the parent
+ * domain so a sign-in on www. is also a sign-in on select. / ops. / dev. / api.
+ * Unset = host-only cookies (localhost: ports share cookies anyway).
+ */
+const cookieDomain = process.env.AUTH_COOKIE_DOMAIN?.trim() || ''
+
 export const auth = betterAuth({
   appName: 'tinyship',
-  trustedOrigins: [
-    ...(process.env.APP_BASE_URL ? [process.env.APP_BASE_URL] : []),
-    ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
-  ],
+  trustedOrigins: trustedOriginsFromEnv(),
+  ...(cookieDomain
+    ? { advanced: { crossSubDomainCookies: { enabled: true, domain: cookieDomain } } }
+    : {}),
   database: drizzleAdapter(db, {
     provider: isSqliteDialect() ? 'sqlite' : 'pg',
     schema: {

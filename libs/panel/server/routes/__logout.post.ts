@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
   } catch {
     // Already signed out (or the session is gone): still clear the local mirror.
   }
-  deleteCookie(event, 'kcs_session', { path: '/', sameSite: 'lax', secure: process.env.NODE_ENV === 'production' })
+  expireHostOnlySession(event)
+  deleteCookie(event, SESSION_COOKIE, sessionCookieOptions())
   return { ok }
 })

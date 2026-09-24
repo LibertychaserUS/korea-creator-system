@@ -27,17 +27,27 @@ export type { AppEnv, SessionUser } from './http/types'
 // invalid_text_representation, numeric/datetime out of range, invalid datetime format
 const PG_BAD_INPUT = new Set(['22P02', '22003', '22007', '22008'])
 
-export function createApp(env: AppEnv) {
-  const app = new Hono()
-  const origins = (
-    process.env.WEB_ORIGIN
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/** The four apps' origins (`WEB_ORIGIN`, comma separated); local ports when unset. */
+export function webOrigins(source: NodeJS.ProcessEnv = process.env): string[] {
+  return (
+    source.WEB_ORIGIN
     || [7000, 7001, 7002, 7003, 7004, 7005]
       .map((port) => `http://localhost:${port}`)
       .join(',')
   )
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean)
+}
+
+export function createApp(env: AppEnv) {
+  const app = new Hono()
+  const origins = webOrigins()
+  if (!process.env.WEB_ORIGIN && process.env.NODE_ENV === 'production') {
+    logEvent('warn', 'cors.default_origins', { origins })
+  }
 
   app.use(
     '*',
@@ -45,9 +55,24 @@ export function createApp(env: AppEnv) {
       origin: origins,
       credentials: true,
       allowHeaders: ['Authorization', 'Content-Type'],
-      allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }),
   )
+
+  // The browser attaches the httpOnly `kcs_session` cookie to every request for
+  // this host, including ones a foreign page triggers. A state-changing request
+  // authenticated only by that cookie must come from one of the apps.
+  // Bearer callers (SSR, scripts) send no ambient credentials and are exempt.
+  app.use('*', async (context, next) => {
+    if (SAFE_METHODS.has(context.req.method) || context.req.header('authorization')) return next()
+    if (!/(?:^|;\s*)kcs_session=/.test(context.req.header('cookie') ?? '')) return next()
+    const origin = context.req.header('origin')?.replace(/\/+$/, '')
+    const sameOrigin = origin
+      ? origins.includes(origin)
+      : context.req.header('sec-fetch-site') !== 'cross-site'
+    if (sameOrigin) return next()
+    return jsonError(context, 403, 'AUTH-DENIED', 'origin_not_allowed')
+  })
 
   const logRequests = process.env.LOG_REQUESTS !== '0'
   app.use('*', async (context, next) => {

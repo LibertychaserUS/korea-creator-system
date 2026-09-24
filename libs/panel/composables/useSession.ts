@@ -10,10 +10,10 @@ export type SessionUser = {
 
 export function useSession() {
   const user = useState<SessionUser | null>('kcs-user', () => null)
-  const { request, token } = useApi()
+  const { request, hasSession } = useApi()
 
   async function refresh() {
-    if (!token.value) {
+    if (!hasSession.value) {
       user.value = null
       return null
     }
@@ -27,5 +27,11 @@ export function useSession() {
     }
   }
 
-  return { user, refresh, token }
+  /** 退出后本地的会话状态；cookie 由 `/__logout` 在服务端清掉。 */
+  function clear() {
+    hasSession.value = false
+    user.value = null
+  }
+
+  return { user, refresh, hasSession, clear }
 }

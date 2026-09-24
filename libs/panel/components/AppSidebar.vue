@@ -81,7 +81,7 @@ type KcsAppConfig = {
 const { t, te } = useI18n()
 const localePath = useLocalePath()
 const route = useRoute()
-const { user, token } = useSession()
+const { user, clear } = useSession()
 const { request } = useApi()
 
 const kcs = useAppConfig().kcs as KcsAppConfig | undefined
@@ -138,8 +138,7 @@ async function signOut() {
   } catch {
     // 会话可能已经过期，本地照样清
   }
-  token.value = null
-  user.value = null
+  clear()
   await navigateTo(localePath('/login'))
 }
 </script>

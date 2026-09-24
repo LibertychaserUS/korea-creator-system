@@ -75,13 +75,8 @@ export default defineEventHandler(async (event) => {
   for (const cookie of response.headers.getSetCookie()) {
     appendResponseHeader(event, 'set-cookie', cookie)
   }
-  // Not httpOnly: useApi reads it to send `Authorization: Bearer`.
-  setCookie(event, 'kcs_session', token, {
-    path: '/',
-    sameSite: 'lax',
-    httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-  })
+  expireHostOnlySession(event)
+  setCookie(event, SESSION_COOKIE, token, sessionCookieOptions())
   const role = roleFromIdentity(data.user.role)
   // Account exists in TinyShip but has no KCS job yet: signed in, nowhere to go.
   if (!role) return sendRedirect(event, `/${locale}/denied`)

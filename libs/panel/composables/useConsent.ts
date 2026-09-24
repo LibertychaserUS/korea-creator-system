@@ -6,12 +6,16 @@ export type ConsentLevel = 'all' | 'necessary'
  * Cookie consent state.
  * - 'necessary': session/auth only — no preference persistence (locale, currency, theme).
  * - 'all': preference cookies/localStorage may be written.
+ * The choice and `kcs_last_ws` sit on the shared parent domain (public.cookieDomain)
+ * so one answer covers all four apps and marketing can read the last workspace.
  */
 export function useConsent() {
+  const domain = (useRuntimeConfig().public.cookieDomain as string) || undefined
   const cookie = useCookie<ConsentLevel | null>('kcs_consent', {
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 180,
+    domain,
   })
   const level = useState<ConsentLevel | null>('kcs-consent', () => cookie.value ?? null)
 
@@ -27,7 +31,7 @@ export function useConsent() {
       localeCookie.value = null
       const currencyCookie = useCookie<string | null>('kcs_currency', { path: '/' })
       currencyCookie.value = null
-      const wsCookie = useCookie<string | null>('kcs_last_ws', { path: '/' })
+      const wsCookie = useCookie<string | null>('kcs_last_ws', { path: '/', domain })
       wsCookie.value = null
       if (import.meta.client) {
         const key = config.app.theme.storageKey

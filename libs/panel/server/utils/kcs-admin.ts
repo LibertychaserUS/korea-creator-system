@@ -4,15 +4,15 @@ import { can, roleFromIdentity, ROLES, type Role } from '@kcs/contract'
 
 /**
  * 账号管理只在工作端源站上跑（身份就在这里的 TinyShip），不经过 Hono API。
- * 调用方必须是 platform_admin：会话从 `Authorization: Bearer`（useApi 发的
- * kcs_session）或 better-auth 自己的 cookie 里取，每次请求都现查库，不走缓存。
+ * 调用方必须是 platform_admin：会话从 `Authorization: Bearer`、httpOnly 的
+ * kcs_session 或 better-auth 自己的 cookie 里取，每次请求都现查库，不走缓存。
  */
 export async function requireAccountAdmin(event: H3Event) {
   const headers = new Headers(
     Object.entries(getRequestHeaders(event))
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
   )
-  const mirror = getCookie(event, 'kcs_session')
+  const mirror = getCookie(event, SESSION_COOKIE)
   if (!headers.has('authorization') && mirror) headers.set('authorization', `Bearer ${mirror}`)
   const session = await auth.api.getSession({ headers }).catch(() => null)
   if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'unauthenticated' })
