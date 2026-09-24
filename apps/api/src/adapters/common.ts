@@ -41,6 +41,25 @@ export type FieldMap = Partial<Record<
 
 export type AdapterPage = SourcePage & { sourceMode: 'live' | 'fixture' }
 
+const INTEGER_LITERAL = /^-?\d+$/
+
+/**
+ * `JSON.parse` that keeps integers past 2^53 as their original digits.
+ * A vendor id like 12345678901234567891 would otherwise round to
+ * 12345678901234567000 and two creators would share one id.
+ */
+export function parseVendorJson(text: string): unknown {
+  return JSON.parse(text, (_key, value, context?: { source?: string }) =>
+    typeof value === 'number' && !Number.isSafeInteger(value) && context?.source && INTEGER_LITERAL.test(context.source)
+      ? context.source
+      : value,
+  )
+}
+
+export async function readVendorJson(response: Response): Promise<Record<string, unknown>> {
+  return parseVendorJson(await response.text()) as Record<string, unknown>
+}
+
 /** Common id keys across 蒲公英 (`userId`), vendors and our fixtures. */
 export function payloadId(payload: Record<string, unknown>, fallback: string): string {
   const value = payload.userId ?? payload.external_id ?? payload.author_id ?? payload.user_id ?? payload.id ?? payload.博主ID ?? payload.达人ID
@@ -148,7 +167,7 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult 
 }
 
 export function fixturePage(source: SourceId, fixtureUrl: URL, query: SourceQuery): AdapterPage {
-  let payloads = JSON.parse(readFileSync(fixtureUrl, 'utf8')) as Record<string, unknown>[]
+  let payloads = parseVendorJson(readFileSync(fixtureUrl, 'utf8')) as Record<string, unknown>[]
   if (query.externalIds?.length) {
     const wanted = new Set(query.externalIds.map(String))
     payloads = payloads.filter((p, index) => wanted.has(payloadId(p, `${source}-${index + 1}`)))
@@ -222,7 +241,7 @@ export async function fetchJsonPage(input: {
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`${input.source} HTTP ${response.status}`)
-    const json = await response.json() as Record<string, unknown>
+    const json = await readVendorJson(response)
     const candidates = [json.data, (json.data as Record<string, unknown> | undefined)?.list, json.list, json.records]
     const payloads = candidates.find(Array.isArray) as Record<string, unknown>[] | undefined
     if (!payloads) throw new Error(`${input.source} response has no record list`)

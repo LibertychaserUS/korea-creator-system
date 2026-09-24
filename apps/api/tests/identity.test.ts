@@ -1,7 +1,10 @@
 import { readFile } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { RawRecord, SourceId } from '@kcs/contract'
 import { qianguaAdapter, xinhongAdapter } from '../src/adapters'
+import { parseVendorJson } from '../src/adapters/common'
 import { persistPage } from '../src/ingest/persist'
 import { createTestApp, type TestCtx } from './helpers'
 
@@ -20,6 +23,52 @@ async function linksOf(ctx: TestCtx, source: SourceId, externalId: string) {
   )
   return rows[0]
 }
+
+describe('ids past 2^53', () => {
+  it('keep their digits when parsed', () => {
+    const parsed = parseVendorJson('{"a":12345678901234567891,"b":-9007199254740993,"c":42,"d":1.5,"e":1e21,"f":"7"}') as Record<string, unknown>
+    expect(parsed).toEqual({ a: '12345678901234567891', b: '-9007199254740993', c: 42, d: 1.5, e: 1e21, f: '7' })
+  })
+
+  describe('from a live vendor response', () => {
+    let ctx: TestCtx
+    let server: Server
+    const saved = { token: process.env.QIANGUA_TOKEN, base: process.env.QIANGUA_BASE_URL }
+    // Both ids round to the same double; the body is sent verbatim so nothing re-serialises them first.
+    const ids = ['92233720368547758071', '92233720368547758072']
+    beforeAll(async () => {
+      ctx = await createTestApp()
+      server = createServer((_req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.end(`{"data":[{"达人ID":${ids[0]},"昵称":"大号一"},{"达人ID":${ids[1]},"昵称":"大号二"}]}`)
+      })
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+      process.env.QIANGUA_TOKEN = 'test'
+      process.env.QIANGUA_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    })
+    afterAll(async () => {
+      if (saved.token === undefined) delete process.env.QIANGUA_TOKEN
+      else process.env.QIANGUA_TOKEN = saved.token
+      if (saved.base === undefined) delete process.env.QIANGUA_BASE_URL
+      else process.env.QIANGUA_BASE_URL = saved.base
+      await new Promise((resolve) => server.close(resolve))
+      await ctx.close()
+    })
+
+    it('two ids become two creators with the ids as sent', async () => {
+      expect(Number(ids[0])).toBe(Number(ids[1]))
+      const page = await qianguaAdapter.fetch({ window: 30 })
+      expect(page.records.map((r) => r.externalId)).toEqual(ids)
+      expect(await persistPage(ctx.env, qianguaAdapter, page, null, 'qiangua')).toEqual({ written: 2, skipped: 0, failed: 0 })
+      const [a, b] = [await linksOf(ctx, 'qiangua', ids[0]), await linksOf(ctx, 'qiangua', ids[1])]
+      expect(a.id).not.toBe(b.id)
+      expect(a).toMatchObject({ display_name: '大号一', creator_key: `qiangua:${ids[0]}` })
+      expect(b).toMatchObject({ display_name: '大号二', creator_key: `qiangua:${ids[1]}` })
+      const { rows } = await ctx.db.query(`SELECT payload->>'达人ID' AS id FROM creator_raw WHERE source = 'qiangua' AND external_id = ANY($1) ORDER BY external_id`, [ids])
+      expect(rows.map((r) => r.id)).toEqual(ids)
+    })
+  })
+})
 
 describe('identity across sources', () => {
   let ctx: TestCtx

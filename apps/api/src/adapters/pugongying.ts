@@ -41,7 +41,7 @@ import {
   type SourceAdapter,
   type SourceQuery,
 } from '@kcs/contract'
-import { filterFixturePage, fixturePage, type AdapterPage } from './common'
+import { filterFixturePage, fixturePage, readVendorJson, type AdapterPage } from './common'
 
 type Json = Record<string, unknown>
 
@@ -67,7 +67,7 @@ async function http(url: string, init: RequestInit): Promise<Json> {
   try {
     const response = await fetch(url, { ...init, signal: controller.signal })
     if (!response.ok) throw new Error(`pugongying HTTP ${response.status}`)
-    return (await response.json()) as Json
+    return await readVendorJson(response)
   } finally {
     clearTimeout(timer)
   }
