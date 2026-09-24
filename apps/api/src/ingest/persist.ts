@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg'
 import {
   deriveMetrics,
   emptyMetrics,
+  normalizeXhsId,
   toAmount,
   toCount,
   type CreatorMetrics,
@@ -22,8 +23,9 @@ import { deadLetterRecord, failureOf } from './dead-letters'
  * page, a replayed dead letter, a workbook row — goes through
  * `upsertCreatorFromNormalized`, so they all agree on:
  *
- * - identity: (source, externalId) in `creator_sources` → `creator_key` →
- *   `xhs_id` (newest match); only when all three miss is a new draft created;
+ * - identity: the 小红书号 (normalised, one creator per account) wins; without
+ *   one, (source, externalId) in `creator_sources` → `creator_key`; only when
+ *   all miss is a new draft created;
  * - what is written: latest numbers (`metrics`, `followers`, …) and
  *   `needs_review = true`. `status`, `metrics_locked` and `metrics_locked_at`
  *   (the publish snapshot) are never touched — only publish moves those;
@@ -57,6 +59,17 @@ export async function upsertCreatorFromNormalized(
   jobId: string | null,
   incoming: IncomingCreator,
 ): Promise<UpsertOutcome> {
+  const normalized = { ...incoming, xhsId: normalizeXhsId(incoming.xhsId) }
+  try {
+    return await upsertOnce(env, jobId, normalized)
+  } catch (error) {
+    // Two writers created the same 小红书号 at once: the second now finds the first.
+    if ((error as { code?: string }).code !== '23505') throw error
+    return upsertOnce(env, jobId, normalized)
+  }
+}
+
+async function upsertOnce(env: AppEnv, jobId: string | null, incoming: IncomingCreator): Promise<UpsertOutcome> {
   const client = await env.db.connect() as PoolClient
   try {
     await client.query('BEGIN')
@@ -188,24 +201,29 @@ async function upsertInTransaction(
   return { creatorId, created: !existing }
 }
 
-async function findExisting(client: PoolClient, incoming: IncomingCreator) {
+type Existing = { id: string; metrics: unknown }
+
+/**
+ * A 小红书号 names one account, so its owner wins over a vendor-id link or a
+ * key: a record that learns its 小红书号 joins the creator already holding it
+ * (the link moves over; the earlier creator keeps its raw and history).
+ */
+async function findExisting(client: PoolClient, incoming: IncomingCreator): Promise<Existing | null> {
   const { origin } = incoming
+  if (incoming.xhsId) {
+    const byXhs = await client.query('SELECT id, metrics FROM creators WHERE xhs_id = $1', [incoming.xhsId])
+    if (byXhs.rows[0]) return byXhs.rows[0] as Existing
+  }
   if (origin.kind === 'source') {
     const linked = await client.query(
       `SELECT c.id, c.metrics FROM creator_sources s JOIN creators c ON c.id = s.creator_id
         WHERE s.source = $1 AND s.external_id = $2`,
       [origin.source, origin.externalId],
     )
-    if (linked.rows[0]) return linked.rows[0] as { id: string; metrics: unknown }
+    if (linked.rows[0]) return linked.rows[0] as Existing
   }
   const byKey = await client.query('SELECT id, metrics FROM creators WHERE creator_key = $1', [incoming.creatorKey])
-  if (byKey.rows[0]) return byKey.rows[0] as { id: string; metrics: unknown }
-  if (!incoming.xhsId) return null
-  const byXhs = await client.query(
-    'SELECT id, metrics FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
-    [incoming.xhsId],
-  )
-  return (byXhs.rows[0] as { id: string; metrics: unknown } | undefined) ?? null
+  return (byKey.rows[0] as Existing | undefined) ?? null
 }
 
 /** A sheet only knows followers and the image-note quote; everything else stays. */
@@ -261,7 +279,7 @@ export function readSheetRow(row: SheetRow, now: Date): SheetRowResult {
     incoming: {
       creatorKey: creatorKeyFromRow(row) || `ck_${randomUUID()}`,
       displayName,
-      xhsId: row.xhsId || null,
+      xhsId: normalizeXhsId(row.xhsId),
       regions: row.region ? [row.region] : [],
       verticals: [row.vertical, row.keywords, row.persona].filter(Boolean) as string[],
       metrics: deriveMetrics({ ...emptyMetrics(), followers: followers.value, priceImage: price.value }),

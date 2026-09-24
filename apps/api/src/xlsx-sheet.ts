@@ -1,4 +1,5 @@
 import { inflateRawSync } from 'node:zlib'
+import { normalizeXhsId } from '@kcs/contract'
 
 export type SheetRow = Record<string, string>
 
@@ -185,6 +186,7 @@ export function parseXlsx(buf: Buffer): SheetRow[] {
  */
 export function creatorKeyFromRow(row: SheetRow): string {
   if (row.userId) return `uid_${row.userId}`
-  if (row.xhsId) return `xhs_${row.xhsId}`
+  const xhsId = normalizeXhsId(row.xhsId)
+  if (xhsId) return `xhs_${xhsId}`
   return ''
 }

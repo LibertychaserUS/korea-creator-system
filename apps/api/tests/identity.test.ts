@@ -212,3 +212,112 @@ describe('migration 0040 splits old cross-source merges', () => {
     expect(row.xhs_id).toBe(`${RUN}_same`.toLowerCase())
   })
 })
+
+describe('小红书号 is one identity whatever the spelling', () => {
+  let ctx: TestCtx
+  beforeAll(async () => {
+    ctx = await createTestApp()
+  })
+  afterAll(() => ctx.close())
+
+  it('"Cheongdam_Skin " and "cheongdam_skin" from two sources are one creator', async () => {
+    const xhs = `${RUN}_Cheongdam_Skin`
+    await persistPage(ctx.env, qianguaAdapter, { records: [raw('qiangua', { 达人ID: `${RUN}-cs1`, 昵称: '清潭', 小红书号: `${xhs} ` })], nextCursor: null }, null, 'qiangua')
+    await persistPage(ctx.env, xinhongAdapter, { records: [raw('xinhong', { 达人ID: `${RUN}-cs2`, 昵称: '清潭', 小红书号: `\u3000${xhs.toLowerCase()}` })], nextCursor: null }, null, 'xinhong')
+    const a = await linksOf(ctx, 'qiangua', `${RUN}-cs1`)
+    const b = await linksOf(ctx, 'xinhong', `${RUN}-cs2`)
+    expect(a.id).toBe(b.id)
+    expect(a.xhs_id).toBe(xhs.toLowerCase())
+  })
+
+  it('a record that learns its 小红书号 joins the creator already holding it', async () => {
+    const xhs = `${RUN}_later`
+    await persistPage(ctx.env, qianguaAdapter, { records: [raw('qiangua', { 达人ID: `${RUN}-l1`, 昵称: '先有号' , 小红书号: xhs })], nextCursor: null }, null, 'qiangua')
+    await persistPage(ctx.env, xinhongAdapter, { records: [raw('xinhong', { 达人ID: `${RUN}-l2`, 昵称: '后补号' })], nextCursor: null }, null, 'xinhong')
+    const before = await linksOf(ctx, 'xinhong', `${RUN}-l2`)
+    expect(before.id).not.toBe((await linksOf(ctx, 'qiangua', `${RUN}-l1`)).id)
+    const counts = await persistPage(ctx.env, xinhongAdapter, { records: [raw('xinhong', { 达人ID: `${RUN}-l2`, 昵称: '后补号', 小红书号: xhs.toUpperCase() })], nextCursor: null }, null, 'xinhong')
+    // `skipped` counts updates of an existing creator; nothing failed on the unique 小红书号.
+    expect(counts).toEqual({ written: 0, skipped: 1, failed: 0 })
+    expect((await linksOf(ctx, 'xinhong', `${RUN}-l2`)).id).toBe((await linksOf(ctx, 'qiangua', `${RUN}-l1`)).id)
+    // The earlier creator keeps what it was measured with.
+    const kept = await ctx.db.query('SELECT count(*)::int AS n FROM creator_raw WHERE creator_id = $1', [before.id])
+    expect(kept.rows[0].n).toBe(1)
+  })
+
+  it('any writer is folded by the database, and two creators cannot hold one account', async () => {
+    const xhs = `${RUN}_DbFold`
+    await ctx.db.query(
+      "INSERT INTO creators (id, creator_key, display_name, status, xhs_id) VALUES ($1, $1, 'x', 'draft', $2)",
+      [`${RUN}-db1`, `  ${xhs} `],
+    )
+    expect((await ctx.db.query('SELECT xhs_id FROM creators WHERE id = $1', [`${RUN}-db1`])).rows[0].xhs_id).toBe(xhs.toLowerCase())
+    await expect(ctx.db.query(
+      "INSERT INTO creators (id, creator_key, display_name, status, xhs_id) VALUES ($1, $1, 'y', 'draft', $2)",
+      [`${RUN}-db2`, xhs.toUpperCase()],
+    )).rejects.toMatchObject({ code: '23505' })
+  })
+})
+
+describe('migration 0042 merges creators whose 小红书号 differ only in spelling', () => {
+  let ctx: TestCtx
+  const sql = readFile(new URL('../src/migrations/0042_normalize_xhs_ids.sql', import.meta.url), 'utf8')
+  beforeAll(async () => {
+    ctx = await createTestApp()
+  })
+  afterAll(() => ctx.close())
+
+  it('keeps the released one, moves everything over, and archives the rest verbatim', async () => {
+    const [keep, dup] = [`${RUN}-keep`, `${RUN}-dup`]
+    const client = await ctx.db.connect()
+    try {
+      await client.query('BEGIN')
+      // Recreate the state before 0042: no folding, no unique index.
+      await client.query('DROP INDEX creators_xhs_id_key')
+      await client.query('ALTER TABLE creators DISABLE TRIGGER creators_normalize_xhs')
+      await client.query(
+        `INSERT INTO creators (id, creator_key, display_name, status, xhs_id, created_at) VALUES
+           ($1, $1, '新建的', 'draft', $3, '2026-01-01'), ($2, $2, '已上架', 'released', $4, '2026-02-01')`,
+        [dup, keep, `${RUN}_Cheongdam_Skin `, `${RUN}_cheongdam_skin`],
+      )
+      await client.query(
+        `INSERT INTO creator_categories (creator_id, category_slug) VALUES
+           ($1, 'never_collaborated'), ($2, 'never_collaborated'), ($1, 'intending')`,
+        [dup, keep],
+      )
+      await client.query(
+        "INSERT INTO creator_sources (creator_id, source, external_id, first_seen_at, last_seen_at) VALUES ($1, 'qiangua', $2, now(), now())",
+        [dup, `${RUN}-dup-ext`],
+      )
+      await client.query(
+        "INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload) VALUES ($1, $2, 'qiangua', $3, now(), '{}')",
+        [`${RUN}-dup-raw`, dup, `${RUN}-dup-ext`],
+      )
+      await client.query(await sql)
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+
+    expect((await ctx.db.query('SELECT 1 FROM creators WHERE id = $1', [dup])).rowCount).toBe(0)
+    expect((await ctx.db.query('SELECT xhs_id FROM creators WHERE id = $1', [keep])).rows[0].xhs_id).toBe(`${RUN}_cheongdam_skin`.toLowerCase())
+    const categories = await ctx.db.query('SELECT category_slug FROM creator_categories WHERE creator_id = $1 ORDER BY 1', [keep])
+    expect(categories.rows.map((r) => r.category_slug)).toEqual(['intending', 'never_collaborated'])
+    expect((await linksOf(ctx, 'qiangua', `${RUN}-dup-ext`)).id).toBe(keep)
+    expect((await ctx.db.query('SELECT creator_id FROM creator_raw WHERE id = $1', [`${RUN}-dup-raw`])).rows[0].creator_id).toBe(keep)
+
+    const archived = (await ctx.db.query('SELECT * FROM creator_merges WHERE merged_id = $1', [dup])).rows
+    expect(archived).toHaveLength(1)
+    expect(archived[0]).toMatchObject({ into_id: keep, merged_row: expect.objectContaining({ id: dup, display_name: '新建的' }) })
+    expect(archived[0].conflicts).toEqual([
+      { table: 'creator_categories', row: { creator_id: dup, category_slug: 'never_collaborated' } },
+    ])
+
+    // Rerunning changes nothing.
+    await ctx.db.query(await sql)
+    expect((await ctx.db.query('SELECT count(*)::int AS n FROM creator_merges WHERE merged_id = $1', [dup])).rows[0].n).toBe(1)
+  })
+})

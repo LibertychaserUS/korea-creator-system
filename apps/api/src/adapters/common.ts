@@ -9,6 +9,7 @@ import {
   fieldPaths,
   fieldUnit,
   isPlaceholder,
+  normalizeXhsId,
   parseNumber,
   parseRatio,
   pickPath,
@@ -162,7 +163,7 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult 
       platform: 'xhs',
       displayName,
       // A vendor id is not a 小红书号: without one the creator stays unmerged.
-      xhsId: xhsId == null ? null : String(xhsId).trim() || null,
+      xhsId: normalizeXhsId(xhsId),
       avatarUrl: String(first(raw.payload, map.avatarUrl) ?? '') || null,
       regions: toStringArray(first(raw.payload, map.regions)),
       verticals: toStringArray(first(raw.payload, map.verticals)),

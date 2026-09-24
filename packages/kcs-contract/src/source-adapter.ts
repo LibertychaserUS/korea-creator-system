@@ -276,6 +276,17 @@ export function creatorKeyFor(scope: SourceId | Platform, externalId: string): s
   return `${scope}:${externalId}`
 }
 
+/**
+ * One spelling per 小红书号: trimmed, NFKC-folded (full-width → ASCII) and
+ * lower-case, so "Cheongdam_Skin " and "cheongdam_skin" are one account.
+ * The database folds every write the same way (`kcs_normalize_xhs_id`).
+ */
+export function normalizeXhsId(value: unknown): string | null {
+  if (value == null || typeof value === 'object') return null
+  const text = String(value).normalize('NFKC').trim().toLowerCase()
+  return text && !isPlaceholder(text) ? text : null
+}
+
 export function pickPath(obj: unknown, path: string | undefined): unknown {
   if (!path) return undefined
   return path.split('.').reduce<unknown>((acc, key) => {

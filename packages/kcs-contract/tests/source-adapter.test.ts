@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_COUNT, fieldPaths, fieldUnit, isPlaceholder, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
+import { MAX_COUNT, fieldPaths, fieldUnit, isPlaceholder, normalizeXhsId, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
 
 describe('toNumber: what vendors write for a number', () => {
   it.each([
@@ -143,5 +143,14 @@ describe('isPlaceholder', () => {
   it('knows the usual "no data" marks', () => {
     for (const mark of ['-', '—', '--', '暂无', 'null', 'N/A', '／']) expect(isPlaceholder(mark), mark).toBe(true)
     for (const value of ['0', 0, '12', null]) expect(isPlaceholder(value)).toBe(false)
+  })
+})
+
+describe('normalizeXhsId', () => {
+  it('folds case, padding and full-width forms into one spelling', () => {
+    expect(normalizeXhsId('Cheongdam_Skin ')).toBe('cheongdam_skin')
+    expect(normalizeXhsId('\u3000ＣＨＥＯＮＧＤＡＭ_skin')).toBe('cheongdam_skin')
+    expect(normalizeXhsId(12345)).toBe('12345')
+    for (const empty of [null, undefined, '', '  ', '-', '暂无', {}]) expect(normalizeXhsId(empty)).toBeNull()
   })
 })

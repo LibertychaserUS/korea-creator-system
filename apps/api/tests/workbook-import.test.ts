@@ -99,6 +99,12 @@ describe('readSheetRow', () => {
     expect(result.ok && result.incoming.metrics.priceImage).toBeNull()
     expect(result.ok && result.incoming.metrics.followers).toBe(8000)
   })
+
+  it('a typed 小红书号 is folded like a vendor one, so it finds the same creator', () => {
+    const result = readSheetRow({ displayName: '清潭', xhsId: ' Cheongdam_Skin ' }, new Date())
+    expect(result.ok && result.incoming.xhsId).toBe('cheongdam_skin')
+    expect(result.ok && result.incoming.creatorKey).toBe('xhs_cheongdam_skin')
+  })
 })
 
 describe('workbook import', () => {
