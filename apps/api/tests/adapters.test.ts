@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from '../src/adapters'
-import { fixturePage } from '../src/adapters/common'
+import { fieldMapFromEnv, fixturePage, normalizeRecord, type FieldMap } from '../src/adapters/common'
 
 describe.each([pugongyingAdapter, qianguaAdapter, xinhongAdapter])('$id adapter', (adapter) => {
   it('normalizes every fixture without inventing missing values', () => {
@@ -58,5 +58,62 @@ describe('vendor values reach the metrics as numbers', () => {
     })
     expect(result.ok && result.creator.metrics.followerGrowthRate).toBeCloseTo(-0.008, 10)
     expect(result.ok && result.creator.metrics.followerGrowth).toBe(-80)
+  })
+})
+
+describe('ratio units are declared per field, never guessed from size', () => {
+  const qg = (payload: Record<string, unknown>) => {
+    const result = qianguaAdapter.normalize({ source: 'qiangua', platform: 'xhs', externalId: 'x', fetchedAt: '', payload: { 达人ID: 'x', 昵称: 'n', ...payload } })
+    if (!result.ok) throw new Error(result.errors.join())
+    return result.creator
+  }
+
+  it('a percent field reads "91" and 0.8 as 91% and 0.8%', () => {
+    const creator = qg({ 粉丝真实度: '91', 爆文率: 0.8 })
+    expect(creator.metrics.authenticity).toBeCloseTo(0.91, 10)
+    expect(creator.metrics.viralRate).toBeCloseTo(0.008, 10)
+  })
+
+  it('a trailing % is a percent whatever the field says', () => {
+    expect(qg({ 粉丝真实度: '91.5％' }).metrics.authenticity).toBeCloseTo(0.915, 10)
+  })
+
+  it('a share outside 0–1 is refused with a reason', () => {
+    const creator = qg({ 粉丝真实度: '130' })
+    expect(creator.metrics.authenticity).toBeNull()
+    expect(creator.warnings).toContain('authenticity.outOfRange')
+  })
+
+  it('a ratio field keeps 1.2 as 120% instead of shrinking it', () => {
+    const map: FieldMap = { externalId: ['id'], displayName: ['name'], engagementRate: ['rate'] }
+    const result = normalizeRecord({ source: 'qiangua', platform: 'xhs', externalId: 'x', fetchedAt: '', payload: { id: 'x', name: 'n', rate: 1.2 } }, map)
+    expect(result.ok && result.creator.metrics.engagementRate).toBe(1.2)
+  })
+
+  it('蒲公英 percent strings and fractions each keep their own unit', () => {
+    const result = pugongyingAdapter.normalize({
+      source: 'pugongying', platform: 'xhs', externalId: 'u1', fetchedAt: '',
+      payload: {
+        userId: 'u1', name: 'n',
+        notesRate: { interactionRate: '4.2', videoFullViewRate: '130', pagePercentVo: { readSearchPercent: 0.35 } },
+      },
+    })
+    if (!result.ok) throw new Error(result.errors.join())
+    expect(result.creator.metrics.engagementRate).toBeCloseTo(0.042, 10)
+    expect(result.creator.metrics.trafficSearchRatio).toBe(0.35)
+    expect(result.creator.metrics.retentionRate).toBeNull()
+    expect(result.creator.warnings).toContain('retentionRate.outOfRange')
+  })
+
+  it('an env field map can declare the unit, and a bare path list keeps the default unit', () => {
+    const defaults: FieldMap = { authenticity: { paths: ['a'], unit: 'percent' }, engagedFanRatio: { paths: ['b'], unit: 'percent' } }
+    process.env.KCS_TEST_FIELD_MAP = JSON.stringify({ authenticity: ['real'], engagedFanRatio: { paths: ['engaged'], unit: 'ratio' } })
+    try {
+      const map = fieldMapFromEnv('KCS_TEST_FIELD_MAP', defaults)
+      expect(map.authenticity).toEqual({ paths: ['real'], unit: 'percent' })
+      expect(map.engagedFanRatio).toEqual({ paths: ['engaged'], unit: 'ratio' })
+    } finally {
+      delete process.env.KCS_TEST_FIELD_MAP
+    }
   })
 })

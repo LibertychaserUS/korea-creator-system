@@ -40,19 +40,18 @@ const DEFAULT_FIELD_MAP: FieldMap = {
   commentMedian: ['评论中位数', 'comment_median'],
   noteCount: ['近30天发文', '笔记数', 'note_count'],
   viralCount: ['爆文数', 'viral_count', 'hot_note_count'],
-  viralRate: ['爆文率', 'viral_rate'],
+  viralRate: { paths: ['爆文率', 'viral_rate'], unit: 'percent' },
   priceImage: ['预估报价', '图文报价', 'estimated_price', 'price_image'],
   priceVideo: ['视频报价', 'price_video'],
   cpe: ['CPE', 'cpe'],
   cpm: ['CPM', 'cpm'],
-  authenticity: ['粉丝真实度', 'authenticity', 'real_fans_ratio'],
+  authenticity: { paths: ['粉丝真实度', 'authenticity', 'real_fans_ratio'], unit: 'percent' },
   vendorIndex: ['千瓜指数', 'index', 'qiangua_index'],
   coopBrands: ['合作品牌', 'brands', 'coop_brands'],
   health: ['健康等级', 'health'],
 }
 
 export const FIELD_MAP: FieldMap = fieldMapFromEnv('QIANGUA_FIELD_MAP', DEFAULT_FIELD_MAP)
-const PERCENT_FIELDS = ['authenticity', 'viralRate'] as const
 
 export const qianguaAdapter: SourceAdapter = {
   id: 'qiangua',
@@ -62,7 +61,7 @@ export const qianguaAdapter: SourceAdapter = {
     const token = process.env.QIANGUA_TOKEN
     if (!token) {
       const page = fixturePage('qiangua', new URL('./fixtures/qiangua.json', import.meta.url), query)
-      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP, PERCENT_FIELDS))
+      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP))
     }
     const base = (process.env.QIANGUA_BASE_URL || 'https://api.qian-gua.com').replace(/\/$/, '')
     const path = process.env.QIANGUA_SEARCH_PATH || '/v1/xhs/creators/search'
@@ -74,6 +73,6 @@ export const qianguaAdapter: SourceAdapter = {
     })
   },
   normalize(raw) {
-    return normalizeRecord(raw, FIELD_MAP, PERCENT_FIELDS)
+    return normalizeRecord(raw, FIELD_MAP)
   },
 }

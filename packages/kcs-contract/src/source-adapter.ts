@@ -9,7 +9,7 @@
  * Route B = third-party data vendors (千瓜 / 新红).
  * Self-built scraping (route C) is deliberately not a source.
  */
-import type { CreatorMetrics, MetricWindow, HealthGrade, Platform } from './metrics'
+import type { CreatorMetrics, MetricWindow, HealthGrade, NumericMetricKey, Platform } from './metrics'
 
 export const SOURCE_IDS = ['pugongying', 'qiangua', 'xinhong'] as const
 export type SourceId = (typeof SOURCE_IDS)[number]
@@ -387,8 +387,39 @@ export function toAmount(value: unknown): ParsedNumber {
   return parsed
 }
 
-/** "3.2%" → 0.032; 3.2 → 0.032 when `percentInput`; 0.032 stays 0.032. */
-export function toRatio(value: unknown, percentInput = false): number | null {
+/**
+ * How a source writes a ratio field. Declared per field, never guessed from
+ * the size of the value: 0.8 in a percent field is 0.8% and 1.2 in a ratio
+ * field is 120%, and no threshold can tell those apart.
+ *   percent — "91" / 91 mean 91%
+ *   ratio   — 0.91 means 91%
+ * A string with a trailing `%` / `％` is always a percent.
+ */
+export type RatioUnit = 'percent' | 'ratio'
+
+/**
+ * Where a field sits in a vendor response: candidate paths in order, plus the
+ * unit for ratio fields. A bare path list is fine for everything else.
+ */
+export type FieldSpec = readonly string[] | { readonly paths: readonly string[]; readonly unit?: RatioUnit }
+
+export function fieldPaths(spec: FieldSpec | undefined): readonly string[] {
+  if (!spec) return []
+  return Array.isArray(spec) ? spec : (spec as { paths: readonly string[] }).paths
+}
+
+export function fieldUnit(spec: FieldSpec | undefined): RatioUnit | undefined {
+  return spec && !Array.isArray(spec) ? (spec as { unit?: RatioUnit }).unit : undefined
+}
+
+/** Ratio metrics that are a share of a whole: outside 0–1 they cannot be right. */
+export const SHARE_METRIC_KEYS: readonly NumericMetricKey[] = [
+  'readFanRatio', 'activeFanRatio', 'engagedFanRatio', 'retentionRate', 'viralRate',
+  'purchaseIntentCommentRatio', 'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'authenticity',
+]
+
+/** "3.2%" → 0.032; 3.2 → 0.032 in a percent field; 0.032 stays 0.032 in a ratio field. */
+export function toRatio(value: unknown, unit: RatioUnit | boolean = 'ratio'): number | null {
   if (value == null || value === '') return null
   const text = typeof value === 'string' ? value.normalize('NFKC').trim() : null
   if (text?.endsWith('%')) {
@@ -397,7 +428,15 @@ export function toRatio(value: unknown, percentInput = false): number | null {
   }
   const n = toNumber(value)
   if (n == null) return null
-  return percentInput ? n / 100 : n
+  return unit === true || unit === 'percent' ? n / 100 : n
+}
+
+/** `toRatio` with the reason when nothing usable came through; shares are held to 0–1. */
+export function parseRatio(value: unknown, unit: RatioUnit, options: { share?: boolean } = {}): ParsedNumber {
+  const n = toRatio(value, unit)
+  if (n == null) return { value: null, issue: value == null || value === '' ? null : parseNumber(value).issue ?? 'unparseable' }
+  if (options.share && (n < 0 || n > 1)) return { value: null, issue: 'outOfRange' }
+  return { value: n, issue: null }
 }
 
 export function toStringArray(value: unknown): string[] {

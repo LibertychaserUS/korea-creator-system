@@ -1,22 +1,27 @@
 import { readFileSync } from 'node:fs'
 import {
   METRIC_FIELDS,
+  SHARE_METRIC_KEYS,
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  fieldPaths,
+  fieldUnit,
   isPlaceholder,
   parseNumber,
+  parseRatio,
   pickPath,
   toAmount,
   toCount,
   toHealth,
   toNumber,
-  toRatio,
   toStringArray,
   type CreatorMetrics,
+  type FieldSpec,
   type NormalizeResult,
   type NumericMetricKey,
   type ParsedNumber,
+  type RatioUnit,
   type RawRecord,
   type SourceId,
   type SourcePage,
@@ -31,7 +36,7 @@ export type FieldMap = Partial<Record<
   | 'regions'
   | 'verticals'
   | 'externalId',
-  readonly string[]
+  FieldSpec
 >>
 
 export type AdapterPage = SourcePage & { sourceMode: 'live' | 'fixture' }
@@ -45,18 +50,24 @@ export function payloadId(payload: Record<string, unknown>, fallback: string): s
 /**
  * Vendors without public docs (千瓜 / 新红) ship their field list with the
  * contract. `<PREFIX>_FIELD_MAP` accepts a JSON object of
- * `{ canonicalKey: ["path.in.response", ...] }` and is merged over the
- * in-code default so a schema fix needs no redeploy.
+ * `{ canonicalKey: ["path.in.response", ...] }` or, for a ratio field,
+ * `{ canonicalKey: { "paths": [...], "unit": "percent" | "ratio" } }`, and is
+ * merged over the in-code default so a schema fix needs no redeploy. A bare
+ * path list keeps the unit the default declared.
  */
 export function fieldMapFromEnv(envName: string, defaults: FieldMap): FieldMap {
   const raw = process.env[envName]
   if (!raw) return defaults
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    const merged: Record<string, readonly string[]> = { ...(defaults as Record<string, readonly string[]>) }
+    const merged: Record<string, FieldSpec> = { ...(defaults as Record<string, FieldSpec>) }
+    const isPaths = (v: unknown): v is string[] => Array.isArray(v) && v.every((p) => typeof p === 'string')
     for (const [key, value] of Object.entries(parsed)) {
-      if (Array.isArray(value) && value.every((v) => typeof v === 'string')) merged[key] = value as string[]
-      else if (typeof value === 'string') merged[key] = [value]
+      const paths = isPaths(value) ? value : typeof value === 'string' ? [value] : isPaths((value as { paths?: unknown })?.paths) ? (value as { paths: string[] }).paths : null
+      if (!paths) continue
+      const declared = (value as { unit?: unknown })?.unit
+      const unit = declared === 'percent' || declared === 'ratio' ? declared : fieldUnit(merged[key])
+      merged[key] = unit ? { paths, unit } : paths
     }
     return merged as FieldMap
   } catch {
@@ -68,8 +79,8 @@ export function fieldMapFromEnv(envName: string, defaults: FieldMap): FieldMap {
  * First usable value among `paths`. A placeholder ("-", "暂无" …) counts as
  * missing, so it never hides a real value under a later alias.
  */
-export function first(payload: unknown, paths: readonly string[] | undefined): unknown {
-  for (const path of paths ?? []) {
+export function first(payload: unknown, spec: FieldSpec | undefined): unknown {
+  for (const path of fieldPaths(spec)) {
     const value = pickPath(payload, path)
     if (value !== undefined && value !== null && value !== '' && !isPlaceholder(value)) return value
   }
@@ -84,22 +95,20 @@ export function readMetric(
   key: NumericMetricKey,
   value: unknown,
   warnings: string[],
-  options: { percentInput?: boolean } = {},
+  unit: RatioUnit = 'ratio',
 ): number | null {
   const field = METRIC_FIELDS.find((f) => f.key === key)
   let parsed: ParsedNumber
   if (field?.unit === 'count') parsed = toCount(value, { signed: SIGNED_COUNTS.has(key) })
   else if (field?.unit === 'cny' || field?.unit === 'cnyPerUnit') parsed = toAmount(value)
-  else if (field?.unit === 'ratio') {
-    const n = toRatio(value, options.percentInput ?? false)
-    parsed = { value: n, issue: n == null && value != null ? parseNumber(value).issue ?? 'unparseable' : null }
-  } else parsed = parseNumber(value)
+  else if (field?.unit === 'ratio') parsed = parseRatio(value, unit, { share: SHARE_METRIC_KEYS.includes(key) })
+  else parsed = parseNumber(value)
   if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
   else if (parsed.value == null) warnings.push(`${key}.missing`)
   return parsed.value
 }
 
-export function normalizeRecord(raw: RawRecord, map: FieldMap, percentFields: readonly (keyof CreatorMetrics)[] = []): NormalizeResult {
+export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult {
   const externalId = String(first(raw.payload, map.externalId) ?? raw.externalId ?? '').trim()
   const displayName = String(first(raw.payload, map.displayName) ?? '').trim()
   if (!externalId || !displayName) return { ok: false, errors: [!externalId ? 'externalId.missing' : 'displayName.missing'] }
@@ -110,11 +119,9 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap, percentFields: re
   ) as NumericMetricKey[]
   const warnings: string[] = []
   for (const key of numericKeys) {
-    const paths = map[key]
-    if (!paths) continue
-    const value = first(raw.payload, paths)
-    const percentInput = percentFields.includes(key) && typeof value === 'number' && value > 1
-    ;(metrics as Record<string, unknown>)[key] = readMetric(key, value, warnings, { percentInput })
+    const spec = map[key]
+    if (!spec) continue
+    ;(metrics as Record<string, unknown>)[key] = readMetric(key, first(raw.payload, spec), warnings, fieldUnit(spec))
   }
   metrics.health = toHealth(first(raw.payload, map.health))
   metrics.coopBrands = toStringArray(first(raw.payload, map.coopBrands))

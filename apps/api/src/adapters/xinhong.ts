@@ -46,15 +46,14 @@ const DEFAULT_FIELD_MAP: FieldMap = {
   priceVideo: ['视频报价', 'price_video', 'videoPrice'],
   cpe: ['CPE', 'cpe'],
   cpm: ['CPM', 'cpm'],
-  engagedFanRatio: ['互动粉丝比', 'engaged_fan_ratio'],
-  authenticity: ['粉丝真实度', 'real_fan_ratio', 'authenticity'],
+  engagedFanRatio: { paths: ['互动粉丝比', 'engaged_fan_ratio'], unit: 'percent' },
+  authenticity: { paths: ['粉丝真实度', 'real_fan_ratio', 'authenticity'], unit: 'percent' },
   vendorIndex: ['新红指数', 'index', 'xinhongIndex'],
   coopBrands: ['合作品牌', 'brands', 'coopBrands'],
   health: ['健康等级', 'health'],
 }
 
 export const FIELD_MAP: FieldMap = fieldMapFromEnv('XINHONG_FIELD_MAP', DEFAULT_FIELD_MAP)
-const PERCENT_FIELDS = ['authenticity', 'engagedFanRatio'] as const
 
 export const xinhongAdapter: SourceAdapter = {
   id: 'xinhong',
@@ -64,7 +63,7 @@ export const xinhongAdapter: SourceAdapter = {
     const token = process.env.XINHONG_TOKEN
     if (!token) {
       const page = fixturePage('xinhong', new URL('./fixtures/xinhong.json', import.meta.url), query)
-      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP, PERCENT_FIELDS))
+      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP))
     }
     const base = (process.env.XINHONG_BASE_URL || 'https://api.newrank.cn').replace(/\/$/, '')
     const path = process.env.XINHONG_SEARCH_PATH || '/api/sync/xh/account/search'
@@ -78,6 +77,6 @@ export const xinhongAdapter: SourceAdapter = {
     })
   },
   normalize(raw) {
-    return normalizeRecord(raw, FIELD_MAP, PERCENT_FIELDS)
+    return normalizeRecord(raw, FIELD_MAP)
   },
 }

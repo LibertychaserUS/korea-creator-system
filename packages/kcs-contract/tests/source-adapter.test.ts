@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_COUNT, isPlaceholder, parseNumber, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
+import { MAX_COUNT, fieldPaths, fieldUnit, isPlaceholder, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
 
 describe('toNumber: what vendors write for a number', () => {
   it.each([
@@ -107,6 +107,35 @@ describe('toRatio', () => {
     expect(toRatio(' 3.5 % ')).toBeCloseTo(0.035, 10)
     expect(toRatio('-2%')).toBeCloseTo(-0.02, 10)
     expect(toRatio('-0.8', true)).toBeCloseTo(-0.008, 10)
+  })
+
+  it('follows the declared unit instead of the size of the value', () => {
+    expect(toRatio('91', 'percent')).toBeCloseTo(0.91, 10)
+    expect(toRatio(0.8, 'percent')).toBeCloseTo(0.008, 10)
+    expect(toRatio(1.2, 'ratio')).toBe(1.2)
+    expect(toRatio(0.91)).toBe(0.91)
+    expect(toRatio('4.2%', 'ratio')).toBeCloseTo(0.042, 10)
+  })
+})
+
+describe('parseRatio', () => {
+  it('holds shares to 0–1 and says why a value was dropped', () => {
+    expect(parseRatio('130', 'percent', { share: true })).toEqual({ value: null, issue: 'outOfRange' })
+    expect(parseRatio(1.2, 'ratio', { share: true })).toEqual({ value: null, issue: 'outOfRange' })
+    expect(parseRatio(1.2, 'ratio')).toEqual({ value: 1.2, issue: null })
+    expect(parseRatio('-', 'percent')).toEqual({ value: null, issue: 'placeholder' })
+    expect(parseRatio('3%-5%', 'percent').issue).not.toBeNull()
+    expect(parseRatio(null, 'percent')).toEqual({ value: null, issue: null })
+  })
+})
+
+describe('field specs', () => {
+  it('a bare path list and a declared spec read the same paths', () => {
+    expect(fieldPaths(['a', 'b'])).toEqual(['a', 'b'])
+    expect(fieldPaths({ paths: ['a'], unit: 'percent' })).toEqual(['a'])
+    expect(fieldUnit(['a'])).toBeUndefined()
+    expect(fieldUnit({ paths: ['a'], unit: 'percent' })).toBe('percent')
+    expect(fieldPaths(undefined)).toEqual([])
   })
 })
 

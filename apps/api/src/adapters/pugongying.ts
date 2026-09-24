@@ -24,16 +24,19 @@ import {
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  SHARE_METRIC_KEYS,
   isPlaceholder,
+  parseRatio,
   pickPath,
   toCount,
   toNumber,
-  toRatio,
   type AudienceProfile,
   type CreatorMetrics,
   type HealthGrade,
   type NormalizeResult,
+  type NumericMetricKey,
   type PgyGateway,
+  type RatioUnit,
   type RawRecord,
   type SourceAdapter,
   type SourceQuery,
@@ -305,17 +308,23 @@ function positiveCount(payload: Json, paths: readonly string[]): number | null {
   return null
 }
 
-/** 蒲公英 percent strings ("4.2" = 4.2%) → ratio. */
-function percent(payload: Json, paths: readonly string[]): number | null {
+/**
+ * A ratio metric read with the unit the field is documented in: 蒲公英 writes
+ * most rates as percent strings ("4.2" = 4.2%), pagePercentVo and fans_profile
+ * as fractions. Unusable values leave a `<key>.<issue>` warning.
+ */
+function ratioMetric(
+  key: NumericMetricKey,
+  payload: Json,
+  paths: readonly string[],
+  unit: RatioUnit,
+  warnings: string[],
+): number | null {
   const value = pick(payload, paths)
   if (value === undefined) return null
-  return toRatio(value, true)
-}
-
-/** Fractions already in 0..1 (pagePercentVo, fans_profile). */
-function fraction(payload: Json, paths: readonly string[]): number | null {
-  const value = pick(payload, paths)
-  return value === undefined ? null : toNumber(value)
+  const parsed = parseRatio(value, unit, { share: SHARE_METRIC_KEYS.includes(key) })
+  if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
+  return parsed.value
 }
 
 function healthOf(payload: Json): HealthGrade | null {
@@ -384,12 +393,15 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   if (!externalId || !displayName) return { ok: false, errors: [!externalId ? 'externalId.missing' : 'displayName.missing'] }
 
   const m: CreatorMetrics = emptyMetrics(toNumber(p.kcsWindow) === 90 ? 90 : 30)
+  const issues: string[] = []
+  const percent = (key: NumericMetricKey, paths: readonly string[]) => ratioMetric(key, p, paths, 'percent', issues)
+  const fraction = (key: NumericMetricKey, paths: readonly string[]) => ratioMetric(key, p, paths, 'ratio', issues)
   m.followers = positiveCount(p, ['fansNum', 'fansCount', 'fansSummary.fansNum'])
   m.followerGrowth = toCount(pick(p, ['fansSummary.fansIncreaseNum', 'fans30GrowthNum']), { signed: true }).value
-  m.followerGrowthRate = percent(p, ['fansSummary.fansGrowthRate', 'fans30GrowthRate', 'dataSummary.fans30GrowthRate'])
-  m.readFanRatio = percent(p, ['fansSummary.readFansRate'])
-  m.activeFanRatio = percent(p, ['fansSummary.activeFansRate'])
-  m.engagedFanRatio = percent(p, ['fansSummary.engageFansRate'])
+  m.followerGrowthRate = percent('followerGrowthRate', ['fansSummary.fansGrowthRate', 'fans30GrowthRate', 'dataSummary.fans30GrowthRate'])
+  m.readFanRatio = percent('readFanRatio', ['fansSummary.readFansRate'])
+  m.activeFanRatio = percent('activeFanRatio', ['fansSummary.activeFansRate'])
+  m.engagedFanRatio = percent('engagedFanRatio', ['fansSummary.engageFansRate'])
 
   m.impressionMedian = positiveCount(p, ['notesRate.impMedian', 'dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])
   m.readMedian = positiveCount(p, ['notesRate.readMedian', 'dataSummary.readMedian', 'clickMidNum'])
@@ -399,11 +411,11 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.commentMedian = positiveCount(p, ['notesRate.commentMedian'])
   m.coopReadMedian = positiveCount(p, ['readMidCoop30'])
   m.coopInteractionMedian = positiveCount(p, ['interMidCoop30'])
-  m.engagementRate = percent(p, ['notesRate.interactionRate'])
-  m.retentionRate = percent(p, ['notesRate.videoFullViewRate', 'videoFinishRate'])
+  m.engagementRate = percent('engagementRate', ['notesRate.interactionRate'])
+  m.retentionRate = percent('retentionRate', ['notesRate.videoFullViewRate', 'videoFinishRate'])
   m.noteCount = positiveCount(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
   // 千赞笔记比例 is the platform's own "爆文" ratio; no absolute count is exposed.
-  m.viralRate = percent(p, ['notesRate.thousandLikePercent', 'thousandLikePercent30'])
+  m.viralRate = percent('viralRate', ['notesRate.thousandLikePercent', 'thousandLikePercent30'])
 
   m.priceImage = positive(p, ['picturePrice'])
   m.priceVideo = positive(p, ['videoPrice'])
@@ -411,9 +423,9 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.cpe = positive(p, ['estimatePictureEngageCost', 'dataSummary.estimatePictureEngageCost'])
   m.cpm = positive(p, ['estimatePictureCpm', 'dataSummary.estimatePictureCpm'])
 
-  m.trafficSearchRatio = fraction(p, ['notesRate.pagePercentVo.readSearchPercent'])
-  m.trafficRecommendRatio = fraction(p, ['notesRate.pagePercentVo.readHomefeedPercent'])
-  m.trafficFollowRatio = fraction(p, ['notesRate.pagePercentVo.readFollowPercent'])
+  m.trafficSearchRatio = fraction('trafficSearchRatio', ['notesRate.pagePercentVo.readSearchPercent'])
+  m.trafficRecommendRatio = fraction('trafficRecommendRatio', ['notesRate.pagePercentVo.readHomefeedPercent'])
+  m.trafficFollowRatio = fraction('trafficFollowRatio', ['notesRate.pagePercentVo.readFollowPercent'])
 
   m.health = healthOf(p)
   m.coopNoteCount = positiveCount(p, ['coopNoteNum30d', 'businessNoteCount'])
@@ -423,6 +435,7 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   const warnings = (['followers', 'readMedian', 'interactionMedian', 'priceImage', 'cpe', 'health'] as const)
     .filter((key) => metrics[key] == null)
     .map((key) => `${key}.missing`)
+    .concat(issues)
 
   return {
     ok: true,
