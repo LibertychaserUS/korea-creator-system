@@ -15,10 +15,12 @@ import { registerDevCapacityRoutes } from './routes/dev-capacity'
 import { registerDevConsoleRoutes } from './routes/dev-console'
 import { registerIngestRoutes } from './routes/ingest'
 import { registerOpsRoutes } from './routes/ops'
+import { registerOpsCatalogRoutes } from './routes/ops-catalog'
 import { registerPublicRoutes } from './routes/public'
 import { registerSelectPoolRoutes } from './routes/select-pool'
 import { registerSelectProjectRoutes } from './routes/select-projects'
 import { registerSelectQueryRoutes } from './routes/select-queries'
+import { registerShortlistRoutes } from './routes/shortlist'
 
 export type { AppEnv, SessionUser } from './http/types'
 
@@ -71,10 +73,12 @@ export function createApp(env: AppEnv) {
   registerPublicRoutes(app, env, helpers)
   registerAuthRoutes(app, env, helpers)
   registerOpsRoutes(app, env, helpers)
+  registerOpsCatalogRoutes(app, env, helpers)
   registerIngestRoutes(app, env, helpers)
   registerSelectPoolRoutes(app, env, helpers)
   registerSelectQueryRoutes(app, env, helpers)
   registerSelectProjectRoutes(app, env, helpers)
+  registerShortlistRoutes(app, env, helpers)
   registerDevRoutes(app, env, helpers)
   registerDevCohortRoutes(app, env, helpers)
   registerDevConsoleRoutes(app, env, helpers)

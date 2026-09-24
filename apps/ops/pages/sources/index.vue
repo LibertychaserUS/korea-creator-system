@@ -76,11 +76,11 @@
           </div>
           <div :class="disabled('category')">
             <Label for="f-category" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.category') }}</Label>
-            <Input id="f-category" v-model="form.category" class="h-9" :disabled="!supports('category')" />
+            <DictionarySelect id="f-category" v-model="form.category" :options="dictionary?.category ?? []" :disabled="!supports('category')" testid="fetch-category" />
           </div>
           <div :class="disabled('region')">
             <Label for="f-region" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.region') }}</Label>
-            <Input id="f-region" v-model="form.region" class="h-9" :disabled="!supports('region')" />
+            <DictionarySelect id="f-region" v-model="form.region" :options="dictionary?.region ?? []" :disabled="!supports('region')" testid="fetch-region" />
           </div>
           <div :class="disabled('limit')">
             <Label for="f-limit" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.limit') }}</Label>
@@ -214,7 +214,7 @@
 
 <script setup lang="ts">
 import { ChevronDown, KeyRound, Play, Radar, RotateCcw, TriangleAlert, X } from 'lucide-vue-next'
-import { API, apiPath, SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
+import { API, apiPath, SOURCE_IDS, type HealthGrade, type SourceDictionaries, type SourceId, type SourceQuery } from '@kcs/contract'
 
 type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
 
@@ -232,6 +232,7 @@ const running = ref(false)
 const result = ref<any>(null)
 const error = ref('')
 const acting = ref<string | null>(null)
+const dictionary = ref<SourceDictionaries | null>(null)
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const form = reactive<SourceQuery & { health: HealthGrade[] }>({
@@ -285,6 +286,18 @@ function range(min?: number | null, max?: number | null) {
   const b = max == null ? '' : formatNumber(max)
   return a && b ? `${a}–${b}` : a ? `≥ ${a}` : `≤ ${b}`
 }
+
+/** 类目 / 地域必须用平台自己的写法，换来源就换一份字典。 */
+async function loadDictionary(source: SourceId) {
+  dictionary.value = null
+  const res = await request<SourceDictionaries>(apiPath(API.opsDictionaries, {}, { source })).catch(() => null)
+  if (form.source === source) dictionary.value = res
+}
+watch(() => form.source, (source) => {
+  form.category = ''
+  form.region = ''
+  loadDictionary(source)
+})
 
 async function loadAdapters() {
   try {
@@ -370,6 +383,7 @@ async function runFetch() {
 onMounted(() => {
   loadAdapters()
   loadJobs()
+  loadDictionary(form.source)
 })
 onBeforeUnmount(() => {
   if (pollTimer) clearTimeout(pollTimer)

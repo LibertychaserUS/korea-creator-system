@@ -29,6 +29,13 @@ export const API = {
   opsUnpublish: { method: 'POST', path: '/api/ops/creators/:id/unpublish', perm: 'ops.publish' },
   opsCategories: { method: 'GET', path: '/api/ops/categories', perm: 'ops.read' },
   opsCategoryPatch: { method: 'PATCH', path: '/api/ops/categories/:slug', perm: 'ops.categories' },
+  /** 409 `CONFLICT` / `category_exists` when the slug is taken. */
+  opsCategoryCreate: { method: 'POST', path: '/api/ops/categories', perm: 'ops.categories' },
+  opsCategoryUsage: { method: 'GET', path: '/api/ops/categories/usage', perm: 'ops.read' },
+  /** `?source=`: the platform's category / region values plus values seen on stored creators. */
+  opsDictionaries: { method: 'GET', path: '/api/ops/dictionaries', perm: 'ops.read' },
+  /** Replaces one source's platform list for one kind (`category` / `region`). */
+  opsDictionaryReplace: { method: 'POST', path: '/api/ops/dictionaries/:source/:kind', perm: 'ops.categories' },
   opsReview: { method: 'GET', path: '/api/ops/review', perm: 'ops.read' },
   opsReviewPass: { method: 'POST', path: '/api/ops/review/:id/pass', perm: 'ops.write' },
   opsBatches: { method: 'GET', path: '/api/ops/batches', perm: 'ops.read' },
@@ -56,6 +63,7 @@ export const API = {
   unassign: { method: 'DELETE', path: '/api/select/projects/:id/assignments/:creatorId', perm: 'select.assign' },
   shortlist: { method: 'GET', path: '/api/select/shortlist', perm: 'select.read' },
   shortlistAdd: { method: 'POST', path: '/api/select/shortlist', perm: 'select.write' },
+  shortlistRemove: { method: 'DELETE', path: '/api/select/shortlist/:creatorId', perm: 'select.write' },
   exportProject: { method: 'GET', path: '/api/select/projects/:id/export', perm: 'select.read' },
   devHealth: { method: 'GET', path: '/api/dev/health', perm: 'dev.read' },
   devJobs: { method: 'GET', path: '/api/dev/jobs', perm: 'dev.read' },
