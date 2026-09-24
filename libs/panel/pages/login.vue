@@ -44,6 +44,7 @@
             <Mail class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="email"
+              v-model="email"
               name="email"
               type="email"
               data-testid="login-email"
@@ -59,6 +60,7 @@
             <LockKeyhole class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="password"
+              v-model="password"
               name="password"
               type="password"
               data-testid="login-password"
@@ -96,6 +98,12 @@ const req = useRequestURL()
 const appKey = computed(() => String((useAppConfig().kcs as { key?: string } | undefined)?.key ?? ''))
 const loginAction = computed(() => `${req.origin}/__login`)
 const error = computed(() => (route.query.error ? t('kcs.panel.loginError') : ''))
+
+// The form is usable before hydration; v-model would reset whatever was typed (or autofilled) by then.
+const hydrating = import.meta.client && useNuxtApp().isHydrating
+const typed = (id: string) => (hydrating ? (document.getElementById(id) as HTMLInputElement | null)?.value ?? '' : '')
+const email = ref(typed('email'))
+const password = ref(typed('password'))
 
 const workspaces = [
   { key: 'ops', label: 'kcs.nav.ops', desc: 'kcs.panel.opsDesc', icon: ClipboardList },
