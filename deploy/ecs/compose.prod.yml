@@ -104,6 +104,7 @@ x-api-env: &api-env
   S3_SECRET_KEY: ${S3_SECRET_KEY:-}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
   S3_READ_MODE: ${S3_READ_MODE:-proxy}
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
 
 x-tools-env: &tools-env
   TZ: ${TZ:-Asia/Shanghai}

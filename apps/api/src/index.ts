@@ -44,6 +44,7 @@ async function main() {
           accessKey: process.env.S3_ACCESS_KEY,
           secretKey: process.env.S3_SECRET_KEY || '',
           forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
+          publicEndpoint: process.env.S3_PUBLIC_ENDPOINT || undefined,
         })
       : new MemoryObjectStore()
   const lifecycle = { draining: false }

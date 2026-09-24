@@ -9,9 +9,11 @@ export function createS3Store(env: {
   accessKey: string
   secretKey: string
   forcePathStyle?: boolean
+  /** Endpoint browsers can reach, for signed GETs; the API itself may use an internal one. */
+  publicEndpoint?: string
 }): ObjectStore {
-  const client = new S3Client({
-    endpoint: env.endpoint,
+  const clientFor = (endpoint: string) => new S3Client({
+    endpoint,
     region: env.region,
     forcePathStyle: env.forcePathStyle ?? true,
     credentials: { accessKeyId: env.accessKey, secretAccessKey: env.secretKey },
@@ -20,6 +22,8 @@ export function createS3Store(env: {
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
   })
+  const client = clientFor(env.endpoint)
+  const signer = env.publicEndpoint ? clientFor(env.publicEndpoint) : client
   return {
     durable: true,
     async put(key, body, contentType) {
@@ -46,7 +50,7 @@ export function createS3Store(env: {
     },
     async signedGetUrl(key, expiresInSeconds) {
       return getSignedUrl(
-        client,
+        signer,
         new GetObjectCommand({
           Bucket: env.bucket,
           Key: key,
