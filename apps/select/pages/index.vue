@@ -591,7 +591,8 @@
           </TableHeader>
           <TableBody>
             <template v-if="loading && !visible.length">
-              <TableRow v-for="i in 6" :key="`sk-${i}`" class="hover:bg-transparent">
+              <!-- 占满一屏（到 1080 高）：结果回来前表尾已在折线下，换成真实行时不把它推走 -->
+              <TableRow v-for="i in 12" :key="`sk-${i}`" class="hover:bg-transparent">
                 <TableCell v-if="canPick"><Skeleton class="size-4" /></TableCell>
                 <TableCell><Skeleton class="h-4 w-40" /></TableCell>
                 <TableCell><Skeleton class="h-5 w-12" /></TableCell>
