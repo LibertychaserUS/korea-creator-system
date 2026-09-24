@@ -49,6 +49,7 @@ Isolated ports (55432 / 59000) if you must not touch root compose: `docker compo
 | `specs/04-viewer-pool.spec.ts` | Viewer sees pool; cannot assign |
 | `specs/05-image-upload.spec.ts` | Avatar in MinIO; URL works |
 | `specs/06-theme-i18n.spec.ts` | Light/dark + zh-CN/en/ko on Chromium |
+| `specs/09-catalog-shortlist-capacity.spec.ts` | Ops category + source dictionary → fetch form dropdown; selector shortlist remove; devops capacity reading → Postgres |
 
 Each app has its own origin. Configure overrides with `E2E_MARKETING_URL`, `E2E_OPS_URL`,
 `E2E_DEV_URL`, and `E2E_SELECT_URL`; API and backing services retain their existing
