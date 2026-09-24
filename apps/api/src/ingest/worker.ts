@@ -491,7 +491,8 @@ export async function replayRecord(
   return persistPage(env, adapter, page, input.jobId, input.source)
 }
 
-function quotaTimeZone(value: unknown): string {
+/** A source's `quota_tz`, or Beijing time when it is missing or not a real zone. */
+export function quotaTimeZone(value: unknown): string {
   if (typeof value !== 'string' || !value) return DEFAULT_QUOTA_TIME_ZONE
   try {
     new Intl.DateTimeFormat('en', { timeZone: value })
@@ -506,7 +507,7 @@ function quotaTimeZone(value: unknown): string {
  * its next midnight — 16:00 UTC for Beijing — so one vendor day never gets
  * two UTC days' worth of calls.
  */
-async function quotaDay(env: AppEnv, tz: string): Promise<{ day: string; resetsAt: Date }> {
+export async function quotaDay(env: AppEnv, tz: string): Promise<{ day: string; resetsAt: Date }> {
   const { rows } = await env.db.query(
     `SELECT ($1::timestamptz AT TIME ZONE $2)::date::text AS day,
             (date_trunc('day', $1::timestamptz AT TIME ZONE $2) + interval '1 day') AT TIME ZONE $2 AS resets_at`,

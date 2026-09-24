@@ -43,6 +43,13 @@
             <p class="mt-0.5 text-[11px] text-muted-foreground">
               <template v-if="s.rateLimit">{{ t('kcs.console.pipeline.rate', { n: formatNumber(s.rateLimit) }) }}</template>
             </p>
+            <p
+              v-if="report && s.quotaTimeZone !== report.quotaTimeZone"
+              class="mt-0.5 text-[11px] text-muted-foreground"
+              data-testid="pipeline-own-day"
+            >
+              {{ t('kcs.console.pipeline.ownDay', { zone: s.quotaTimeZone, time: formatDateTime(s.resetsAt) }) }}
+            </p>
           </div>
           <div class="flex shrink-0 items-center gap-1.5">
             <Badge v-if="!s.enabled" variant="outline" class="text-muted-foreground">{{ t('kcs.console.pipeline.off') }}</Badge>

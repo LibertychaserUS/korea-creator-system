@@ -1,4 +1,5 @@
 import {
+  DEFAULT_QUOTA_TIME_ZONE,
   EXPORT_LABELS,
   EXPORT_LOCALES,
   checkLocaleKeys,
@@ -10,32 +11,29 @@ import {
   type PipelineSourceView,
 } from '@kcs/contract'
 import { validationError } from '../http/body'
+import { quotaDay, quotaTimeZone } from '../ingest/worker'
 import { auditLogView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
 const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : (value as string | null) ?? null)
 
-/**
- * The quota day the worker counts calls in. Kept in step with
- * `reserveQuota` / `nextUtcMidnight` in ingest/worker.ts: when the worker
- * moves to a per-source time zone, this follows.
- */
-export const QUOTA_TIME_ZONE = 'UTC'
-
-export function quotaDay(now: Date): string {
-  return now.toISOString().slice(0, 10)
-}
-
-function nextQuotaReset(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+/** `YYYY-MM-DD` shifted by whole days. */
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
 }
 
 const AUDIT_PAGE_DEFAULT = 100
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
+/**
+ * Each source's counters are cut on its own quota day (`quota_tz`), the same
+ * day and reset `reserveQuota` in ingest/worker.ts uses; the top-level day is
+ * the default zone's (Beijing).
+ */
 export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
   const now = env.now()
-  const day = quotaDay(now)
   const [totals, sources, usage, jobs, parked] = await Promise.all([
     env.db.query(`
       SELECT
@@ -44,11 +42,12 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
         (SELECT count(*) FROM creators WHERE needs_review)::int AS review,
         (SELECT count(*) FROM creators WHERE status = 'released')::int AS released
     `),
-    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota FROM ingest_sources ORDER BY id'),
+    env.db.query('SELECT id, name, adapter_type, enabled, rate_limit, quota, quota_tz FROM ingest_sources ORDER BY id'),
+    // Zones are at most a day apart, so this window covers every source's last 7 days.
     env.db.query(
       `SELECT source, to_char(day, 'YYYY-MM-DD') AS day, calls FROM ingest_source_usage
-        WHERE day > $1::date - 7 AND day <= $1::date ORDER BY day`,
-      [day],
+        WHERE day > $1::date - 9 AND day <= $1::date + 1 ORDER BY day`,
+      [now.toISOString().slice(0, 10)],
     ),
     env.db.query(
       `SELECT source_id,
@@ -69,9 +68,14 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
   ])
   const jobsBy = new Map(jobs.rows.map((row) => [row.source_id, row]))
   const parkedBy = new Map(parked.rows.map((row) => [row.source, Number(row.n)]))
+  const zones = new Set([DEFAULT_QUOTA_TIME_ZONE, ...sources.rows.map((row) => quotaTimeZone(row.quota_tz))])
+  const days = new Map(await Promise.all([...zones].map(async (tz) => [tz, await quotaDay(env, tz)] as const)))
   const items = sources.rows.map((row): PipelineSourceView => {
+    const tz = quotaTimeZone(row.quota_tz)
+    const { day, resetsAt } = days.get(tz)!
+    const from = addDays(day, -7)
     const recentDays = usage.rows
-      .filter((u) => u.source === row.id)
+      .filter((u) => u.source === row.id && String(u.day) > from && String(u.day) <= day)
       .map((u) => ({ day: String(u.day), calls: Number(u.calls) }))
     const callsToday = recentDays.find((u) => u.day === day)?.calls ?? 0
     const quota = row.quota == null ? null : Number(row.quota)
@@ -83,6 +87,9 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
       enabled: Boolean(row.enabled),
       rateLimit: row.rate_limit == null ? null : Number(row.rate_limit),
       quota,
+      quotaTimeZone: tz,
+      quotaDay: day,
+      resetsAt: resetsAt.toISOString(),
       callsToday,
       remainingToday: quota == null ? null : Math.max(0, quota - callsToday),
       usageRatio: quota ? callsToday / quota : null,
@@ -98,10 +105,11 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
       openDeadLetters: parkedBy.get(row.id) ?? 0,
     }
   })
+  const base = days.get(DEFAULT_QUOTA_TIME_ZONE)!
   return {
-    day,
-    quotaTimeZone: QUOTA_TIME_ZONE,
-    resetsAt: nextQuotaReset(now).toISOString(),
+    day: base.day,
+    quotaTimeZone: DEFAULT_QUOTA_TIME_ZONE,
+    resetsAt: base.resetsAt.toISOString(),
     totals: totals.rows[0],
     sources: items,
   }

@@ -14,6 +14,12 @@ export type PipelineSourceView = {
   rateLimit: number | null
   /** Calls per quota day; `null` = not set. */
   quota: number | null
+  /** The source's `quota_tz`: its quota day starts at midnight there. */
+  quotaTimeZone: string
+  /** This source's current quota day (`YYYY-MM-DD`). */
+  quotaDay: string
+  /** When this source's counter resets (ISO). */
+  resetsAt: string
   callsToday: number
   remainingToday: number | null
   /** callsToday ÷ quota, `null` when there is no quota. */
@@ -33,11 +39,11 @@ export type PipelineSourceView = {
 }
 
 export type DevPipeline = {
-  /** The quota day the counters belong to (`YYYY-MM-DD`). */
+  /** The default zone's quota day (`YYYY-MM-DD`); a source with its own `quota_tz` says so on its row. */
   day: string
-  /** Time zone the quota day is cut in. */
+  /** The default quota zone (`Asia/Shanghai`). */
   quotaTimeZone: string
-  /** When today's counters reset (ISO). */
+  /** When counters in the default zone reset (ISO). */
   resetsAt: string
   totals: { sources: number; jobs: number; review: number; released: number }
   sources: PipelineSourceView[]

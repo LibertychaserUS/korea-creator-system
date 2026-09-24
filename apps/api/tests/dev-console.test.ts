@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { API, apiPath, type DevAuditPage, type DevI18nReport, type DevPipeline } from '@kcs/contract'
 import { createTestApp, type TestCtx } from './helpers'
-import { quotaDay } from '../src/routes/dev-console'
 
 let ctx: TestCtx
 let devops: string
@@ -17,6 +16,10 @@ const call = async (token: string, method: string, path: string, body?: unknown)
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+
+const dayIn = (now: Date, timeZone: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+const beijingDay = (now: Date) => dayIn(now, 'Asia/Shanghai')
 
 const json = async <T>(token: string, path: string): Promise<T> => {
   const res = await call(token, 'GET', path)
@@ -41,7 +44,7 @@ describe('GET /api/dev/pipeline', () => {
   })
 
   it('reports today’s calls against the quota, per source', async () => {
-    const today = quotaDay(new Date())
+    const today = beijingDay(new Date())
     await ctx.db.query("UPDATE ingest_sources SET quota = 200, rate_limit = 30 WHERE id = 'qiangua'")
     await ctx.db.query(
       `INSERT INTO ingest_source_usage (source, day, calls) VALUES
@@ -50,7 +53,7 @@ describe('GET /api/dev/pipeline', () => {
     )
     const report = await json<DevPipeline>(devops, API.devPipeline.path)
     expect(report.day).toBe(today)
-    expect(report.quotaTimeZone).toBe('UTC')
+    expect(report.quotaTimeZone).toBe('Asia/Shanghai')
     expect(new Date(report.resetsAt).getTime()).toBeGreaterThan(Date.now())
     const qiangua = report.sources.find((s) => s.id === 'qiangua')!
     expect(qiangua).toMatchObject({ quota: 200, rateLimit: 30, callsToday: 50, remainingToday: 150, usageRatio: 0.25 })
@@ -59,6 +62,24 @@ describe('GET /api/dev/pipeline', () => {
     const idle = report.sources.find((s) => s.id === 'xinhong')!
     expect(idle.callsToday).toBe(0)
     expect(report.totals.jobs).toBeGreaterThan(0)
+  })
+
+  it('cuts each source on its own quota_tz, like the worker, and says so on the row', async () => {
+    await ctx.db.query("UPDATE ingest_sources SET quota = 100, quota_tz = 'Pacific/Kiritimati' WHERE id = 'qiangua'")
+    await ctx.db.query("UPDATE ingest_sources SET quota_tz = 'Mars/Olympus' WHERE id = 'xinhong'")
+    try {
+      const kiritimati = dayIn(new Date(), 'Pacific/Kiritimati')
+      await ctx.db.query("INSERT INTO ingest_source_usage (source, day, calls) VALUES ('qiangua', $1::date, 9)", [kiritimati])
+      const report = await json<DevPipeline>(devops, API.devPipeline.path)
+      const qiangua = report.sources.find((s) => s.id === 'qiangua')!
+      expect(qiangua).toMatchObject({ quotaTimeZone: 'Pacific/Kiritimati', quotaDay: kiritimati, callsToday: 9, remainingToday: 91 })
+      expect(new Date(qiangua.resetsAt).getTime()).toBeGreaterThan(Date.now())
+      // A zone that does not exist counts in Beijing time, as the worker does.
+      const xinhong = report.sources.find((s) => s.id === 'xinhong')!
+      expect(xinhong).toMatchObject({ quotaTimeZone: 'Asia/Shanghai', quotaDay: report.day, resetsAt: report.resetsAt })
+    } finally {
+      await ctx.db.query("UPDATE ingest_sources SET quota_tz = 'Asia/Shanghai' WHERE id IN ('qiangua', 'xinhong')")
+    }
   })
 
   it('shows the last success, the last failure and what is parked', async () => {
