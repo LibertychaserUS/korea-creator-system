@@ -40,8 +40,8 @@ const zhCN = {
     pipeline: {
       title: "各来源的调用与额度",
       lead: "每个数据来源今天用了多少次、还剩多少、最近 7 天怎么走，以及有没有卡住的抓取。",
-      resets: "今天的次数会在 {time} 清零重新计算（北京时间零点）",
-      ownDay: "这个来源按 {zone} 的零点清零，下次在 {time}",
+      resets: "今天的次数会在 {time}（{zone}）清零重新计算",
+      ownDay: "这个来源按{zone}零点清零，下次在 {time}（{zone}）",
       totals: {
         sources: "已开启的来源",
         jobs: "抓取总数",
@@ -501,8 +501,8 @@ const en = {
     pipeline: {
       title: "Calls and daily limits by source",
       lead: "How many calls each data source used today, how many are left, the last 7 days, and whether any collection is stuck.",
-      resets: "Today's count starts over at {time} (midnight Beijing time)",
-      ownDay: "This source starts over at midnight {zone} time, next at {time}",
+      resets: "Today's count starts over at {time} ({zone})",
+      ownDay: "This source starts over at midnight {zone}, next at {time} ({zone})",
       totals: {
         sources: "Sources on",
         jobs: "Collections",
@@ -962,8 +962,8 @@ const ko = {
     pipeline: {
       title: "출처별 호출 수와 일일 한도",
       lead: "데이터 출처마다 오늘 몇 번 썼는지, 얼마나 남았는지, 최근 7일 추이와 멈춘 수집이 있는지 봅니다.",
-      resets: "오늘 횟수는 {time}에 다시 0부터 셉니다(베이징 시간 자정)",
-      ownDay: "이 출처는 {zone} 기준 자정에 다시 셉니다. 다음은 {time}",
+      resets: "오늘 횟수는 {time}({zone})에 다시 0부터 셉니다",
+      ownDay: "이 출처는 {zone} 기준 자정에 다시 셉니다. 다음은 {time}({zone})",
       totals: {
         sources: "켜진 출처",
         jobs: "수집 수",

@@ -37,13 +37,29 @@ export function useFormat() {
     return value < 0 ? `-${text}` : text
   }
 
-  /** 日期时间：月日 + 时分，按当前语言。 */
-  function formatDateTime(value?: string | null): string {
+  /** 日期时间：月日 + 时分，按当前语言；给了 IANA 时区就按那个时区的钟点显示（无效时区退回浏览器时区）。 */
+  function formatDateTime(value?: string | null, timeZone?: string | null): string {
     if (!value) return '—'
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) return '—'
-    return new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
+    const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    try {
+      return new Intl.DateTimeFormat(locale.value, timeZone ? { ...options, timeZone } : options).format(d)
+    } catch {
+      return new Intl.DateTimeFormat(locale.value, options).format(d)
+    }
   }
 
-  return { formatNumber, formatScore, formatBytes, formatDateTime }
+  /** 时区的本地叫法（Asia/Shanghai → 中国标准时间 / China Standard Time / 중국 표준시）；认不出就原样返回。 */
+  function formatTimeZone(timeZone?: string | null): string {
+    if (!timeZone) return '—'
+    try {
+      const parts = new Intl.DateTimeFormat(locale.value, { timeZone, timeZoneName: 'long' }).formatToParts(new Date())
+      return parts.find((part) => part.type === 'timeZoneName')?.value ?? timeZone
+    } catch {
+      return timeZone
+    }
+  }
+
+  return { formatNumber, formatScore, formatBytes, formatDateTime, formatTimeZone }
 }

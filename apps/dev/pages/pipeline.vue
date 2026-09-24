@@ -20,7 +20,7 @@
     </div>
 
     <p v-if="report" class="text-xs text-muted-foreground" data-testid="pipeline-resets">
-      {{ t('kcs.console.pipeline.resets', { time: formatDateTime(report.resetsAt) }) }}
+      {{ t('kcs.console.pipeline.resets', { time: formatDateTime(report.resetsAt, report.quotaTimeZone), zone: formatTimeZone(report.quotaTimeZone) }) }}
     </p>
 
     <Card v-if="report?.balance" class="gap-0 border-border/60 py-0 shadow-xs" data-testid="pipeline-balance" :data-low="report.balance.low ? '1' : '0'">
@@ -82,7 +82,7 @@
               class="mt-0.5 text-[11px] text-muted-foreground"
               data-testid="pipeline-own-day"
             >
-              {{ t('kcs.console.pipeline.ownDay', { zone: s.quotaTimeZone, time: formatDateTime(s.resetsAt) }) }}
+              {{ t('kcs.console.pipeline.ownDay', { zone: formatTimeZone(s.quotaTimeZone), time: formatDateTime(s.resetsAt, s.quotaTimeZone) }) }}
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-1.5">
@@ -205,7 +205,7 @@ import { API, SCREEN_TESTID, SOURCE_IDS, can, type DevPipeline, type PipelineSou
 const { t, te, locale } = useI18n()
 const { request } = useApi()
 const { user } = useSession()
-const { formatNumber, formatDateTime } = useFormat()
+const { formatNumber, formatDateTime, formatTimeZone } = useFormat()
 
 const report = ref<DevPipeline | null>(null)
 const loading = ref(true)
