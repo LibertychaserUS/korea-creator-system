@@ -8,7 +8,9 @@ import {
   metricsFromRow,
   publicPoolRow,
 } from '../http/creators'
+import { recordEvents } from '../http/events'
 import { withPercentiles } from '../http/pool'
+import { inTransaction } from '../http/published'
 import type { Context } from 'hono'
 import { assignmentsBody, kcsAssignmentBody, projectCreateBody, readJson, validationError } from '../http/body'
 import { jsonError } from '../http/responses'
@@ -134,14 +136,19 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       if (exists.rowCount) return jsonError(context, 409, 'CONFLICT', 'already_assigned')
       if (!creatorIds.includes(creatorId)) creatorIds.push(creatorId)
     }
-    for (const creatorId of creatorIds) {
-      await env.db.query(
-        `INSERT INTO assignments (id, project_id, creator_id, status, assigned_by)
-         VALUES ($1,$2,$3,'assigned',$4)`,
-        [randomUUID(), projectId, creatorId, user.id],
-      )
-    }
-    await env.db.query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId])
+    await inTransaction(env.db, async (client) => {
+      for (const creatorId of creatorIds) {
+        await client.query(
+          `INSERT INTO assignments (id, project_id, creator_id, status, assigned_by)
+           VALUES ($1,$2,$3,'assigned',$4)`,
+          [randomUUID(), projectId, creatorId, user.id],
+        )
+      }
+      await client.query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId])
+      await recordEvents(client, creatorIds.map((creatorId) => ({
+        kind: 'assign' as const, creatorId, orgId: user.orgId, actorId: user.id, projectId, context: { projectId },
+      })))
+    })
     await audit(env.db, user.id, 'assignment.create', 'project', projectId, ids.join(','))
     return context.json({ ok: true })
   }
@@ -177,14 +184,19 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
     if (!(await ownProject(context.req.param('id'), user!.orgId))) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
-    const removed = await env.db.query(
-      'DELETE FROM assignments WHERE project_id = $1 AND creator_id = $2',
-      [context.req.param('id'), context.req.param('creatorId')],
-    )
+    const projectId = context.req.param('id')
+    const creatorId = context.req.param('creatorId')
+    const removed = await inTransaction(env.db, async (client) => {
+      const result = await client.query(
+        'DELETE FROM assignments WHERE project_id = $1 AND creator_id = $2',
+        [projectId, creatorId],
+      )
+      if (!result.rowCount) return result
+      await client.query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId])
+      await recordEvents(client, [{ kind: 'unassign', creatorId, orgId: user!.orgId, actorId: user!.id, projectId, context: { projectId } }])
+      return result
+    })
     if (!removed.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    await env.db.query('UPDATE projects SET updated_at = now() WHERE id = $1', [
-      context.req.param('id'),
-    ])
     await audit(
       env.db,
       user!.id,
@@ -208,13 +220,14 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
     // Same numbers the pool ranked on: the publish snapshot, falling back to
     // the latest record for rows published before snapshots existed.
     const { rows } = await env.db.query(
-      `SELECT c.display_name, c.xhs_id, c.source, c.followers, c.metrics_locked_at,
+      `SELECT c.id, c.display_name, c.xhs_id, c.source, c.followers, c.metrics_locked_at,
               COALESCE(c.metrics_locked, c.metrics) AS metrics, a.pool_gone
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1
        ORDER BY a.assigned_at, c.display_name, a.id`,
       [projectId],
     )
+    const locale = exportLocale(context.req.query('locale'))
     const sheet = projectSheet(
       rows.map((row) => ({
         displayName: row.display_name,
@@ -225,8 +238,11 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
         poolGone: Boolean(row.pool_gone),
         metricsLockedAt: row.metrics_locked_at ?? null,
       })),
-      exportLocale(context.req.query('locale')),
+      locale,
     )
+    await recordEvents(env.db, rows.map((row) => ({
+      kind: 'export' as const, creatorId: String(row.id), orgId: user!.orgId, actorId: user!.id, projectId, context: { projectId, locale },
+    })))
     const name = String(project.rows[0].name || 'project').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim() || 'project'
     return context.body(sheet, 200, {
       'content-type': 'text/csv; charset=utf-8',

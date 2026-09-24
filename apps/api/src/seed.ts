@@ -256,7 +256,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
   if (opts.reset) {
     await db.query(`
       TRUNCATE TABLE
-        audit_logs, reviews, shortlist_items, assignments, projects, saved_queries,
+        audit_logs, creator_events, reviews, shortlist_items, assignments, projects, saved_queries,
         creator_raw, creator_metrics_history, creator_sources, prices, collaborations, creator_categories, creators, assets,
         ingest_jobs, ingest_source_usage, ingest_sources, users, orgs, categories
       RESTART IDENTITY CASCADE

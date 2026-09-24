@@ -29,6 +29,7 @@ import {
   saveRelations,
 } from '../http/creators'
 import { pageRows } from '../http/lists'
+import { recordEvents } from '../http/events'
 import { inTransaction, recomputeGroups, republish, syncPublished } from '../http/published'
 import { jsonError } from '../http/responses'
 import { categoryView, overviewJobView, reviewView } from '../http/views'
@@ -304,6 +305,9 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       )
       await client.query('UPDATE assignments SET pool_gone = false WHERE creator_id = $1', [id])
       await recomputeGroups(client, await syncPublished(client, [id]))
+      await recordEvents(client, [{
+        kind: 'publish', creatorId: id, orgId: user!.orgId, actorId: user!.id, context: { republish: item.stage === 'withdrawn' },
+      }])
       return result.rows
     })
     await audit(
@@ -336,6 +340,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       if (!result.rowCount) return result
       await client.query('UPDATE assignments SET pool_gone = true WHERE creator_id = $1', [id])
       await recomputeGroups(client, await syncPublished(client, [id]))
+      await recordEvents(client, [{ kind: 'unpublish', creatorId: id, orgId: user!.orgId, actorId: user!.id }])
       return result
     })
     if (!updated.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')

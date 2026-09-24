@@ -7,10 +7,12 @@ import {
   publicPoolRow,
 } from '../http/creators'
 import { poolPage, withPercentiles } from '../http/pool'
+import { recordEvents } from '../http/events'
 import { readReferenceLines } from '../http/published'
 import { readJson, shortlistBody, validationError } from '../http/body'
 import { CursorError } from '../http/cursor'
 import { jsonError } from '../http/responses'
+import { logEvent } from '../log'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
 export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
@@ -26,7 +28,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
   })
 
   app.get('/api/select/creators/:id', async (context) => {
-    const { denied } = await helpers.requireAuth(context, 'select.read')
+    const { user, denied } = await helpers.requireAuth(context, 'select.read')
     if (denied) return denied
     const item = await loadCreator(env.db, context.req.param('id'), false)
     if (!item || item.status !== 'released' || item.categories.includes('blacklist')) {
@@ -39,6 +41,9 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
       env.db.query('SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1', [item.id]),
       readReferenceLines(env.db, { groups: [cohortGroupKey(cohort)], tier: cohort.tier }),
     ])
+    // A view is a signal, not a state change: losing one must never fail the page.
+    await recordEvents(env.db, [{ kind: 'detail_view', creatorId: item.id, orgId: user!.orgId, actorId: user!.id }])
+      .catch((err) => logEvent('warn', 'events.detail_view_failed', { creatorId: item.id, message: String(err?.message ?? err) }))
     return context.json({
       ...publicPoolRow(enriched),
       metricsLatest: published.metricsLatest,
