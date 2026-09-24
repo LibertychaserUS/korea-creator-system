@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      # Docs are local-only (.gitignore); a `git add -f` must not bring them back. Piggybacks on this job to keep required_checks unchanged.
+      - name: Local docs stay out of the repo
+        run: bash scripts/ci/local-docs-untracked.sh
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
