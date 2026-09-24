@@ -17,6 +17,7 @@ import { deadLetterJob, failureOf } from './dead-letters'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
 import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
+import { WORKBOOK_SOURCE, ingestSheetRow } from './workbook'
 import { errorMessage, logEvent } from '../log'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
@@ -411,8 +412,13 @@ export function startIngestWorker(
  */
 export async function replayRecord(
   env: AppEnv,
-  input: { source: SourceId; jobId: string | null; externalId: string; payload: Record<string, unknown> },
+  input: { source: SourceId | typeof WORKBOOK_SOURCE; jobId: string | null; externalId: string; payload: Record<string, unknown> },
 ) {
+  if (input.source === WORKBOOK_SOURCE) {
+    // A parked workbook row: its cells are the payload, re-read them the same way.
+    const { __file: _file, ...row } = input.payload as Record<string, string>
+    return ingestSheetRow(env, input.jobId, row)
+  }
   const adapter = resolveAdapter(env, input.source)
   if (!adapter) throw new Error(`unsupported adapter: ${input.source}`)
   const page: SourcePage = {

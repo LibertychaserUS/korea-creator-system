@@ -3,6 +3,8 @@ import type { PoolClient } from 'pg'
 import {
   deriveMetrics,
   emptyMetrics,
+  toAmount,
+  toCount,
   type CreatorMetrics,
   type NormalizedCreator,
   type RawRecord,
@@ -233,29 +235,44 @@ export function incomingFromSource(
   }
 }
 
-/** `null` when the row has nothing to call the creator by. */
-export function incomingFromSheet(row: SheetRow, now: Date): IncomingCreator | null {
+export type SheetRowResult = { ok: true; incoming: IncomingCreator } | { ok: false; errors: string[] }
+
+/**
+ * A typed-in row. Numbers go through the same parser as vendor data; a cell
+ * that is there but is not one number ("5000-8000", "约1万") makes the row
+ * invalid instead of turning into a wrong value. "暂无" / "-" just mean unknown.
+ */
+export function readSheetRow(row: SheetRow, now: Date): SheetRowResult {
   const displayName = row.displayName || row.xhsId || row.userId
-  if (!displayName) return null
-  const parsedFollowers = sheetNumber(row.followers)
-  const followers = parsedFollowers == null ? null : Math.round(parsedFollowers)
-  const price = sheetNumber(row.price)
+  if (!displayName) return { ok: false, errors: ['displayName.missing'] }
+  const followers = toCount(row.followers)
+  const price = toAmount(row.price)
+  const errors = [
+    ['followers', followers.issue],
+    ['price', price.issue],
+  ]
+    .filter(([, issue]) => issue && issue !== 'placeholder' && issue !== 'lowerBound')
+    .map(([field, issue]) => `${field}.${issue}`)
+  if (errors.length) return { ok: false, errors }
   return {
-    creatorKey: creatorKeyFromRow(row) || `ck_${randomUUID().slice(0, 8)}`,
-    displayName,
-    xhsId: row.xhsId || null,
-    regions: row.region ? [row.region] : [],
-    verticals: [row.vertical, row.keywords, row.persona].filter(Boolean) as string[],
-    metrics: deriveMetrics({ ...emptyMetrics(), followers, priceImage: price }),
-    fetchedAt: now.toISOString(),
-    origin: { kind: 'sheet', note: row.persona || null, price },
+    ok: true,
+    incoming: {
+      creatorKey: creatorKeyFromRow(row) || `ck_${randomUUID()}`,
+      displayName,
+      xhsId: row.xhsId || null,
+      regions: row.region ? [row.region] : [],
+      verticals: [row.vertical, row.keywords, row.persona].filter(Boolean) as string[],
+      metrics: deriveMetrics({ ...emptyMetrics(), followers: followers.value, priceImage: price.value }),
+      fetchedAt: now.toISOString(),
+      origin: { kind: 'sheet', note: row.persona || null, price: price.value },
+    },
   }
 }
 
-function sheetNumber(value: string | undefined): number | null {
-  if (!value) return null
-  const n = Number(String(value).replace(/[^\d.]/g, ''))
-  return Number.isFinite(n) && String(value).match(/\d/) ? n : null
+/** `null` when the row cannot be read (see `readSheetRow` for why). */
+export function incomingFromSheet(row: SheetRow, now: Date): IncomingCreator | null {
+  const result = readSheetRow(row, now)
+  return result.ok ? result.incoming : null
 }
 
 /**
