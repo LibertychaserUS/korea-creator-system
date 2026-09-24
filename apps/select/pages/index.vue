@@ -84,7 +84,7 @@
       </div>
 
       <!-- 快捷过滤：量级 / 健康等级 / 排序 / 搜索 -->
-      <div class="grid gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[auto_auto_1fr_auto_auto] lg:items-end">
+      <div class="flex flex-col gap-4 px-4 py-4 sm:px-5 lg:flex-row lg:flex-wrap lg:items-end">
         <fieldset data-testid="filter-tier" class="min-w-0">
           <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.query.tiers') }}</legend>
           <div class="inline-flex flex-wrap rounded-md border border-border bg-muted/40 p-0.5" role="group">
@@ -139,7 +139,7 @@
           </div>
         </fieldset>
 
-        <div class="min-w-0">
+        <div class="min-w-0 lg:min-w-[14rem] lg:flex-1">
           <Label for="pool-search" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.creators.search') }}</Label>
           <div class="relative">
             <Search class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
