@@ -204,7 +204,7 @@ describe('worker', () => {
     const calls: string[] = []
     const context = await ctxWith(slowAdapter(calls))
     const job = await enqueueIngestJob(context.env, { source: 'qiangua', window: 30 } as SourceQuery, 'user_ops', 50)
-    const stop = startIngestWorker(context.env, { intervalMs: 20, retention: { rawPerSource: 0, deadLetterDays: 0, auditDays: 0, intervalMs: 0 } })
+    const stop = startIngestWorker(context.env, { intervalMs: 20, retention: { rawPerSource: 0, deadLetterDays: 0, auditDays: 0, jobDays: 0, intervalMs: 0 } })
 
     const deadline = Date.now() + 5_000
     let row: Record<string, any> = {}

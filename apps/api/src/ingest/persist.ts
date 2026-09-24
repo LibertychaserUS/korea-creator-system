@@ -3,31 +3,39 @@ import type { PoolClient } from 'pg'
 import {
   deriveMetrics,
   emptyMetrics,
+  normalizeXhsId,
+  toAmount,
+  toCount,
   type CreatorMetrics,
   type NormalizedCreator,
   type RawRecord,
   type SourceAdapter,
   type SourceId,
   type SourcePage,
+  type SourceSignals,
 } from '@kcs/contract'
 import { parseMetrics, saveRelations } from '../http/creators'
 import type { AppEnv } from '../http/types'
 import { creatorKeyFromRow, type SheetRow } from '../xlsx-sheet'
 import { deadLetterRecord, failureOf } from './dead-letters'
+import { refreshIntervalDays, refreshModelConfig } from './refresh-model'
+import { markSeen, republishChanges } from './data-status'
+import { materialChanges } from './tiering'
 
 /**
  * The only place a collected creator reaches `creators`. Every way in — a queue
  * page, a replayed dead letter, a workbook row — goes through
  * `upsertCreatorFromNormalized`, so they all agree on:
  *
- * - identity: (source, externalId) in `creator_sources` → `creator_key` →
- *   `xhs_id` (newest match); only when all three miss is a new draft created;
+ * - identity: the 小红书号 (normalised, one creator per account) wins; without
+ *   one, (source, externalId) in `creator_sources` → `creator_key`; only when
+ *   all miss is a new draft created;
  * - what is written: latest numbers (`metrics`, `followers`, …) and
  *   `needs_review = true`. `status`, `metrics_locked` and `metrics_locked_at`
  *   (the publish snapshot) are never touched — only publish moves those;
  * - side records, only for data that came from a source: the
- *   (source, externalId) link, the untouched payload in `creator_raw`, and one
- *   `creator_metrics_history` row. A workbook is typed in by ops, not measured
+ *   (source, externalId) link, the untouched payload in `creator_raw`, and the
+ *   day's `creator_metrics_history` row (see `writeSnapshot`). A workbook is typed in by ops, not measured
  *   by a platform, so it leaves no history; the file itself stays in object
  *   storage under `batches/<jobId>/`;
  * - one transaction per creator: a failure leaves nothing half-written.
@@ -40,6 +48,7 @@ export type IncomingCreator = {
   regions: string[]
   verticals: string[]
   metrics: CreatorMetrics
+  signals: SourceSignals | null
   fetchedAt: string
   origin:
     | { kind: 'source'; source: SourceId; externalId: string; raw: RawRecord }
@@ -55,6 +64,17 @@ export async function upsertCreatorFromNormalized(
   jobId: string | null,
   incoming: IncomingCreator,
 ): Promise<UpsertOutcome> {
+  const normalized = { ...incoming, xhsId: normalizeXhsId(incoming.xhsId) }
+  try {
+    return await upsertOnce(env, jobId, normalized)
+  } catch (error) {
+    // Two writers created the same 小红书号 at once: the second now finds the first.
+    if ((error as { code?: string }).code !== '23505') throw error
+    return upsertOnce(env, jobId, normalized)
+  }
+}
+
+async function upsertOnce(env: AppEnv, jobId: string | null, incoming: IncomingCreator): Promise<UpsertOutcome> {
   const client = await env.db.connect() as PoolClient
   try {
     await client.query('BEGIN')
@@ -95,7 +115,8 @@ async function upsertInTransaction(
          xhs_id = COALESCE($6, xhs_id),
          metrics = $7, metrics_window = $8,
          source = COALESCE($9, source), external_id = COALESCE($10, external_id),
-         metrics_fetched_at = $11, last_ingest_job_id = $12, updated_at = now()
+         metrics_fetched_at = $11, last_ingest_job_id = $12,
+         source_signals = COALESCE($13::jsonb, source_signals), updated_at = now()
        WHERE id = $1`,
       [
         creatorId,
@@ -110,6 +131,7 @@ async function upsertInTransaction(
         externalId,
         incoming.fetchedAt,
         jobId,
+        incoming.signals ? JSON.stringify(incoming.signals) : null,
       ],
     )
   } else {
@@ -117,8 +139,8 @@ async function upsertInTransaction(
       `INSERT INTO creators (
          id, creator_key, display_name, status, needs_review, followers, followers_unknown,
          regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-         metrics_fetched_at, last_ingest_job_id, note
-       ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+         metrics_fetched_at, last_ingest_job_id, note, source_signals, first_ingest_job_id
+       ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$14)`,
       [
         creatorId,
         incoming.creatorKey,
@@ -135,7 +157,15 @@ async function upsertInTransaction(
         incoming.fetchedAt,
         jobId,
         origin.kind === 'sheet' ? origin.note : null,
+        incoming.signals ? JSON.stringify(incoming.signals) : null,
       ],
+    )
+  }
+
+  if (existing?.metrics_locked) {
+    await client.query(
+      'UPDATE creators SET republish_changes = $2, republish_checked_at = now() WHERE id = $1',
+      [creatorId, republishChanges(existing.metrics_locked, metrics)],
     )
   }
 
@@ -149,9 +179,16 @@ async function upsertInTransaction(
          last_seen_at = GREATEST(creator_sources.last_seen_at, EXCLUDED.last_seen_at)`,
       [creatorId, origin.source, origin.externalId, incoming.fetchedAt],
     )
+    await markSeen(client, creatorId, origin.source, origin.externalId)
+    // Same body as an earlier fetch → stored once; this fetch still gets its own row.
     await client.query(
-      `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+      `WITH body AS (SELECT $6::jsonb AS payload, sha256(convert_to($6::jsonb::text, 'UTF8')) AS hash),
+            stored AS (
+              INSERT INTO raw_payloads (hash, payload, bytes)
+              SELECT hash, payload, octet_length(payload::text) FROM body
+              ON CONFLICT (hash) DO NOTHING)
+       INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload_hash)
+       SELECT $1,$2,$3,$4,$5, hash FROM body`,
       [
         randomUUID(),
         creatorId,
@@ -161,12 +198,7 @@ async function upsertInTransaction(
         JSON.stringify(origin.raw.payload),
       ],
     )
-    await client.query(
-      `INSERT INTO creator_metrics_history
-         (id, creator_id, source, "window", fetched_at, job_id, metrics)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [randomUUID(), creatorId, origin.source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics)],
-    )
+    await writeSnapshot(client, creatorId, jobId, origin.source, origin.externalId, incoming, metrics)
   } else if (!existing) {
     // A hand-typed row starts life like a hand-made draft: unknown cooperation
     // history, the quoted price, and a pending proof-read.
@@ -186,24 +218,139 @@ async function upsertInTransaction(
   return { creatorId, created: !existing }
 }
 
-async function findExisting(client: PoolClient, incoming: IncomingCreator) {
+/** The calendar a snapshot's day is counted in (same expression as migration 0049). */
+export const SNAPSHOT_DAY_SQL = (timestamp: string) => `(${timestamp} AT TIME ZONE 'Asia/Shanghai')::date`
+
+/**
+ * One snapshot per creator, source, window and Beijing day: a later fetch the
+ * same day overwrites the earlier one (the raw fetch keeps its own row), an
+ * older one arriving late leaves the day's latest alone. "Did the numbers
+ * move" compares with the last snapshot of an earlier day, so fetching twice
+ * in a day neither counts as two observations nor hides a change.
+ */
+async function writeSnapshot(
+  client: PoolClient,
+  creatorId: string,
+  jobId: string | null,
+  source: SourceId,
+  externalId: string,
+  incoming: IncomingCreator,
+  metrics: CreatorMetrics,
+) {
+  const day = SNAPSHOT_DAY_SQL('$4::timestamptz')
+  const sameDay = await client.query(
+    `SELECT fetched_at, material_change FROM creator_metrics_history
+      WHERE creator_id = $1 AND source = $2 AND "window" = $3 AND snapshot_day = ${day}
+      FOR UPDATE`,
+    [creatorId, source, metrics.window, incoming.fetchedAt],
+  )
+  const replaced = sameDay.rows[0] as { fetched_at: Date; material_change: boolean | null } | undefined
+  if (replaced && replaced.fetched_at.getTime() > new Date(incoming.fetchedAt).getTime()) return
+
+  const previous = await client.query(
+    `SELECT metrics, fetched_at FROM creator_metrics_history
+      WHERE creator_id = $1 AND source = $2 AND "window" = $3 AND snapshot_day < ${day}
+      ORDER BY fetched_at DESC LIMIT 1`,
+    [creatorId, source, metrics.window, incoming.fetchedAt],
+  )
+  const before = previous.rows[0] as { metrics: Record<string, unknown>; fetched_at: Date } | undefined
+  const changed = before ? materialChanges(before.metrics, metrics as unknown as Record<string, unknown>) : null
+  await client.query(
+    `INSERT INTO creator_metrics_history
+       (id, creator_id, source, "window", fetched_at, job_id, metrics, signals, material_change, changed_metrics)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (creator_id, source, "window", snapshot_day) DO UPDATE SET
+       fetched_at = EXCLUDED.fetched_at, job_id = EXCLUDED.job_id, metrics = EXCLUDED.metrics,
+       signals = EXCLUDED.signals, material_change = EXCLUDED.material_change,
+       changed_metrics = EXCLUDED.changed_metrics,
+       value_tier = NULL, tier_features = NULL, tiered_at = NULL
+     WHERE EXCLUDED.fetched_at >= creator_metrics_history.fetched_at`,
+    [
+      randomUUID(), creatorId, source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics),
+      incoming.signals ? JSON.stringify(incoming.signals) : null,
+      changed ? changed.length > 0 : null,
+      changed,
+    ],
+  )
+  await updateRefreshStats(client, source, externalId, incoming.fetchedAt, before?.fetched_at ?? null, changed, replaced
+    ? { fetchedAt: replaced.fetched_at, changed: replaced.material_change }
+    : null)
+}
+
+/**
+ * One more observation for the Poisson change model of this (source, id):
+ * compared with the previous snapshot, did the numbers move? Then the next
+ * refresh is due after the interval that model gives (see `./refresh-model`).
+ */
+async function updateRefreshStats(
+  client: PoolClient,
+  source: SourceId,
+  externalId: string,
+  fetchedAt: string,
+  previousAt: Date | null,
+  changed: string[] | null,
+  replaced: { fetchedAt: Date; changed: boolean | null } | null,
+) {
+  const { rows } = await client.query(
+    'SELECT refresh_visits, refresh_changes, observed_days FROM creator_sources WHERE source = $1 AND external_id = $2',
+    [source, externalId],
+  )
+  if (!rows[0]) return
+  const stats = {
+    visits: Number(rows[0].refresh_visits),
+    changes: Number(rows[0].refresh_changes),
+    observedDays: Number(rows[0].observed_days),
+  }
+  // A same-day overwrite takes back that day's earlier observation first.
+  if (previousAt && replaced && replaced.changed != null) {
+    const gap = (replaced.fetchedAt.getTime() - previousAt.getTime()) / 86_400_000
+    if (gap > 0) {
+      stats.visits = Math.max(0, stats.visits - 1)
+      stats.changes = Math.max(0, stats.changes - (replaced.changed ? 1 : 0))
+      stats.observedDays = Math.max(0, stats.observedDays - gap)
+    }
+  }
+  if (previousAt && changed) {
+    const gap = (new Date(fetchedAt).getTime() - new Date(previousAt).getTime()) / 86_400_000
+    if (gap > 0) {
+      stats.visits += 1
+      stats.changes += changed.length ? 1 : 0
+      stats.observedDays += gap
+    }
+  }
+  const { rate, days } = refreshIntervalDays(stats, refreshModelConfig())
+  await client.query(
+    `UPDATE creator_sources SET refresh_visits = $3, refresh_changes = $4, observed_days = $5,
+       change_rate = $6, refresh_interval_days = $7,
+       next_refresh_at = $8::timestamptz + make_interval(secs => $7::float8 * 86400)
+     WHERE source = $1 AND external_id = $2`,
+    [source, externalId, stats.visits, stats.changes, stats.observedDays, rate, days, fetchedAt],
+  )
+}
+
+type Existing = { id: string; metrics: unknown; metrics_locked: unknown }
+
+/**
+ * A 小红书号 names one account, so its owner wins over a vendor-id link or a
+ * key: a record that learns its 小红书号 joins the creator already holding it
+ * (the link moves over; the earlier creator keeps its raw and history).
+ */
+async function findExisting(client: PoolClient, incoming: IncomingCreator): Promise<Existing | null> {
   const { origin } = incoming
+  if (incoming.xhsId) {
+    const byXhs = await client.query('SELECT id, metrics, metrics_locked FROM creators WHERE xhs_id = $1', [incoming.xhsId])
+    if (byXhs.rows[0]) return byXhs.rows[0] as Existing
+  }
   if (origin.kind === 'source') {
     const linked = await client.query(
-      `SELECT c.id, c.metrics FROM creator_sources s JOIN creators c ON c.id = s.creator_id
+      `SELECT c.id, c.metrics, c.metrics_locked FROM creator_sources s JOIN creators c ON c.id = s.creator_id
         WHERE s.source = $1 AND s.external_id = $2`,
       [origin.source, origin.externalId],
     )
-    if (linked.rows[0]) return linked.rows[0] as { id: string; metrics: unknown }
+    if (linked.rows[0]) return linked.rows[0] as Existing
   }
-  const byKey = await client.query('SELECT id, metrics FROM creators WHERE creator_key = $1', [incoming.creatorKey])
-  if (byKey.rows[0]) return byKey.rows[0] as { id: string; metrics: unknown }
-  if (!incoming.xhsId) return null
-  const byXhs = await client.query(
-    'SELECT id, metrics FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
-    [incoming.xhsId],
-  )
-  return (byXhs.rows[0] as { id: string; metrics: unknown } | undefined) ?? null
+  const byKey = await client.query('SELECT id, metrics, metrics_locked FROM creators WHERE creator_key = $1', [incoming.creatorKey])
+  return (byKey.rows[0] as Existing | undefined) ?? null
 }
 
 /** A sheet only knows followers and the image-note quote; everything else stays. */
@@ -228,34 +375,53 @@ export function incomingFromSource(
     regions: creator.regions,
     verticals: creator.verticals,
     metrics: creator.metrics,
+    signals: creator.signals ?? null,
     fetchedAt: raw.fetchedAt,
     origin: { kind: 'source', source, externalId: creator.externalId, raw },
   }
 }
 
-/** `null` when the row has nothing to call the creator by. */
-export function incomingFromSheet(row: SheetRow, now: Date): IncomingCreator | null {
+export type SheetRowResult = { ok: true; incoming: IncomingCreator } | { ok: false; errors: string[] }
+
+/**
+ * A typed-in row. Numbers go through the same parser as vendor data; a cell
+ * that is there but is not one number ("5000-8000", "约1万") makes the row
+ * invalid instead of turning into a wrong value. "暂无" / "-" just mean unknown.
+ */
+export function readSheetRow(row: SheetRow, now: Date): SheetRowResult {
   const displayName = row.displayName || row.xhsId || row.userId
-  if (!displayName) return null
-  const parsedFollowers = sheetNumber(row.followers)
-  const followers = parsedFollowers == null ? null : Math.round(parsedFollowers)
-  const price = sheetNumber(row.price)
+  if (!displayName) return { ok: false, errors: ['displayName.missing'] }
+  const followers = toCount(row.followers)
+  const parsedPrice = toAmount(row.price)
+  // A 0 quote in a sheet means "not quoted", same as a vendor's 0.
+  const price = parsedPrice.value === 0 ? { value: null, issue: null } : parsedPrice
+  const errors = [
+    ['followers', followers.issue],
+    ['price', price.issue],
+  ]
+    .filter(([, issue]) => issue && issue !== 'placeholder' && issue !== 'lowerBound')
+    .map(([field, issue]) => `${field}.${issue}`)
+  if (errors.length) return { ok: false, errors }
   return {
-    creatorKey: creatorKeyFromRow(row) || `ck_${randomUUID().slice(0, 8)}`,
-    displayName,
-    xhsId: row.xhsId || null,
-    regions: row.region ? [row.region] : [],
-    verticals: [row.vertical, row.keywords, row.persona].filter(Boolean) as string[],
-    metrics: deriveMetrics({ ...emptyMetrics(), followers, priceImage: price }),
-    fetchedAt: now.toISOString(),
-    origin: { kind: 'sheet', note: row.persona || null, price },
+    ok: true,
+    incoming: {
+      creatorKey: creatorKeyFromRow(row) || `ck_${randomUUID()}`,
+      displayName,
+      xhsId: normalizeXhsId(row.xhsId),
+      regions: row.region ? [row.region] : [],
+      verticals: [row.vertical, row.keywords, row.persona].filter(Boolean) as string[],
+      metrics: deriveMetrics({ ...emptyMetrics(), followers: followers.value, priceImage: price.value }),
+      signals: null,
+      fetchedAt: now.toISOString(),
+      origin: { kind: 'sheet', note: row.persona || null, price: price.value },
+    },
   }
 }
 
-function sheetNumber(value: string | undefined): number | null {
-  if (!value) return null
-  const n = Number(String(value).replace(/[^\d.]/g, ''))
-  return Number.isFinite(n) && String(value).match(/\d/) ? n : null
+/** `null` when the row cannot be read (see `readSheetRow` for why). */
+export function incomingFromSheet(row: SheetRow, now: Date): IncomingCreator | null {
+  const result = readSheetRow(row, now)
+  return result.ok ? result.incoming : null
 }
 
 /**

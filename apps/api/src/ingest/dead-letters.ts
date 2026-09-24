@@ -151,7 +151,14 @@ export function failureOf(error: unknown): {
   code: IngestFailureCode
   permanent: boolean
   message: string
+  /** The vendor's `Retry-After`, when the failure carried one. */
+  retryAfterMs: number | null
 } {
   const message = error instanceof Error ? error.message : String(error || 'source unavailable')
-  return { ...classifyIngestFailure(message), message: scrub(message) }
+  const retryAfter = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs
+  return {
+    ...classifyIngestFailure(message),
+    message: scrub(message),
+    retryAfterMs: typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : null,
+  }
 }
