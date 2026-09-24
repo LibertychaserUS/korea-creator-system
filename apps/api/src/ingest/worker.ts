@@ -386,7 +386,7 @@ async function requeueJob(
  * silently lost and a replay continues rather than restarts.
  */
 async function failJob(env: AppEnv, jobId: string, source: string, error: unknown) {
-  const { code, permanent, message, retryAfterMs } = failureOf(error)
+  const { code, permanent, message, retryAfterMs, requestId } = failureOf(error)
   const row = await env.db.query(
     'SELECT attempts, max_attempts, cursor, query FROM ingest_jobs WHERE id = $1',
     [jobId],
@@ -415,6 +415,7 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
     permanent,
     willRetry: !exhausted,
     retryAfterMs,
+    requestId,
     message,
   })
   if (exhausted && SOURCE_PAUSING_FAILURES.includes(code)) await pauseSource(env, source, code, message)

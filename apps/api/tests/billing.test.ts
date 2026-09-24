@@ -187,6 +187,7 @@ describe('reading TikHub answers', () => {
   it('a 200 whose 蒲公英 body says success=false is billed, not retried, and parked', async () => {
     const context = await setup()
     stubVendor(() => failedPgy(-1, '参数错误'))
+    const logged = vi.spyOn(console, 'error')
     const token = (await context.loginJson('ops@kcs.local')).token
     const response = await context.app.request('/api/ingest/fetch', {
       method: 'POST',
@@ -196,9 +197,12 @@ describe('reading TikHub answers', () => {
     const { job } = await response.json()
     const failed = await processJob(context.env, job.id)
     expect(failed).toMatchObject({ status: 'failed', errorCode: 'VENDOR_INNER_ERROR', attempts: 1, quotaUsed: 1 })
-    expect(failed!.error).toBe('pugongying inner error -1: 参数错误')
-    const parked = await context.db.query("SELECT code FROM ingest_dead_letters WHERE job_id = $1", [job.id])
-    expect(parked.rows).toEqual([{ code: 'VENDOR_INNER_ERROR' }])
+    // TikHub's request_id travels with the failure: job, dead letter and the failure log line.
+    expect(failed!.error).toBe('pugongying inner error -1: 参数错误 (request_id req-inner)')
+    const parked = await context.db.query("SELECT code, message FROM ingest_dead_letters WHERE job_id = $1", [job.id])
+    expect(parked.rows).toEqual([{ code: 'VENDOR_INNER_ERROR', message: 'pugongying inner error -1: 参数错误 (request_id req-inner)' }])
+    const line = logged.mock.calls.map((args) => String(args[0])).find((text) => text.includes('ingest.job_failed'))
+    expect(JSON.parse(line!)).toMatchObject({ event: 'ingest.job_failed', code: 'VENDOR_INNER_ERROR', requestId: 'req-inner' })
     expect(await usage(context)).toMatchObject({ calls: 1, cost: 20_000 })
   })
 
@@ -283,13 +287,13 @@ describe('what each vendor answer means for the queue', () => {
     const parked = await context.db.query("SELECT kind, state, code, cursor FROM ingest_dead_letters WHERE job_id = $1", [job.id])
     expect(parked.rows).toEqual([{ kind: 'job', state: 'open', code: 'BALANCE_EXHAUSTED', cursor: '@0' }])
     const trail = await context.db.query("SELECT actor_id, summary FROM audit_logs WHERE action = 'source.paused' AND entity_id = 'pugongying'")
-    expect(trail.rows).toEqual([{ actor_id: null, summary: 'BALANCE_EXHAUSTED: pugongying HTTP 402' }])
+    expect(trail.rows).toEqual([{ actor_id: null, summary: 'BALANCE_EXHAUSTED: pugongying HTTP 402 (request_id req-402)' }])
 
     // Nothing else of the source runs while it is paused.
     expect(await processJob(context.env, waiting.id)).toMatchObject({ status: 'queued', quotaUsed: 0 })
     const token = await devToken(context)
     const health = await (await context.app.request('/api/dev/health', { headers: { authorization: `Bearer ${token}` } })).json()
-    expect(health.pausedSources).toMatchObject([{ id: 'pugongying', code: 'BALANCE_EXHAUSTED', detail: 'pugongying HTTP 402' }])
+    expect(health.pausedSources).toMatchObject([{ id: 'pugongying', code: 'BALANCE_EXHAUSTED', detail: 'pugongying HTTP 402 (request_id req-402)' }])
     const pipeline = (await pipelineReport(context.env)).sources.find((s) => s.id === 'pugongying')!
     expect(pipeline.pausedCode).toBe('BALANCE_EXHAUSTED')
 
@@ -674,7 +678,7 @@ describe('JustOneAPI body code (HTTP 200 either way)', () => {
     expect(notes.rows[0].vendor_notes).toMatchObject([{ kind: 'innerError', endpoint: 'detail', externalId: 'j777', code: '777', requestId: 'jo-777' }])
 
     const logged = await context.db.query("SELECT error FROM ingest_jobs WHERE error_code = 'CREDENTIAL_INVALID'")
-    expect(logged.rows[0].error).toBe('pugongying credential invalid (justoneapi code 100: code 100)')
+    expect(logged.rows[0].error).toBe('pugongying credential invalid (justoneapi code 100: code 100) (request_id jo-100)')
     const waits = await context.db.query(
       "SELECT query->'externalIds'->>0 AS id, next_run_at FROM ingest_jobs WHERE query->'externalIds' ?| array['j301', 'j303']",
     )

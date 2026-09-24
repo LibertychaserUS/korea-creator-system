@@ -153,12 +153,18 @@ export function failureOf(error: unknown): {
   message: string
   /** The vendor's `Retry-After`, when the failure carried one. */
   retryAfterMs: number | null
+  /** The vendor's id for the failed call (TikHub `request_id`), also appended to `message` for support tickets. */
+  requestId: string | null
 } {
   const message = error instanceof Error ? error.message : String(error || 'source unavailable')
   const retryAfter = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs
+  const rawId = (error as { requestId?: unknown } | null)?.requestId
+  const requestId = typeof rawId === 'string' && rawId !== '' ? rawId : null
+  const shown = requestId && !message.includes(requestId) ? `${message} (request_id ${requestId})` : message
   return {
     ...classifyIngestFailure(message),
-    message: scrub(message),
+    message: scrub(shown),
     retryAfterMs: typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : null,
+    requestId,
   }
 }
