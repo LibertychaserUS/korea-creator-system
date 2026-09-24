@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { billedCall, VendorTimeoutError } from '../src/adapters/billing'
 import { VendorHttpError } from '../src/adapters/common'
-import { pugongyingAdapter } from '../src/adapters/pugongying'
+import { pgyTimeoutMs, pugongyingAdapter } from '../src/adapters/pugongying'
 import { pipelineReport } from '../src/routes/dev-console'
 import { processJob } from '../src/ingest/worker'
 import { dailyBudget, vendorPriceOverrides } from '../src/ingest/meter'
@@ -176,6 +176,93 @@ describe('billed calls through the queue (蒲公英 via TikHub)', () => {
     const requeued = await processJob(context.env, job.id, { shouldStop: () => ++n > 7 })
     expect(requeued).toMatchObject({ status: 'queued', cursor: '@1', writtenCount: 1 })
     expect(sent.length).toBeLessThan(10)
+  })
+})
+
+describe('reading TikHub answers', () => {
+  const failedPgy = (code: number, msg: string) => ({ body: { code: 200, request_id: 'req-inner', data: { code, success: false, msg, data: null } } })
+
+  it('a 200 whose 蒲公英 body says success=false is billed, not retried, and parked', async () => {
+    const context = await setup()
+    stubVendor(() => failedPgy(-1, '参数错误'))
+    const token = (await context.loginJson('ops@kcs.local')).token
+    const response = await context.app.request('/api/ingest/fetch', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'pugongying', window: 30, keyword: '护肤', maxPages: 1 }),
+    })
+    const { job } = await response.json()
+    const failed = await processJob(context.env, job.id)
+    expect(failed).toMatchObject({ status: 'failed', errorCode: 'VENDOR_INNER_ERROR', attempts: 1, quotaUsed: 1 })
+    expect(failed!.error).toBe('pugongying inner error -1: 参数错误')
+    const parked = await context.db.query("SELECT code FROM ingest_dead_letters WHERE job_id = $1", [job.id])
+    expect(parked.rows).toEqual([{ code: 'VENDOR_INNER_ERROR' }])
+    expect(await usage(context)).toMatchObject({ calls: 1, cost: 20_000 })
+  })
+
+  it('an outer TikHub code other than 200 is an inner failure too', async () => {
+    stubVendor(() => ({ body: { code: 400, message: 'Invalid user_id', data: null } }))
+    process.env.PGY_ACCESS_TOKEN = 'test-token'
+    process.env.PGY_GATEWAY = 'tikhub'
+    const error = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, keyword: 'x' }).catch((e) => e)
+    expect(error.message).toBe('pugongying inner error 400: Invalid user_id')
+  })
+
+  it('an empty or refused data section keeps the creator, warns on it, and notes it on the job', async () => {
+    const context = await setup()
+    stubVendor((path, body) => {
+      if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
+      if (path.endsWith('get_blogger_notes_rate')) return failedPgy(500, '服务繁忙')
+      if (path.endsWith('get_blogger_fans_profile')) return tikhubOk(null, 'req-empty')
+      return tikhubOk({ noteNumber: 3 })
+    })
+    const job = await refreshJob(context, ['u1'])
+    const done = await processJob(context.env, job.id)
+    expect(done).toMatchObject({ status: 'ok', writtenCount: 1, emptyCount: 1, quotaUsed: 5 })
+    expect(done!.vendorNotes).toEqual([
+      { kind: 'innerError', endpoint: 'notesRate', externalId: 'u1', code: '500', message: '服务繁忙', requestId: 'req-inner' },
+      { kind: 'empty', endpoint: 'fansProfile', externalId: 'u1', code: null, message: null, requestId: 'req-empty' },
+    ])
+    const raw = await context.db.query(
+      `SELECT p.payload FROM creator_raw r JOIN raw_payloads p ON p.hash = r.payload_hash WHERE r.external_id = 'u1'`,
+    )
+    expect(raw.rows[0].payload.kcsEmpty).toEqual(['fansProfile'])
+    expect(raw.rows[0].payload.kcsIssues).toMatchObject([{ section: 'notesRate', code: '500' }])
+    const normalized = pugongyingAdapter.normalize({
+      source: 'pugongying', platform: 'xhs', externalId: 'u1', fetchedAt: '2026-09-24T00:00:00Z',
+      payload: { ...DETAIL('u1'), kcsEmpty: ['fansProfile'], kcsIssues: [{ section: 'notesRate' }] },
+    })
+    expect(normalized.ok && normalized.creator.warnings).toEqual(expect.arrayContaining(['fansProfile.empty', 'notesRate.fetchFailed']))
+  })
+
+  it('a 5xx on one data section is not swallowed: the page stops at that creator and the job retries from it', async () => {
+    const context = await setup()
+    stubVendor((path, body) => {
+      if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
+      if (path.endsWith('get_blogger_notes_rate') && body.user_id === 'u2') return { status: 503, body: { detail: 'busy' } }
+      return tikhubOk({ noteNumber: 3 })
+    })
+    const job = await refreshJob(context, ['u1', 'u2'])
+    const retry = await processJob(context.env, job.id)
+    expect(retry).toMatchObject({ status: 'queued', errorCode: 'SOURCE_UNAVAILABLE', cursor: '@1', writtenCount: 1 })
+    // 5 + detail, 2 sections billed; the 503 was free.
+    expect(await usage(context)).toMatchObject({ calls: 8, requests: 9, unbilled: 1 })
+  })
+
+  it('times out after PGY_TIMEOUT_MS (default 60 s) and says the call may have been billed', async () => {
+    expect(pgyTimeoutMs({})).toBe(60_000)
+    expect(pgyTimeoutMs({ PGY_TIMEOUT_MS: '90000' })).toBe(90_000)
+    expect(pgyTimeoutMs({ PGY_TIMEOUT_MS: 'x' })).toBe(60_000)
+    const context = await setup()
+    process.env.PGY_TIMEOUT_MS = '150'
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+    })))
+    const job = await refreshJob(context, ['u1'])
+    const retry = await processJob(context.env, job.id)
+    expect(retry).toMatchObject({ status: 'queued', quotaUsed: 1 })
+    expect(retry!.error).toBe('pugongying timeout after 150ms (may have been billed)')
+    expect(await usage(context)).toMatchObject({ calls: 1, maybe_billed: 1 })
   })
 })
 

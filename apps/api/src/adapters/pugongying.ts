@@ -46,26 +46,64 @@ import {
   type SourceAdapter,
   type SourceQuery,
   type SourceSignals,
+  type VendorNote,
 } from '@kcs/contract'
-import { billedCall, isMeterStop } from './billing'
+import { billedCall, isMeterStop, isVendorInnerError, requestIdOf, VendorInnerError } from './billing'
 import { filterFixturePage, fixturePage, type AdapterPage } from './common'
 
 type Json = Record<string, unknown>
 
 const PAGE_SIZE = 20
-const TIMEOUT_MS = 12_000
+/**
+ * How long one 蒲公英 call may take. TikHub relays to the platform and can be
+ * slow; a request that times out may still be billed, so the default is
+ * generous (60 s) rather than a quick retry. `PGY_TIMEOUT_MS` overrides.
+ */
+export function pgyTimeoutMs(source: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(source.PGY_TIMEOUT_MS)
+  return source.PGY_TIMEOUT_MS && Number.isFinite(n) && n >= 100 ? Math.round(n) : 60_000
+}
+
+const text = (value: unknown): string | null => (value == null || value === '' ? null : String(value))
+
+/** TikHub's two layers: outer `{code: 200, request_id, data}`, inner 蒲公英 `{code: 0, success, msg, data}`. */
+function readTikhub(json: Json): { value: Reply; empty: boolean } {
+  const requestId = requestIdOf(json)
+  if (json.code != null && Number(json.code) !== 200) {
+    throw new VendorInnerError('pugongying', String(json.code), text(json.message ?? json.message_zh), requestId)
+  }
+  const envelope = json.data as Json | null | undefined
+  if (envelope && typeof envelope === 'object') {
+    const code = envelope.code
+    const failed = envelope.success === false || (envelope.success !== true && code != null && ![0, 200].includes(Number(code)))
+    if (failed) throw new VendorInnerError('pugongying', text(code), text(envelope.msg ?? envelope.message), requestId)
+  }
+  const data = (envelope?.data as Json | null | undefined) ?? null
+  const empty = isEmptyData(data)
+  return { value: { data, empty, requestId }, empty }
+}
+
+/** One-layer gateways (JustOneAPI, official): the data object sits at `data`. */
+function readFlat(json: Json): { value: Reply; empty: boolean } {
+  const data = (json.data as Json | null | undefined) ?? null
+  const empty = isEmptyData(data)
+  return { value: { data, empty, requestId: requestIdOf(json) }, empty }
+}
 
 // ---------------------------------------------------------------------------
 // Gateways
 // ---------------------------------------------------------------------------
 
+/** One answer: the `solar` data object, whether it was empty (billed all the same), and the vendor's request id. */
+type Reply = { data: Json | null; empty: boolean; requestId: string | null }
+
 type Gateway = {
-  list(query: SourceQuery, pageNum: number): Promise<Json | null>
-  detail(userId: string): Promise<Json | null>
-  dataSummary(userId: string): Promise<Json | null>
-  fansSummary(userId: string): Promise<Json | null>
-  notesRate(userId: string, dateType: DateType): Promise<Json | null>
-  fansProfile(userId: string): Promise<Json | null>
+  list(query: SourceQuery, pageNum: number): Promise<Reply>
+  detail(userId: string): Promise<Reply>
+  dataSummary(userId: string): Promise<Reply>
+  fansSummary(userId: string): Promise<Reply>
+  notesRate(userId: string, dateType: DateType): Promise<Reply>
+  fansProfile(userId: string): Promise<Reply>
 }
 
 type DateType = number | string
@@ -120,7 +158,7 @@ function wantsLowActiveExcluded(query: SourceQuery): boolean {
 
 /** TikHub — POST JSON, Bearer token, payload two layers deep (`data.data`). */
 function tikhub(token: string, base: string, context?: FetchContext): Gateway {
-  const call = async (path: string, body: Json): Promise<Json | null> => {
+  const call = async (path: string, body: Json): Promise<Reply> => {
     const route = `/api/v1/xiaohongshu/pgy/${path}`
     const { value } = await billedCall(context, {
       source: 'pugongying',
@@ -132,12 +170,8 @@ function tikhub(token: string, base: string, context?: FetchContext): Gateway {
         body: JSON.stringify(body),
       },
       rule: 'tikhub',
-      timeoutMs: TIMEOUT_MS,
-      read: (json) => {
-        const envelope = json.data as Json | null | undefined
-        const data = (envelope?.data as Json | null | undefined) ?? null
-        return { value: data, empty: isEmptyData(data) }
-      },
+      timeoutMs: pgyTimeoutMs(),
+      read: readTikhub,
     })
     return value
   }
@@ -174,7 +208,7 @@ function tikhub(token: string, base: string, context?: FetchContext): Gateway {
 
 /** JustOneAPI — GET with `token` query param, payload one layer deep (`data`). */
 function justoneapi(token: string, base: string, context?: FetchContext): Gateway {
-  const call = async (path: string, params: Record<string, string | number | boolean | undefined>): Promise<Json | null> => {
+  const call = async (path: string, params: Record<string, string | number | boolean | undefined>): Promise<Reply> => {
     const route = `/api/xiaohongshu-pgy/api/solar/${path}`
     const url = new URL(`${base}${route}`)
     url.searchParams.set('token', token)
@@ -187,11 +221,8 @@ function justoneapi(token: string, base: string, context?: FetchContext): Gatewa
       url: url.toString(),
       init: { method: 'GET' },
       rule: 'every-response',
-      timeoutMs: TIMEOUT_MS,
-      read: (json) => {
-        const data = (json.data as Json | null | undefined) ?? null
-        return { value: data, empty: isEmptyData(data) }
-      },
+      timeoutMs: pgyTimeoutMs(),
+      read: readFlat,
     })
     return value
   }
@@ -227,22 +258,19 @@ function justoneapi(token: string, base: string, context?: FetchContext): Gatewa
  */
 function official(token: string, base: string, context?: FetchContext): Gateway {
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${token}` }
-  const send = async (path: string, url: string, init: RequestInit): Promise<Json | null> => {
+  const send = async (path: string, url: string, init: RequestInit): Promise<Reply> => {
     const { value } = await billedCall(context, {
       source: 'pugongying',
       endpoint: `official:${path.replace(/\/[0-9a-zA-Z]{16,}(?=\/|$)/g, '/:userId')}`,
       url,
       init,
       rule: 'every-response',
-      timeoutMs: TIMEOUT_MS,
-      read: (json) => {
-        const data = (json.data as Json | null | undefined) ?? null
-        return { value: data, empty: isEmptyData(data) }
-      },
+      timeoutMs: pgyTimeoutMs(),
+      read: readFlat,
     })
     return value
   }
-  const get = async (path: string, params: Record<string, string | number | undefined> = {}): Promise<Json | null> => {
+  const get = async (path: string, params: Record<string, string | number | undefined> = {}): Promise<Reply> => {
     const url = new URL(`${base}${path}`)
     for (const [key, value] of Object.entries(params)) if (value !== undefined) url.searchParams.set(key, String(value))
     return send(path, url.toString(), { method: 'GET', headers })
@@ -299,25 +327,59 @@ export function resolveGateway(context?: FetchContext): ResolvedGateway | null {
 // Fetch
 // ---------------------------------------------------------------------------
 
-async function enrich(resolved: ResolvedGateway, userId: string, window: SourceQuery['window'], base: Json): Promise<Json> {
+const SECTIONS = ['dataSummary', 'fansSummary', 'notesRate', 'fansProfile'] as const
+type Section = (typeof SECTIONS)[number]
+
+function note(kind: VendorNote['kind'], endpoint: string, externalId: string | null, reply: Partial<Reply> & { code?: string | null; message?: string | null }): VendorNote {
+  return { kind, endpoint, externalId, code: reply.code ?? null, message: reply.message ?? null, requestId: reply.requestId ?? null }
+}
+
+/**
+ * The four data sections for one creator, one call each. An empty section is
+ * kept as `null` and listed in `kcsEmpty`; a section the vendor refused inside
+ * a 200 (billed, would fail again) is listed in `kcsIssues` — both surface as
+ * warnings on the creator and as notes on the job. Anything else (timeout,
+ * 429, 5xx, the meter) ends the page here, so the creator is fetched again
+ * whole on the next run rather than stored with a hole nobody sees.
+ */
+async function enrich(
+  resolved: ResolvedGateway,
+  userId: string,
+  window: SourceQuery['window'],
+  base: Json,
+  notes: VendorNote[],
+): Promise<Json> {
   const { gateway } = resolved
   const dateType = dateTypeFor(resolved.name, window)
-  // The meter refusing a call ends the page; any other failure only loses that section.
-  const settle = async (p: Promise<Json | null>) => {
-    try {
-      return await p
-    } catch (error) {
-      if (isMeterStop(error)) throw error
-      return null
-    }
+  const request: Record<Section, () => Promise<Reply>> = {
+    dataSummary: () => gateway.dataSummary(userId),
+    fansSummary: () => gateway.fansSummary(userId),
+    notesRate: () => gateway.notesRate(userId, dateType),
+    fansProfile: () => gateway.fansProfile(userId),
   }
-  const dataSummary = await settle(gateway.dataSummary(userId))
-  const fansSummary = await settle(gateway.fansSummary(userId))
-  const notesRate = await settle(gateway.notesRate(userId, dateType))
-  const fansProfile = await settle(gateway.fansProfile(userId))
   // notesRate carries no dateType back, so remember what we asked for; if the
   // table above turns out wrong, stored payloads can still be re-read correctly.
-  return { ...base, dataSummary, fansSummary, notesRate, fansProfile, kcsWindow: window, kcsDateType: dateType }
+  const out: Json = { ...base, kcsWindow: window, kcsDateType: dateType }
+  const empty: Section[] = []
+  const issues: Json[] = []
+  for (const section of SECTIONS) {
+    try {
+      const reply = await request[section]()
+      out[section] = reply.data
+      if (reply.empty) {
+        empty.push(section)
+        notes.push(note('empty', section, userId, reply))
+      }
+    } catch (error) {
+      if (!isVendorInnerError(error)) throw error
+      out[section] = null
+      issues.push({ section, code: error.code, message: error.detail, requestId: error.requestId })
+      notes.push(note('innerError', section, userId, { code: error.code, message: error.detail, requestId: error.requestId }))
+    }
+  }
+  if (empty.length) out.kcsEmpty = empty
+  if (issues.length) out.kcsIssues = issues
+  return out
 }
 
 function toRecord(payload: Json, fetchedAt: string): RawRecord {
@@ -337,11 +399,12 @@ export function parsePgyCursor(cursor: string | null | undefined): { index: numb
 }
 
 /** A stop mid-page keeps what was fetched (it was paid for) and says where to continue. */
-function interrupted(records: RawRecord[], nextCursor: string, error: unknown): AdapterPage {
+function interrupted(records: RawRecord[], notes: VendorNote[], nextCursor: string, error: unknown): AdapterPage {
   return {
     sourceMode: 'live',
     records,
     nextCursor,
+    vendorNotes: notes,
     interrupted: isMeterStop(error) ? { reason: error.reason, resetsAt: error.resetsAt } : { reason: 'error', error },
   }
 }
@@ -353,22 +416,37 @@ async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise
   if (query.externalIds?.length) {
     const ids = query.externalIds.slice(0, query.limit ?? query.externalIds.length)
     const records: RawRecord[] = []
+    const notes: VendorNote[] = []
     for (let i = at.index; i < ids.length; i += 1) {
       const userId = ids[i]!
       try {
-        const detail = await gateway.detail(userId)
-        if (!detail) continue
-        records.push(toRecord(await enrich(resolved, userId, query.window, detail), fetchedAt))
+        let detail: Reply
+        try {
+          detail = await gateway.detail(userId)
+        } catch (error) {
+          // Refused for this one creator (billed); the rest of the list is still worth fetching.
+          if (!isVendorInnerError(error)) throw error
+          notes.push(note('innerError', 'detail', userId, { code: error.code, message: error.detail, requestId: error.requestId }))
+          continue
+        }
+        // 查无结果: billed and noted; the refresh records the id as not found.
+        if (detail.empty || !detail.data) {
+          notes.push(note('empty', 'detail', userId, detail))
+          continue
+        }
+        records.push(toRecord(await enrich(resolved, userId, query.window, detail.data, notes), fetchedAt))
       } catch (error) {
-        return interrupted(records, `@${i}`, error)
+        return interrupted(records, notes, `@${i}`, error)
       }
     }
-    return { sourceMode: 'live', records, nextCursor: null }
+    return { sourceMode: 'live', records, nextCursor: null, vendorNotes: notes }
   }
 
   const { pageNum, skip } = at
-  const data = await gateway.list(query, pageNum)
-  let kols = Array.isArray(data?.kols) ? (data!.kols as Json[]) : []
+  const list = await gateway.list(query, pageNum)
+  const notes: VendorNote[] = []
+  if (list.empty) notes.push(note('empty', 'list', null, list))
+  let kols = Array.isArray(list.data?.kols) ? (list.data!.kols as Json[]) : []
   if (query.limit) kols = kols.slice(0, Math.max(0, query.limit))
   const shouldEnrich = process.env.PGY_ENRICH === '1'
   const records: RawRecord[] = []
@@ -377,14 +455,14 @@ async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise
     const userId = String(kol.userId ?? '')
     if (!userId) continue
     try {
-      records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol) : kol, fetchedAt))
+      records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol, notes) : kol, fetchedAt))
     } catch (error) {
-      return interrupted(records, `${pageNum}:${i}`, error)
+      return interrupted(records, notes, `${pageNum}:${i}`, error)
     }
   }
   // `total` on the 找博主 list is a paging ceiling (5000), not a hit count.
   const hasMore = kols.length === PAGE_SIZE && pageNum < 250
-  return { sourceMode: 'live', records, nextCursor: hasMore ? String(pageNum + 1) : null }
+  return { sourceMode: 'live', records, nextCursor: hasMore ? String(pageNum + 1) : null, vendorNotes: notes }
 }
 
 // ---------------------------------------------------------------------------
@@ -609,6 +687,10 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   // Recent window only; the all-time count (businessNoteCount) is signals.coopNoteCountTotal.
   m.coopNoteCount = positiveCount(p, ['coopNoteNum30d'])
   m.audience = audienceOf(p)
+
+  // Sections that came back empty or refused are said out loud, not left as silent blanks.
+  if (Array.isArray(p.kcsEmpty)) for (const section of p.kcsEmpty) issues.push(`${String(section)}.empty`)
+  if (Array.isArray(p.kcsIssues)) for (const issue of p.kcsIssues) issues.push(`${String((issue as Json)?.section)}.fetchFailed`)
 
   const metrics = deriveMetrics(m)
   const warnings = (['followers', 'readMedian', 'interactionMedian', 'priceImage', 'cpe'] as const)

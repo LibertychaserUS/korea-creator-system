@@ -321,7 +321,10 @@ async function loadAdapters() {
 function progress(job: any): string {
   const parts: string[] = []
   if (job.pagesDone || job.quotaUsed) parts.push(t('kcs.ingest.progress', { pages: job.pagesDone ?? 0, calls: job.quotaUsed ?? 0 }))
-  if (job.status === 'partial' && job.nextRunAt) parts.push(t('kcs.ingest.nextRun', { time: formatDate(job.nextRunAt) }))
+  if (job.emptyCount) parts.push(t('kcs.ingest.empties', { n: job.emptyCount }))
+  if (job.status === 'partial' && job.nextRunAt) {
+    parts.push(t(job.errorCode === 'BUDGET_EXHAUSTED' ? 'kcs.ingest.nextRunBudget' : 'kcs.ingest.nextRun', { time: formatDate(job.nextRunAt) }))
+  }
   if (job.status === 'failed') parts.push(reason(job.errorCode))
   return parts.join(' · ')
 }

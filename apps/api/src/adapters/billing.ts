@@ -66,6 +66,27 @@ export class VendorNetworkError extends Error {
   }
 }
 
+/**
+ * A 2xx whose body says the request failed (TikHub: outer `code` ≠ 200, or
+ * the relayed 蒲公英 answer has `success: false` / a non-zero `code`). It is
+ * billed, and sending the same request again gets the same answer.
+ */
+export class VendorInnerError extends Error {
+  constructor(
+    readonly source: string,
+    readonly code: string | null,
+    readonly detail: string | null,
+    readonly requestId: string | null = null,
+  ) {
+    super(`${source} inner error ${code || '?'}${detail ? `: ${detail.slice(0, 160)}` : ''}`)
+    this.name = 'VendorInnerError'
+  }
+}
+
+export function isVendorInnerError(error: unknown): error is VendorInnerError {
+  return error instanceof VendorInnerError
+}
+
 /** TikHub puts `request_id` in the body; JustOneAPI `requestId`; some gateways a header. */
 export function requestIdOf(json: unknown, response?: Response): string | null {
   const body = json && typeof json === 'object' ? (json as Json) : {}

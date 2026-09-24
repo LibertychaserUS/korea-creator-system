@@ -303,6 +303,8 @@ export const ko: Locale = {
       queued: "수집이 시작되었습니다. 플랫폼 제한에 맞춰 순차적으로 진행되며 완료 후 아래 기록에 표시됩니다.",
       progress: "수집 완료 {pages}회차 · 사용 한도 {calls}회",
       nextRun: "오늘 이용 한도에 도달하여 {time}에 자동으로 이어집니다",
+      nextRunBudget: "오늘 비용 한도에 도달하여 {time}에 자동으로 이어집니다",
+      empties: "결과 없음 {n}회",
       reason: {
         SOURCE_UNAVAILABLE: "플랫폼이 응답하지 않았습니다. 잠시 후 다시 시도하세요",
         VENDOR_REJECTED: "플랫폼이 이 요청을 거절했습니다. 보통 연동 정보나 조건이 잘못된 경우입니다",
@@ -311,6 +313,7 @@ export const ko: Locale = {
         RECORD_WRITE_FAILED: "이 크리에이터 정보를 저장하지 못했습니다",
         QUOTA_EXHAUSTED: "오늘 이용 한도를 모두 사용했습니다. 내일 자동으로 이어집니다",
         BUDGET_EXHAUSTED: "오늘 비용 한도에 도달했습니다. 내일 자동으로 이어집니다",
+        VENDOR_INNER_ERROR: "플랫폼이 응답했지만 조회 실패라고 했습니다. 다시 시도해도 같으니 보류 기록에서 이유를 확인하세요",
         CANCELLED: "수동으로 중단됨",
         UNKNOWN: "이번 수집이 끝나지 않았습니다. 다시 시도할 수 있습니다",
       },

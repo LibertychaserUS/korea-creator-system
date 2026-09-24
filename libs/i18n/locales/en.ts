@@ -2170,6 +2170,8 @@ export const en: Locale = {
       queued: "Collection started. The background will finish steadily within allowed limits and show in the records below.",
       progress: "Fetched {pages} batches · Used {calls} calls allowance",
       nextRun: "Today's allowance reached; automatically continues at {time}",
+      nextRunBudget: "Today's spending limit reached; automatically continues at {time}",
+      empties: "{n} came back empty",
       reason: {
         SOURCE_UNAVAILABLE: "The platform did not respond; try again later",
         VENDOR_REJECTED: "The platform refused this request — usually wrong access details or conditions",
@@ -2178,6 +2180,7 @@ export const en: Locale = {
         RECORD_WRITE_FAILED: "This creator's information could not be saved",
         QUOTA_EXHAUSTED: "Today's allowance is used up; continues tomorrow",
         BUDGET_EXHAUSTED: "Today's spending limit is reached; continues tomorrow",
+        VENDOR_INNER_ERROR: "The platform answered but said the query failed; retrying gives the same answer, so check the reason in Set aside",
         CANCELLED: "Stopped manually",
         UNKNOWN: "This run did not finish; you can retry",
       },

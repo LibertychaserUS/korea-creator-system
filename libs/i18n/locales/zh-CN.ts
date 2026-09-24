@@ -2177,6 +2177,8 @@ export const zhCN: Locale = {
       queued: "已开始抓取，后台会按平台允许的额度慢慢跑完，结束后出现在下方记录里。",
       progress: "已抓 {pages} 批 · 用了 {calls} 次额度",
       nextRun: "今天的额度用完了，{time} 自动继续",
+      nextRunBudget: "今天的花费到了上限，{time} 自动继续",
+      empties: "{n} 次查无结果",
       reason: {
         SOURCE_UNAVAILABLE: "平台暂时没有响应，可以稍后重试",
         VENDOR_REJECTED: "平台不接受这次请求，通常是接入信息或条件写错了",
@@ -2185,6 +2187,7 @@ export const zhCN: Locale = {
         RECORD_WRITE_FAILED: "这条博主信息没能存下来",
         QUOTA_EXHAUSTED: "今天的额度用完了，明天会自动继续",
         BUDGET_EXHAUSTED: "今天的花费到了上限，明天会自动继续",
+        VENDOR_INNER_ERROR: "平台回了话但说这次查询失败，重试也一样，先看搁置记录里的原因",
         CANCELLED: "已手动停止",
         UNKNOWN: "这次没有抓完，可以重试",
       },

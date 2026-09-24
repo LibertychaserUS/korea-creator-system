@@ -288,6 +288,7 @@ export const INGEST_FAILURE_CODES = [
   'CONFIG_MISSING',
   'QUOTA_EXHAUSTED',
   'BUDGET_EXHAUSTED',
+  'VENDOR_INNER_ERROR',
   'CANCELLED',
   'RECORD_INVALID',
   'RECORD_WRITE_FAILED',
@@ -303,6 +304,8 @@ export function classifyIngestFailure(message: string): {
   if (/unsupported adapter|missing credential|no record list|field map/.test(text)) {
     return { code: 'CONFIG_MISSING', permanent: true }
   }
+  // A 200 whose body says "failed": billed, and the same request fails the same way.
+  if (/ inner error /.test(text)) return { code: 'VENDOR_INNER_ERROR', permanent: true }
   const http = text.match(/http (\d{3})/)
   if (http) {
     const status = Number(http[1])
