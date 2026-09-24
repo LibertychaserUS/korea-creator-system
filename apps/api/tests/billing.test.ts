@@ -28,6 +28,11 @@ function tikhubOk(data: unknown, requestId = 'req-1') {
 
 const DETAIL = (userId: string) => ({ userId, name: `博主${userId}`, fansNum: 12000, redId: `red_${userId}` })
 
+/** A data section with a little data; the 数据概览 carries a cost estimate so cost stays on 合作笔记 (no fallback call). */
+function section(path: string, extra: Record<string, unknown> = {}) {
+  return tikhubOk(path.endsWith('get_blogger_data_summary') ? { noteNumber: 3, estimatePictureEngageCost: 120, ...extra } : { noteNumber: 3, ...extra })
+}
+
 function stubVendor(reply: (path: string, body: Record<string, unknown>) => Reply | Promise<Reply>) {
   const sent: { path: string; body: Record<string, unknown> }[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
@@ -40,11 +45,11 @@ function stubVendor(reply: (path: string, body: Record<string, unknown>) => Repl
   return sent
 }
 
-/** Every pgy endpoint answers; detail per user, the four data sections with a little data. */
+/** Every pgy endpoint answers; detail per user, the data sections with a little data. */
 function healthyVendor() {
   return stubVendor((path, body) => {
     if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
-    return tikhubOk({ noteNumber: 3 })
+    return section(path)
   })
 }
 
@@ -88,7 +93,7 @@ describe('billed calls through the queue (蒲公英 via TikHub)', () => {
     const sent = healthyVendor()
     const job = await refreshJob(context, ['u1', 'u2', 'u3'])
     const stopped = await processJob(context.env, job.id)
-    // Creator 1 = detail + 4 sections; creator 2 got 2 calls in before the 8th was refused.
+    // Creator 1 = detail + 5 sections (the 含投放 reference is the 5th); creator 2 got its detail in before the 8th was refused.
     expect(sent).toHaveLength(7)
     expect(stopped).toMatchObject({ status: 'partial', errorCode: 'QUOTA_EXHAUSTED', cursor: '@1', quotaUsed: 7, vendorRequests: 7, pagesDone: 0 })
     expect(stopped!.costUsd).toBeCloseTo(0.14, 6)
@@ -100,26 +105,26 @@ describe('billed calls through the queue (蒲公英 via TikHub)', () => {
     await context.db.query("UPDATE ingest_jobs SET next_run_at = now() WHERE id = $1", [job.id])
     sent.length = 0
     const done = await processJob(context.env, job.id)
-    expect(done).toMatchObject({ status: 'ok', writtenCount: 3, quotaUsed: 17 })
+    expect(done).toMatchObject({ status: 'ok', writtenCount: 3, quotaUsed: 19 })
     expect(sent.filter((c) => c.path.endsWith('get_blogger_detail')).map((c) => c.body.user_id)).toEqual(['u2', 'u3'])
   })
 
   it('stops at the daily money budget → partial BUDGET_EXHAUSTED; the ops console shows calls and money', async () => {
     const context = await setup()
-    await context.db.query("UPDATE ingest_sources SET daily_budget_usd = 0.1 WHERE id = 'pugongying'")
+    await context.db.query("UPDATE ingest_sources SET daily_budget_usd = 0.12 WHERE id = 'pugongying'")
     const sent = healthyVendor()
     const job = await refreshJob(context, ['u1', 'u2'])
     const stopped = await processJob(context.env, job.id)
-    expect(sent).toHaveLength(5)
-    expect(stopped).toMatchObject({ status: 'partial', errorCode: 'BUDGET_EXHAUSTED', error: 'budget_exhausted', cursor: '@1', quotaUsed: 5 })
+    expect(sent).toHaveLength(6)
+    expect(stopped).toMatchObject({ status: 'partial', errorCode: 'BUDGET_EXHAUSTED', error: 'budget_exhausted', cursor: '@1', quotaUsed: 6 })
     expect(new Date(stopped!.nextRunAt!).getTime()).toBeGreaterThan(Date.now())
 
     const report = await pipelineReport(context.env)
     const pgy = report.sources.find((s) => s.id === 'pugongying')!
-    expect(pgy).toMatchObject({ callsToday: 5, requestsToday: 5, dailyBudgetUsd: 0.1, budgetFrom: 'source' })
-    expect(pgy.costTodayUsd).toBeCloseTo(0.1, 6)
+    expect(pgy).toMatchObject({ callsToday: 6, requestsToday: 6, dailyBudgetUsd: 0.12, budgetFrom: 'source' })
+    expect(pgy.costTodayUsd).toBeCloseTo(0.12, 6)
     expect(pgy.budgetRatio).toBeCloseTo(1, 6)
-    expect(pgy.recentDays.at(-1)).toMatchObject({ calls: 5 })
+    expect(pgy.recentDays.at(-1)).toMatchObject({ calls: 6 })
   })
 
   it('PGY_DAILY_BUDGET_USD overrides the source row (and `none` lifts the cap)', async () => {
@@ -150,12 +155,12 @@ describe('billed calls through the queue (蒲公英 via TikHub)', () => {
     const context = await setup()
     stubVendor((path, body) => {
       if (path.endsWith('get_blogger_detail')) return tikhubOk(body.user_id === 'gone' ? null : DETAIL(String(body.user_id)))
-      return tikhubOk({ noteNumber: 3 })
+      return section(path)
     })
     const job = await refreshJob(context, ['gone', 'u1'])
     const done = await processJob(context.env, job.id)
-    expect(done).toMatchObject({ status: 'ok', writtenCount: 1, quotaUsed: 6, emptyCount: 1 })
-    expect(await usage(context)).toMatchObject({ calls: 6, cost: 120_000, empty_results: 1 })
+    expect(done).toMatchObject({ status: 'ok', writtenCount: 1, quotaUsed: 7, emptyCount: 1 })
+    expect(await usage(context)).toMatchObject({ calls: 7, cost: 140_000, empty_results: 1 })
   })
 
   it('takes one rate token per call, not per page', async () => {
@@ -165,9 +170,9 @@ describe('billed calls through the queue (蒲公英 via TikHub)', () => {
     const job = await refreshJob(context, ['u1', 'u2'])
     await processJob(context.env, job.id)
     const bucket = await context.db.query("SELECT tokens FROM ingest_rate_buckets WHERE source = 'pugongying'")
-    // 10 calls taken from a bucket of 600 (a little refill while the job ran).
-    expect(Number(bucket.rows[0].tokens)).toBeGreaterThanOrEqual(589)
-    expect(Number(bucket.rows[0].tokens)).toBeLessThan(592)
+    // 12 calls taken from a bucket of 600 (a little refill while the job ran).
+    expect(Number(bucket.rows[0].tokens)).toBeGreaterThanOrEqual(587)
+    expect(Number(bucket.rows[0].tokens)).toBeLessThan(590)
   })
 
   it('a shutdown mid-page hands the job back with a resume cursor, and nothing is sent after the stop', async () => {
@@ -177,7 +182,7 @@ describe('billed calls through the queue (蒲公英 via TikHub)', () => {
     let n = 0
     const requeued = await processJob(context.env, job.id, { shouldStop: () => ++n > 7 })
     expect(requeued).toMatchObject({ status: 'queued', cursor: '@1', writtenCount: 1 })
-    expect(sent.length).toBeLessThan(10)
+    expect(sent.length).toBeLessThan(12)
   })
 })
 
@@ -218,13 +223,13 @@ describe('reading TikHub answers', () => {
     const context = await setup()
     stubVendor((path, body) => {
       if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
-      if (path.endsWith('get_blogger_notes_rate')) return failedPgy(500, '服务繁忙')
+      if (path.endsWith('get_blogger_notes_rate') && body.advertise_switch === 0) return failedPgy(500, '服务繁忙')
       if (path.endsWith('get_blogger_fans_profile')) return tikhubOk(null, 'req-empty')
-      return tikhubOk({ noteNumber: 3 })
+      return section(path)
     })
     const job = await refreshJob(context, ['u1'])
     const done = await processJob(context.env, job.id)
-    expect(done).toMatchObject({ status: 'ok', writtenCount: 1, emptyCount: 1, quotaUsed: 5 })
+    expect(done).toMatchObject({ status: 'ok', writtenCount: 1, emptyCount: 1, quotaUsed: 6 })
     expect(done!.vendorNotes).toEqual([
       { kind: 'innerError', endpoint: 'notesRate', externalId: 'u1', code: '500', message: '服务繁忙', requestId: 'req-inner' },
       { kind: 'empty', endpoint: 'fansProfile', externalId: 'u1', code: null, message: null, requestId: 'req-empty' },
@@ -246,13 +251,13 @@ describe('reading TikHub answers', () => {
     stubVendor((path, body) => {
       if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
       if (path.endsWith('get_blogger_notes_rate') && body.user_id === 'u2') return { status: 503, body: { detail: 'busy' } }
-      return tikhubOk({ noteNumber: 3 })
+      return section(path)
     })
     const job = await refreshJob(context, ['u1', 'u2'])
     const retry = await processJob(context.env, job.id)
     expect(retry).toMatchObject({ status: 'queued', errorCode: 'SOURCE_UNAVAILABLE', cursor: '@1', writtenCount: 1 })
-    // 5 + detail, 2 sections billed; the 503 was free.
-    expect(await usage(context)).toMatchObject({ calls: 8, requests: 9, unbilled: 1 })
+    // 6 + detail, 2 sections billed; the 503 was free.
+    expect(await usage(context)).toMatchObject({ calls: 9, requests: 10, unbilled: 1 })
   })
 
   it('times out after PGY_TIMEOUT_MS (default 60 s) and says the call may have been billed', async () => {
@@ -332,10 +337,10 @@ describe('what each vendor answer means for the queue', () => {
     let n = 0
     const sent = stubVendor((path, body) => {
       if (path.endsWith('get_blogger_detail') && n++ === 0) return { status: 400, body: { detail: 'bad request' } }
-      return path.endsWith('get_blogger_detail') ? tikhubOk(DETAIL(String(body.user_id))) : tikhubOk({ noteNumber: 1 })
+      return path.endsWith('get_blogger_detail') ? tikhubOk(DETAIL(String(body.user_id))) : section(path)
     })
     const job = await refreshJob(context, ['u1'])
-    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', writtenCount: 1, quotaUsed: 5, vendorRequests: 6 })
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', writtenCount: 1, quotaUsed: 6, vendorRequests: 7 })
     expect(sent.filter((c) => c.path.endsWith('get_blogger_detail'))).toHaveLength(2)
 
     const always = stubVendor(() => ({ status: 400, body: { detail: 'bad request' } }))
@@ -453,7 +458,11 @@ describe('fetch scope (蒲公英 business / advertise_switch)', () => {
     const sent = healthyVendor()
     const job = await refreshJob(context, ['u1'])
     expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', writtenCount: 1 })
-    expect(sent.find((c) => c.path.endsWith('get_blogger_notes_rate'))!.body).toMatchObject({ business: 1, advertise_switch: 0 })
+    // Reach is read on 日常笔记 either way; the 含投放 reference is the second notes-rate call.
+    expect(sent.filter((c) => c.path.endsWith('get_blogger_notes_rate')).map((c) => c.body)).toMatchObject([
+      { business: 0, advertise_switch: 0 },
+      { business: 0, advertise_switch: 1 },
+    ])
     expect(sent.find((c) => c.path.endsWith('get_blogger_data_summary'))!.body).toMatchObject({ business: 1 })
     const { rows } = await context.db.query("SELECT metrics FROM creators WHERE creator_key LIKE '%u1'")
     expect(rows[0].metrics.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'coop' })
@@ -467,7 +476,7 @@ describe('fetch scope (蒲公英 business / advertise_switch)', () => {
 
     // Unknown values are skipped, not guessed; the column is checked by the database too.
     expect(sourceScope('pugongying', { traffic_scope: 'paid', business_scope: null }, { PGY_BUSINESS_SCOPE: 'x' })).toEqual({
-      traffic: 'all', business: 'daily', from: { traffic: 'default', business: 'default' },
+      traffic: 'organic', business: 'coop', from: { traffic: 'default', business: 'default' },
     })
     await expect(context.db.query("UPDATE ingest_sources SET traffic_scope = 'paid' WHERE id = 'pugongying'")).rejects.toThrow()
   })
@@ -546,15 +555,16 @@ describe('TikHub balance monitor', () => {
 })
 
 describe('refresh tiers (蒲公英)', () => {
-  it('a scheduled refresh costs 3 calls: the slow fan sections are carried over for a month; a manual refresh fetches all 5', async () => {
+  it('a scheduled refresh costs 3 calls: the slow fan sections and the 含投放 reference are carried over for a month; a manual refresh fetches all 6', async () => {
     const context = await setup()
     delete process.env.PGY_SLOW_REFRESH_DAYS
+    delete process.env.PGY_ALL_TRAFFIC_REFERENCE_DAYS
     let profileEmpty = false
     const sent = stubVendor((path, body) => {
       if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
       if (path.endsWith('get_blogger_fans_summary')) return tikhubOk({ fansNum: 12000, readFansRate: '30.0', activeFansRate: '70.0' })
       if (path.endsWith('get_blogger_fans_profile')) return tikhubOk(profileEmpty ? {} : { gender: { female: 0.8 } })
-      return tikhubOk({ noteNumber: 3, readMedian: 900 })
+      return section(path, { readMedian: 900 })
     })
     const endpoints = () => sent.map((c) => c.path.split('/').at(-1))
     const run = async (schedule: 'manual' | 'refresh') => {
@@ -572,27 +582,34 @@ describe('refresh tiers (蒲公英)', () => {
     }
 
     const first = await run('manual')
-    expect(endpoints()).toEqual(['get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_fans_summary', 'get_blogger_notes_rate', 'get_blogger_fans_profile'])
-    expect(Object.keys(first.kcsSectionsAt).sort()).toEqual(['dataSummary', 'fansProfile', 'fansSummary', 'notesRate'])
+    expect(endpoints()).toEqual([
+      'get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_fans_summary', 'get_blogger_notes_rate', 'get_blogger_fans_profile', 'get_blogger_notes_rate',
+    ])
+    expect(Object.keys(first.kcsSectionsAt).sort()).toEqual(['dataSummary', 'fansProfile', 'fansSummary', 'notesRate', 'notesRateAll'])
 
     const second = await run('refresh')
     expect(endpoints()).toEqual(['get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_notes_rate'])
-    expect(second.kcsCarried).toEqual(['fansSummary', 'fansProfile'])
+    expect(second.kcsCarried).toEqual(['fansSummary', 'fansProfile', 'notesRateAll'])
     expect(second.kcsSectionsAt.fansSummary).toBe(first.kcsSectionsAt.fansSummary)
     const { rows } = await context.db.query("SELECT metrics FROM creators WHERE creator_key LIKE '%:t1'")
     expect(rows[0].metrics.readFanRatio).toBeCloseTo(0.3, 6)
     expect(rows[0].metrics.audience.femaleRatio).toBe(0.8)
 
-    // Too old (here: any age) → fetched again.
+    // Too old (here: any age) → fetched again; the reference keeps its own clock.
     process.env.PGY_SLOW_REFRESH_DAYS = '0'
     const third = await run('refresh')
     expect(endpoints()).toHaveLength(5)
-    expect(third.kcsCarried).toBeUndefined()
+    expect(third.kcsCarried).toEqual(['notesRateAll'])
+    process.env.PGY_ALL_TRAFFIC_REFERENCE_DAYS = 'off'
+    const noReference = await run('refresh')
+    expect(endpoints()).toHaveLength(5)
+    expect(noReference.kcsCarried).toBeUndefined()
+    delete process.env.PGY_ALL_TRAFFIC_REFERENCE_DAYS
 
     // A person asking for a refresh gets everything fresh.
     delete process.env.PGY_SLOW_REFRESH_DAYS
     await run('manual')
-    expect(endpoints()).toHaveLength(5)
+    expect(endpoints()).toHaveLength(6)
 
     // A section that came back empty last time is asked for again, not carried.
     profileEmpty = true
@@ -600,14 +617,14 @@ describe('refresh tiers (蒲公英)', () => {
     profileEmpty = false
     const fifth = await run('refresh')
     expect(endpoints()).toEqual(['get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_notes_rate', 'get_blogger_fans_profile'])
-    expect(fifth.kcsCarried).toEqual(['fansSummary'])
+    expect(fifth.kcsCarried).toEqual(['fansSummary', 'notesRateAll'])
   })
 
   it('a search page is one call unless PGY_ENRICH=1', async () => {
     const context = await setup()
     const sent = stubVendor((path) => path.endsWith('get_blogger_list')
       ? tikhubOk({ kols: [DETAIL('s1'), DETAIL('s2')], total: 5000 })
-      : tikhubOk({ noteNumber: 3 }))
+      : section(path))
     const token = (await context.loginJson('ops@kcs.local')).token
     const search = async () => {
       const response = await context.app.request('/api/ingest/fetch', {
@@ -622,8 +639,8 @@ describe('refresh tiers (蒲公英)', () => {
     expect(await search()).toMatchObject({ status: 'ok', writtenCount: 2, quotaUsed: 1 })
     expect(sent).toHaveLength(1)
     process.env.PGY_ENRICH = '1'
-    expect(await search()).toMatchObject({ quotaUsed: 9 })
-    expect(sent).toHaveLength(9)
+    expect(await search()).toMatchObject({ quotaUsed: 11 })
+    expect(sent).toHaveLength(11)
   })
 })
 
@@ -646,11 +663,17 @@ describe('JustOneAPI body code (HTTP 200 either way)', () => {
   it('sends the string enums for business / noteType / dateType / advertiseSwitch', async () => {
     const context = await justOne()
     await context.db.query("UPDATE ingest_sources SET traffic_scope = 'organic', business_scope = 'coop' WHERE id = 'pugongying'")
-    const sent = stubJustOne((path) => (path.includes('user/blogger') ? { code: 0, data: DETAIL('j1') } : { code: 0, data: { noteNumber: 3 } }))
+    const sent = stubJustOne((path) => {
+      if (path.includes('user/blogger')) return { code: 0, data: DETAIL('j1') }
+      return { code: 0, data: path.endsWith('dataSummary/v1') ? { noteNumber: 3, estimatePictureEngageCost: 120 } : { noteNumber: 3 } }
+    })
     const job = await refreshJob(context, ['j1'])
-    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', quotaUsed: 5 })
-    const notes = Object.fromEntries(sent.find((c) => c.path.endsWith('notesRate/v1'))!.params)
-    expect(notes).toMatchObject({ userId: 'j1', business: 'COOPERATE_NOTE', noteType: 'PHOTO_TEXT_AND_VIDEO', dateType: 'DAY_30', advertiseSwitch: 'ORGANIC_ONLY' })
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', quotaUsed: 6 })
+    const notes = sent.filter((c) => c.path.endsWith('notesRate/v1')).map((c) => Object.fromEntries(c.params))
+    expect(notes).toMatchObject([
+      { userId: 'j1', business: 'DAILY_NOTE', noteType: 'PHOTO_TEXT_AND_VIDEO', dateType: 'DAY_30', advertiseSwitch: 'ORGANIC_ONLY' },
+      { userId: 'j1', business: 'DAILY_NOTE', advertiseSwitch: 'ALL' },
+    ])
     expect(sent.find((c) => c.path.endsWith('dataSummary/v1'))!.params.get('business')).toBe('COOPERATE_NOTE')
   })
 

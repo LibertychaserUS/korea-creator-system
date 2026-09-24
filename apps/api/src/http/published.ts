@@ -215,7 +215,12 @@ function targetFor(targets: Map<string, number>, source: string | null): number 
 }
 
 function memberFromRow(row: Record<string, any>, now: Date): CohortMember {
-  const metrics: Record<string, unknown> = { platformRanks: row.platform_ranks ?? null }
+  // `basis` / `derived` say which 口径 each value is on: ranks never mix them.
+  const metrics: Record<string, unknown> = {
+    platformRanks: row.platform_ranks ?? null,
+    basis: row.basis && typeof row.basis === 'object' ? row.basis : {},
+    derived: Array.isArray(row.derived) ? row.derived : [],
+  }
   for (const key of METRIC_KEYS) metrics[key] = num(row[metricColumn(key)])
   return {
     id: String(row.creator_id),
@@ -225,7 +230,8 @@ function memberFromRow(row: Record<string, any>, now: Date): CohortMember {
   }
 }
 
-const MEMBER_COLUMNS = `creator_id, source, fetched_at, metrics->'platformRanks' AS platform_ranks, ${METRIC_COLUMNS.join(', ')}`
+const MEMBER_COLUMNS = `creator_id, source, fetched_at, metrics->'platformRanks' AS platform_ranks,
+  metrics->'basis' AS basis, metrics->'derived' AS derived, ${METRIC_COLUMNS.join(', ')}`
 
 async function groupMembers(q: Queryable, groupKey: string, now: Date, extra = '') {
   const { rows } = await q.query(

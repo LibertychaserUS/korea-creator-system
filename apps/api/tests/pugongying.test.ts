@@ -227,7 +227,7 @@ describe('蒲公英 gateways', () => {
     })
   })
 
-  it('tikhub: externalIds refresh = detail + 4 dataV3 calls merged into one payload', async () => {
+  it('tikhub: externalIds refresh = detail + dataV3 calls merged into one payload (an empty 合作 summary is asked again on 日常)', async () => {
     process.env.PGY_GATEWAY = 'tikhub'
     const detail = record(1).payload
     stubFetch((url) => {
@@ -238,11 +238,13 @@ describe('蒲公英 gateways', () => {
     })
     const billing = recordingMeter()
     const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 90, externalIds: ['pgy_002'] }, { meter: billing.meter })
-    expect(calls).toHaveLength(5)
+    // detail, 数据概览 合作 (empty) + 日常, 粉丝, 笔记表现 自然流量, 粉丝画像, 笔记表现 含投放.
+    expect(calls).toHaveLength(7)
     // Each one went through the meter before it was sent, and each 200 is billed (empty ones too).
-    expect(billing.acquired).toHaveLength(5)
-    expect(billing.settled.map((s) => s.outcome)).toEqual(['billed', 'billed', 'billed', 'billed', 'billed'])
+    expect(billing.acquired).toHaveLength(7)
+    expect(billing.settled.map((s) => s.outcome)).toEqual(Array(7).fill('billed'))
     expect(billing.settled.filter((s) => s.empty).map((s) => s.endpoint)).toEqual([
+      'tikhub:/api/v1/xiaohongshu/pgy/get_blogger_data_summary',
       'tikhub:/api/v1/xiaohongshu/pgy/get_blogger_data_summary',
       'tikhub:/api/v1/xiaohongshu/pgy/get_blogger_fans_profile',
     ])
@@ -252,6 +254,8 @@ describe('蒲公英 gateways', () => {
     const raw = page.records[0]!
     expect(raw.payload.kcsWindow).toBe(90)
     expect(raw.payload.kcsDateType).toBe(2)
+    expect(raw.payload.kcsScope).toEqual({ traffic: 'organic', business: 'daily' })
+    expect(raw.payload.kcsCostFallback).toMatchObject({ requested: 'coop', reason: 'noCoopData' })
     const result = pugongyingAdapter.normalize(raw)
     expect(result.ok && result.creator.metrics.window).toBe(90)
     expect(result.ok && result.creator.metrics.readFanRatio).toBeCloseTo(0.29, 3)
@@ -283,40 +287,84 @@ describe('蒲公英 gateways', () => {
 
   it('scope: business / advertise_switch follow the source scope and are recorded on the payload and in basis', async () => {
     const detail = record(1).payload
-    const refresh = async (gateway: string, scope?: { traffic: 'all' | 'organic'; business: 'daily' | 'coop' }) => {
+    const refresh = async (gateway: string, scope?: { traffic: 'all' | 'organic'; business: 'daily' | 'coop' }, coopCost = true) => {
       calls = []
       process.env.PGY_GATEWAY = gateway
-      stubFetch((url) => (/detail|user\/blogger/.test(url)
-        ? { data: { data: detail, ...detail } }
-        : { data: { data: { noteNumber: 10, readMedian: 900 } }, code: 0 }))
+      const paramsOf = (call: { url: string; init: RequestInit }) =>
+        call.init.body ? JSON.parse(String(call.init.body)) : Object.fromEntries(new URL(call.url).searchParams)
+      const answer = (data: unknown) => (gateway === 'tikhub' ? { code: 200, data: { code: 0, success: true, data } } : { code: 0, success: true, data })
+      stubFetch((url, init) => {
+        if (/detail|user\/blogger/.test(url)) return answer(detail)
+        const asked = paramsOf({ url, init })
+        if (/notes_?[rR]ate/.test(url)) {
+          // 含投放 answers carry more reach than 自然流量 ones.
+          const all = String(asked.advertise_switch ?? asked.advertiseSwitch) === '1'
+          return answer({ noteNumber: 10, readMedian: all ? 1500 : 900, interactionRate: all ? '5.0' : '4.0' })
+        }
+        const coop = String(asked.business) === '1'
+        return answer(coop && !coopCost ? { noteNumber: 10 } : { noteNumber: 10, estimatePictureEngageCost: coop ? 150 : 90 })
+      })
       const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, externalIds: ['pgy_002'] }, scope ? { scope } : undefined)
-      const params = (pattern: RegExp) => {
-        const call = calls.find((c) => pattern.test(c.url))!
-        if (call.init.body) return JSON.parse(String(call.init.body))
-        return Object.fromEntries(new URL(call.url).searchParams)
-      }
+      const all = (pattern: RegExp) => calls.filter((c) => pattern.test(c.url)).map(paramsOf)
       const result = pugongyingAdapter.normalize(page.records[0]!)
       if (!result.ok) throw new Error(result.errors.join())
-      return { notes: params(/notes_?[rR]ate/), summary: params(/data_?[sS]ummary/), stored: page.records[0]!.payload.kcsScope, basis: result.creator.metrics.basis }
+      return {
+        notes: all(/notes_?[rR]ate/),
+        summaries: all(/data_?[sS]ummary/),
+        payload: page.records[0]!.payload,
+        basis: result.creator.metrics.basis,
+        metrics: result.creator.metrics,
+      }
     }
+    // Default: cost on 合作笔记, reach on 自然流量 (read on 日常笔记), plus the 含投放 reference.
     const byDefault = await refresh('tikhub')
-    expect(byDefault.notes).toMatchObject({ business: 0, advertise_switch: 1 })
-    expect(byDefault.summary).toMatchObject({ business: 0 })
-    expect(byDefault.stored).toEqual({ traffic: 'all', business: 'daily' })
-    expect(byDefault.basis).toMatchObject({ trafficScope: 'all', businessScope: 'daily' })
+    expect(byDefault.notes).toMatchObject([{ business: 0, advertise_switch: 0 }, { business: 0, advertise_switch: 1 }])
+    expect(byDefault.summaries).toMatchObject([{ business: 1 }])
+    expect(byDefault.payload.kcsScope).toEqual({ traffic: 'organic', business: 'coop' })
+    expect(byDefault.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'coop' })
+    expect(byDefault.basis.costFallback).toBeUndefined()
+    expect(byDefault.metrics.cpe).toBe(150)
+    expect(byDefault.metrics.readMedian).toBe(900)
+    expect(byDefault.metrics.allTraffic).toMatchObject({ readMedian: 1500, engagementRate: 0.05 })
 
-    const organicCoop = await refresh('tikhub', { traffic: 'organic', business: 'coop' })
-    expect(organicCoop.notes).toMatchObject({ business: 1, advertise_switch: 0 })
-    expect(organicCoop.summary).toMatchObject({ business: 1 })
-    expect(organicCoop.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'coop' })
+    // No 合作 cost → asked again on 日常 and recorded as such.
+    const noCoop = await refresh('tikhub', undefined, false)
+    expect(noCoop.summaries).toMatchObject([{ business: 1 }, { business: 0 }])
+    expect(noCoop.payload.kcsScope).toEqual({ traffic: 'organic', business: 'daily' })
+    expect(noCoop.payload.dataSummaryCoop).toEqual({ noteNumber: 10 })
+    expect(noCoop.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'daily', costFallback: 'noCoopData' })
+    // On 日常 the list / 资料 estimate comes first, as before.
+    expect(noCoop.metrics.cpe).toBe(Number(detail.estimatePictureEngageCost))
+
+    // All traffic on 日常: one notes-rate call, no reference.
+    const allDaily = await refresh('tikhub', { traffic: 'all', business: 'daily' })
+    expect(allDaily.notes).toMatchObject([{ business: 0, advertise_switch: 1 }])
+    expect(allDaily.summaries).toMatchObject([{ business: 0 }])
+    expect(allDaily.basis).toMatchObject({ trafficScope: 'all', businessScope: 'daily' })
+    expect(allDaily.metrics.allTraffic).toBeNull()
 
     const official = await refresh('official', { traffic: 'organic', business: 'coop' })
-    expect(official.notes).toMatchObject({ business: '1', advertiseSwitch: '0' })
-    expect(official.summary).toMatchObject({ business: '1' })
+    expect(official.notes[0]).toMatchObject({ business: '0', advertiseSwitch: '0' })
+    expect(official.summaries[0]).toMatchObject({ business: '1' })
 
     // A record fetched before scopes existed (or from a fixture) says nothing rather than guessing.
     const bare = normalizePugongying(record(0))
     expect(bare.ok && bare.creator.metrics.basis.trafficScope).toBeUndefined()
+  })
+
+  it('a creator known to have no 合作 cost skips the 合作 call until the check is a month old', async () => {
+    process.env.PGY_GATEWAY = 'tikhub'
+    delete process.env.PGY_SLOW_REFRESH_DAYS
+    const detail = record(1).payload
+    stubFetch((url) => (url.endsWith('get_blogger_detail') ? { data: { data: detail } } : { data: { data: { noteNumber: 4 } } }))
+    const first = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, externalIds: ['pgy_002'] })
+    const previous = { payload: first.records[0]!.payload, fetchedAt: first.records[0]!.fetchedAt }
+    const summaries = () => calls.filter((c) => c.url.endsWith('get_blogger_data_summary')).map((c) => JSON.parse(String(c.init.body)).business)
+    expect(summaries()).toEqual([1, 0])
+    calls = []
+    const again = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, externalIds: ['pgy_002'] }, { previous: async () => previous })
+    expect(summaries()).toEqual([0])
+    expect(again.records[0]!.payload.kcsCostFallback).toMatchObject({ checkedAt: (previous.payload.kcsCostFallback as { checkedAt: string }).checkedAt })
   })
 
   it('justoneapi: GET with token query and one-layer data', async () => {

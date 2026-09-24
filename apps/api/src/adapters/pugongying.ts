@@ -10,16 +10,23 @@
  *   粉丝概览 GET  /api/solar/kol/dataV3/fansSummary?userId
  *   笔记表现 GET  /api/solar/kol/dataV3/notesRate?userId&business=0|1&noteType=3&dateType=…&advertiseSwitch=1|0
  *
- * `business` / `advertiseSwitch` follow the source's scope (日常 / 合作笔记,
- * 全部 / 仅自然流量; `SourceScope`, default 全部流量 · 日常笔记).
  *   粉丝画像 GET  /api/solar/kol/data/{userId}/fans_profile
+ *
+ * `SourceScope` (default 仅自然流量 · 合作笔记, 待实测): 数据概览 carries the cost
+ * estimates and is asked with `business` = the cost scope; when a creator has
+ * no 合作笔记 data it is asked again with 日常笔记 (one more call) and the record
+ * says so. 笔记表现 carries reach and is asked on 日常笔记 with `advertiseSwitch`
+ * = the traffic scope. With organic traffic, 笔记表现 is also asked with
+ * 全部流量 about once a month as a reference (`notesRateAll`).
  *
  * RawRecord.payload is the kol item (or the 资料 object) with the four data
  * responses merged under `dataSummary` / `fansSummary` / `notesRate` /
- * `fansProfile` when enrichment ran. Enrichment costs 4 extra billed calls per
- * creator on paid gateways, so it is on for `externalIds` refreshes and opt-in
- * (`PGY_ENRICH=1`) for searches: a search page is 1 call by default. Scheduled
- * refreshes carry the two slow sections over for a month (3 calls a round).
+ * `fansProfile` (+ `notesRateAll`, `dataSummaryCoop`) when enrichment ran.
+ * Enrichment costs 5 extra billed calls per creator on paid gateways (6 when
+ * the cost side falls back to 日常笔记), so it is on for `externalIds` refreshes
+ * and opt-in (`PGY_ENRICH=1`) for searches: a search page is 1 call by default.
+ * Scheduled refreshes carry the three slow sections over for a month (3 calls
+ * a round).
  *
  * Gateway is chosen by `PGY_GATEWAY` (official | tikhub | justoneapi); every
  * gateway answers with the same `data` object so normalize() is shared.
@@ -48,7 +55,11 @@ import {
   type PlatformRankKey,
   type RatioUnit,
   type RawRecord,
+  REACH_BUSINESS_SCOPE,
   SOURCE_SCOPE_DEFAULTS,
+  type AllTrafficReference,
+  type BusinessScope,
+  type TrafficScope,
   type SourceAdapter,
   type SourceScope,
   type SourceQuery,
@@ -145,26 +156,21 @@ type Reply = { data: Json | null; empty: boolean; requestId: string | null }
 type Gateway = {
   list(query: SourceQuery, pageNum: number): Promise<Reply>
   detail(userId: string): Promise<Reply>
-  dataSummary(userId: string, scope: SourceScope): Promise<Reply>
+  dataSummary(userId: string, business: BusinessScope): Promise<Reply>
   fansSummary(userId: string): Promise<Reply>
-  notesRate(userId: string, dateType: DateType, scope: SourceScope): Promise<Reply>
+  notesRate(userId: string, dateType: DateType, traffic: TrafficScope): Promise<Reply>
   fansProfile(userId: string): Promise<Reply>
 }
 
 type DateType = number | string
 
 /** solar `business` (0 = 日常笔记, 1 = 合作笔记) and `advertiseSwitch` (1 = 全部流量, 0 = 仅自然流量). */
-function solarScope(scope: SourceScope): { business: number; advertiseSwitch: number } {
-  return { business: scope.business === 'coop' ? 1 : 0, advertiseSwitch: scope.traffic === 'organic' ? 0 : 1 }
-}
+const solarBusiness = (business: BusinessScope) => (business === 'coop' ? 1 : 0)
+const solarAdvertise = (traffic: TrafficScope) => (traffic === 'organic' ? 0 : 1)
 
 /** JustOneAPI spells the same switches as string enums (待实测). */
-function justOneScope(scope: SourceScope): { business: string; advertiseSwitch: string } {
-  return {
-    business: scope.business === 'coop' ? 'COOPERATE_NOTE' : 'DAILY_NOTE',
-    advertiseSwitch: scope.traffic === 'organic' ? 'ORGANIC_ONLY' : 'ALL',
-  }
-}
+const justOneBusiness = (business: BusinessScope) => (business === 'coop' ? 'COOPERATE_NOTE' : 'DAILY_NOTE')
+const justOneAdvertise = (traffic: TrafficScope) => (traffic === 'organic' ? 'ORGANIC_ONLY' : 'ALL')
 
 /**
  * notesRate `dateType` per window, as the gateway docs give it: 1 = 30 天,
@@ -257,12 +263,16 @@ function tikhub(token: string, base: string, context?: FetchContext): Gateway {
       return call('get_blogger_list', body)
     },
     detail: (userId) => call('get_blogger_detail', { user_id: userId }),
-    dataSummary: (userId, scope) => call('get_blogger_data_summary', { user_id: userId, business: solarScope(scope).business }),
+    dataSummary: (userId, business) => call('get_blogger_data_summary', { user_id: userId, business: solarBusiness(business) }),
     fansSummary: (userId) => call('get_blogger_fans_summary', { user_id: userId }),
-    notesRate: (userId, dateType, scope) => {
-      const { business, advertiseSwitch } = solarScope(scope)
-      return call('get_blogger_notes_rate', { user_id: userId, business, note_type: 3, date_type: dateType, advertise_switch: advertiseSwitch })
-    },
+    notesRate: (userId, dateType, traffic) =>
+      call('get_blogger_notes_rate', {
+        user_id: userId,
+        business: solarBusiness(REACH_BUSINESS_SCOPE),
+        note_type: 3,
+        date_type: dateType,
+        advertise_switch: solarAdvertise(traffic),
+      }),
     fansProfile: (userId) => call('get_blogger_fans_profile', { user_id: userId }),
   }
 }
@@ -303,10 +313,16 @@ function justoneapi(token: string, base: string, context?: FetchContext): Gatewa
         excludeLowActive: wantsLowActiveExcluded(query) || undefined,
       }),
     detail: (userId) => call('cooperator/user/blogger/userId/v1', { userId }),
-    dataSummary: (userId, scope) => call('kol/dataV3/dataSummary/v1', { userId, business: justOneScope(scope).business }),
+    dataSummary: (userId, business) => call('kol/dataV3/dataSummary/v1', { userId, business: justOneBusiness(business) }),
     fansSummary: (userId) => call('kol/dataV3/fansSummary/v1', { userId }),
-    notesRate: (userId, dateType, scope) =>
-      call('kol/dataV3/notesRate/v1', { userId, noteType: 'PHOTO_TEXT_AND_VIDEO', dateType, ...justOneScope(scope) }),
+    notesRate: (userId, dateType, traffic) =>
+      call('kol/dataV3/notesRate/v1', {
+        userId,
+        noteType: 'PHOTO_TEXT_AND_VIDEO',
+        dateType,
+        business: justOneBusiness(REACH_BUSINESS_SCOPE),
+        advertiseSwitch: justOneAdvertise(traffic),
+      }),
     fansProfile: (userId) => call('kol/data/userId/fans_profile/v1', { userId }),
   }
 }
@@ -358,10 +374,16 @@ function official(token: string, base: string, context?: FetchContext): Gateway 
       return send(path, `${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
     },
     detail: (userId) => get(`/api/solar/cooperator/user/blogger/${encodeURIComponent(userId)}`),
-    dataSummary: (userId, scope) => get('/api/solar/kol/dataV3/dataSummary', { userId, business: solarScope(scope).business }),
+    dataSummary: (userId, business) => get('/api/solar/kol/dataV3/dataSummary', { userId, business: solarBusiness(business) }),
     fansSummary: (userId) => get('/api/solar/kol/dataV3/fansSummary', { userId }),
-    notesRate: (userId, dateType, scope) =>
-      get('/api/solar/kol/dataV3/notesRate', { userId, noteType: 3, dateType, ...solarScope(scope) }),
+    notesRate: (userId, dateType, traffic) =>
+      get('/api/solar/kol/dataV3/notesRate', {
+        userId,
+        noteType: 3,
+        dateType,
+        business: solarBusiness(REACH_BUSINESS_SCOPE),
+        advertiseSwitch: solarAdvertise(traffic),
+      }),
     fansProfile: (userId) => get(`/api/solar/kol/data/${encodeURIComponent(userId)}/fans_profile`),
   }
 }
@@ -382,23 +404,46 @@ export function resolveGateway(context?: FetchContext): ResolvedGateway | null {
 // Fetch
 // ---------------------------------------------------------------------------
 
-const SECTIONS = ['dataSummary', 'fansSummary', 'notesRate', 'fansProfile'] as const
+const SECTIONS = ['dataSummary', 'fansSummary', 'notesRate', 'fansProfile', 'notesRateAll'] as const
 type Section = (typeof SECTIONS)[number]
 
 /**
  * Fan facts (粉丝概览: fan quality shares; 粉丝画像: demographics) move slowly.
  * A scheduled refresh reuses them while they are younger than
  * `PGY_SLOW_REFRESH_DAYS` (default 30), so a round costs 3 calls (资料 +
- * 数据概览 + 笔记表现) and the other 2 once a month.
+ * 数据概览 + 笔记表现) and the slow ones once a month. The 全部流量 reference
+ * (`notesRateAll`) follows `PGY_ALL_TRAFFIC_REFERENCE_DAYS` (default 30,
+ * `off` = never fetched).
  */
-const SLOW_SECTIONS: readonly Section[] = ['fansSummary', 'fansProfile']
+const SLOW_SECTIONS: readonly Section[] = ['fansSummary', 'fansProfile', 'notesRateAll']
+
+function days(value: string | undefined, fallback: number): number {
+  const n = Number(value)
+  return value != null && value !== '' && Number.isFinite(n) && n >= 0 ? n : fallback
+}
 
 export function slowRefreshDays(source: NodeJS.ProcessEnv = process.env): number {
-  const n = Number(source.PGY_SLOW_REFRESH_DAYS)
-  return source.PGY_SLOW_REFRESH_DAYS != null && source.PGY_SLOW_REFRESH_DAYS !== '' && Number.isFinite(n) && n >= 0 ? n : 30
+  return days(source.PGY_SLOW_REFRESH_DAYS, 30)
+}
+
+/** Days between 全部流量 reference fetches; `null` = off (`0`, `off`, `none`). */
+export function allTrafficReferenceDays(source: NodeJS.ProcessEnv = process.env): number | null {
+  const raw = source.PGY_ALL_TRAFFIC_REFERENCE_DAYS?.trim()
+  if (raw && /^(off|none|false)$/i.test(raw)) return null
+  const n = days(raw, 30)
+  return n > 0 ? n : null
+}
+
+function keepDays(section: Section): number {
+  return section === 'notesRateAll' ? allTrafficReferenceDays() ?? 0 : slowRefreshDays()
 }
 
 type Previous = { payload: Json; fetchedAt: string } | null
+
+function fresh(at: string, now: number, maxDays: number): boolean {
+  const age = now - Date.parse(at)
+  return Number.isFinite(age) && age >= 0 && age < maxDays * 86_400_000
+}
 
 /** A slow section from the previous payload that is still fresh enough to keep, with when it was fetched. */
 function carried(previous: Previous, section: Section, now: number): { data: unknown; at: string } | null {
@@ -409,8 +454,25 @@ function carried(previous: Previous, section: Section, now: number): { data: unk
   if (missed.some((list) => Array.isArray(list) && list.includes(section))) return null
   const stamps = previous.payload.kcsSectionsAt as Record<string, unknown> | undefined
   const at = typeof stamps?.[section] === 'string' ? (stamps[section] as string) : previous.fetchedAt
-  const age = now - Date.parse(at)
-  return Number.isFinite(age) && age >= 0 && age < slowRefreshDays() * 86_400_000 ? { data, at } : null
+  return fresh(at, now, keepDays(section)) ? { data, at } : null
+}
+
+/** 数据概览 cost estimates; none of them positive = the platform has nothing on these notes. */
+const COST_FIELDS = ['estimatePictureEngageCost', 'estimateVideoEngageCost', 'picReadCost', 'pictureReadCost', 'estimatePictureCpm']
+
+export function hasCostData(data: Json | null): boolean {
+  return Boolean(data && COST_FIELDS.some((field) => (toNumber(data[field]) ?? 0) > 0))
+}
+
+/**
+ * A previous 合作 → 日常 fallback checked recently enough to trust: the 合作 call
+ * is skipped (it would come back empty and be billed) until the check is as old
+ * as `PGY_SLOW_REFRESH_DAYS`.
+ */
+function knownWithoutCoop(previous: Previous, now: number): string | null {
+  const fallback = previous?.payload.kcsCostFallback as Json | undefined
+  const at = typeof fallback?.checkedAt === 'string' ? fallback.checkedAt : null
+  return at && fresh(at, now, slowRefreshDays()) ? at : null
 }
 
 function note(kind: VendorNote['kind'], endpoint: string, externalId: string | null, reply: Partial<Reply> & { code?: string | null; message?: string | null }): VendorNote {
@@ -418,7 +480,7 @@ function note(kind: VendorNote['kind'], endpoint: string, externalId: string | n
 }
 
 /**
- * The four data sections for one creator, one call each. An empty section is
+ * The data sections for one creator, one call each. An empty section is
  * kept as `null` and listed in `kcsEmpty`; a section the vendor refused inside
  * a 200 (billed, would fail again) is listed in `kcsIssues` — both surface as
  * warnings on the creator and as notes on the job. Anything else (timeout,
@@ -426,6 +488,12 @@ function note(kind: VendorNote['kind'], endpoint: string, externalId: string | n
  * whole on the next run rather than stored with a hole nobody sees.
  * `kcsSectionsAt` says when each section was fetched; `kcsCarried` lists the
  * ones taken over from `previous` rather than fetched this time.
+ *
+ * 数据概览 on 合作笔记 that comes back empty, refused or without a single cost
+ * estimate is asked again on 日常笔记; the 合作 answer is kept verbatim as
+ * `dataSummaryCoop` and `kcsCostFallback` records when that was checked.
+ * `kcsScope` is what the stored numbers describe: `traffic` for 笔记表现,
+ * `business` for the 数据概览 actually used.
  */
 async function enrich(
   resolved: ResolvedGateway,
@@ -437,21 +505,44 @@ async function enrich(
 ): Promise<Json> {
   const { gateway, scope } = resolved
   const dateType = dateTypeFor(resolved.name, window)
-  const request: Record<Section, () => Promise<Reply>> = {
-    dataSummary: () => gateway.dataSummary(userId, scope),
+  const now = Date.now()
+  let costScope: BusinessScope = scope.business
+  let fallback: Json | null = null
+  let coopReply: Reply | null = null
+  const costSummary = async (): Promise<Reply> => {
+    if (scope.business !== 'coop') return gateway.dataSummary(userId, scope.business)
+    const checkedAt = knownWithoutCoop(previous, now)
+    if (!checkedAt) {
+      try {
+        coopReply = await gateway.dataSummary(userId, 'coop')
+        if (!coopReply.empty && hasCostData(coopReply.data)) return coopReply
+      } catch (error) {
+        if (!isVendorInnerError(error)) throw error
+        notes.push(note('innerError', 'dataSummary', userId, { code: error.code, message: error.detail, requestId: error.requestId }))
+      }
+    }
+    costScope = 'daily'
+    fallback = { requested: 'coop', reason: 'noCoopData', checkedAt: checkedAt ?? new Date(now).toISOString() }
+    return gateway.dataSummary(userId, 'daily')
+  }
+  const reference = scope.traffic === 'organic' && allTrafficReferenceDays() != null
+  const request: Record<Section, (() => Promise<Reply>) | null> = {
+    dataSummary: costSummary,
     fansSummary: () => gateway.fansSummary(userId),
-    notesRate: () => gateway.notesRate(userId, dateType, scope),
+    notesRate: () => gateway.notesRate(userId, dateType, scope.traffic),
     fansProfile: () => gateway.fansProfile(userId),
+    notesRateAll: reference ? () => gateway.notesRate(userId, dateType, 'all') : null,
   }
   // notesRate carries no dateType back, so remember what we asked for; if the
   // table above turns out wrong, stored payloads can still be re-read correctly.
-  const out: Json = { ...base, kcsWindow: window, kcsDateType: dateType, kcsScope: { ...scope } }
+  const out: Json = { ...base, kcsWindow: window, kcsDateType: dateType }
   const empty: Section[] = []
   const issues: Json[] = []
   const sectionsAt: Partial<Record<Section, string>> = {}
   const carriedOver: Section[] = []
-  const now = Date.now()
   for (const section of SECTIONS) {
+    const send = request[section]
+    if (!send) continue
     const kept = carried(previous, section, now)
     if (kept) {
       out[section] = kept.data
@@ -460,7 +551,7 @@ async function enrich(
       continue
     }
     try {
-      const reply = await request[section]()
+      const reply = await send()
       sectionsAt[section] = new Date().toISOString()
       out[section] = reply.data
       if (reply.empty) {
@@ -474,6 +565,9 @@ async function enrich(
       notes.push(note('innerError', section, userId, { code: error.code, message: error.detail, requestId: error.requestId }))
     }
   }
+  out.kcsScope = { traffic: scope.traffic, business: costScope }
+  if (fallback) out.kcsCostFallback = fallback
+  if (fallback && coopReply) out.dataSummaryCoop = (coopReply as Reply).data
   if (empty.length) out.kcsEmpty = empty
   if (issues.length) out.kcsIssues = issues
   out.kcsSectionsAt = sectionsAt
@@ -649,11 +743,11 @@ type Recent = (paths: readonly string[]) => readonly string[]
  * no documented 健康等级 field in the solar responses we relay, so
  * `healthLevel` stays null until one is confirmed (待实测); 低活跃 is its own flag.
  */
-function signalsOf(p: Json, warnings: string[], recent: Recent): SourceSignals {
+function signalsOf(p: Json, warnings: string[], recent: Recent, reach: Recent): SourceSignals {
   const signals = emptySignals()
   signals.lowActive = flag(p.lowActive)
   signals.recentlyActive = flag(pickPath(p, 'dataSummary.isActive'))
-  signals.completionRate = ratioMetric('completionRate', p, ['notesRate.videoFullViewRate', ...recent(['videoFinishRate'])], 'percent', warnings)
+  signals.completionRate = ratioMetric('completionRate', p, ['notesRate.videoFullViewRate', ...reach(['videoFinishRate'])], 'percent', warnings)
   signals.read3sRate = ratioMetric('read3sRate', p, ['notesRate.picture3sViewRate'], 'percent', warnings)
   // All-time count (the fixture's 241 against coopNoteNum30d = 6); 待实测 on a live account.
   signals.coopNoteCountTotal = positiveCount(p, ['businessNoteCount'])
@@ -661,7 +755,7 @@ function signalsOf(p: Json, warnings: string[], recent: Recent): SourceSignals {
   signals.storeVisitUvMedian = positiveCount(p, ['notesRate.mCpuvNum', 'dataSummary.mCpuvNum', 'mCpuvNum30d', 'mCpuvNum'])
   signals.storeVisitUnitPrice = positive(p, ['notesRate.estimateCpuv', 'dataSummary.estimateCpuv30d', 'estimateCpuv30d', 'estimateCpuv'])
   for (const key of PLATFORM_RANK_KEYS) {
-    const value = pick(p, RANK_PATHS[key].filter((path) => !RANK_PATHS_30D.has(path) || recent([path]).length))
+    const value = pick(p, RANK_PATHS[key].filter((path) => !RANK_PATHS_30D.has(path) || reach([path]).length))
     if (value === undefined) continue
     const parsed = parseRatio(value, 'percent', { share: true })
     if (parsed.issue) warnings.push(`platformRanks.${key}.${parsed.issue}`)
@@ -707,6 +801,21 @@ function viralCountOf(payload: Json): { value: number; basis: string } | null {
   const parsed = parseRatio(share, 'percent', { share: true })
   if (parsed.value == null) return null
   return { value: Math.round(parsed.value * notes), basis: 'notesRate.thousandLikePercent*noteNumber' }
+}
+
+/** 全部流量 reach from the monthly reference answer (`notesRateAll`), same fields as 笔记表现. */
+function allTrafficOf(p: Json, warnings: string[]): AllTrafficReference | null {
+  const answer = p.notesRateAll as Json | null | undefined
+  if (!answer || typeof answer !== 'object' || !Object.keys(answer).length) return null
+  const stamps = p.kcsSectionsAt as Record<string, unknown> | undefined
+  const out: AllTrafficReference = {
+    impressionMedian: positiveCount(answer, ['impMedian']),
+    readMedian: positiveCount(answer, ['readMedian']),
+    interactionMedian: positiveCount(answer, ['interactionMedian']),
+    engagementRate: ratioMetric('engagementRate', answer, ['interactionRate'], 'percent', warnings),
+    fetchedAt: typeof stamps?.notesRateAll === 'string' ? stamps.notesRateAll : null,
+  }
+  return out.impressionMedian == null && out.readMedian == null && out.interactionMedian == null && out.engagementRate == null ? null : out
 }
 
 function scopeOf(value: unknown): SourceScope | null {
@@ -773,6 +882,12 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
 
   const window = toNumber(p.kcsWindow) === 90 ? 90 : 30
   const recent: Recent = (paths) => (window === 30 ? paths : [])
+  const scope = scopeOf(p.kcsScope)
+  // List fields and 数据概览 do not follow `advertiseSwitch`: on an organic record they
+  // would put 全部流量 numbers under an organic label, so reach comes from 笔记表现 only.
+  const reach: Recent = (paths) => (scope?.traffic === 'organic' ? [] : recent(paths))
+  // On 合作笔记 only 数据概览 was asked on those notes; list / 资料 estimates are 日常.
+  const cost: Recent = (paths) => recent(scope?.business === 'coop' ? paths.filter((path) => path.startsWith('dataSummary.')) : paths)
   const m: CreatorMetrics = emptyMetrics(window)
   const issues: string[] = []
   const percent = (key: NumericMetricKey, paths: readonly string[]) => ratioMetric(key, p, paths, 'percent', issues)
@@ -785,18 +900,18 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.activeFanRatio = percent('activeFanRatio', ['fansSummary.activeFansRate'])
   m.engagedFanRatio = percent('engagedFanRatio', ['fansSummary.engageFansRate'])
 
-  m.impressionMedian = positiveCount(p, ['notesRate.impMedian', ...recent(['dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])])
-  m.readMedian = positiveCount(p, ['notesRate.readMedian', ...recent(['dataSummary.readMedian', 'clickMidNum'])])
-  m.interactionMedian = positiveCount(p, ['notesRate.interactionMedian', ...recent(['dataSummary.interactionMedian', 'interMidNum', 'mEngagementNum'])])
+  m.impressionMedian = positiveCount(p, ['notesRate.impMedian', ...reach(['dataSummary.mAccumImpNum', 'accumCommonImpMedinNum30d'])])
+  m.readMedian = positiveCount(p, ['notesRate.readMedian', ...reach(['dataSummary.readMedian', 'clickMidNum'])])
+  m.interactionMedian = positiveCount(p, ['notesRate.interactionMedian', ...reach(['dataSummary.interactionMedian', 'interMidNum', 'mEngagementNum'])])
   m.likeMedian = positiveCount(p, ['notesRate.likeMedian'])
   m.collectMedian = positiveCount(p, ['notesRate.collectMedian'])
   m.commentMedian = positiveCount(p, ['notesRate.commentMedian'])
   m.coopReadMedian = positiveCount(p, recent(['readMidCoop30']))
   m.coopInteractionMedian = positiveCount(p, recent(['interMidCoop30']))
   m.engagementRate = percent('engagementRate', ['notesRate.interactionRate'])
-  m.noteCount = positiveCount(p, ['notesRate.noteNumber', ...recent(['dataSummary.noteNumber'])])
+  m.noteCount = positiveCount(p, ['notesRate.noteNumber', ...reach(['dataSummary.noteNumber'])])
   // 千赞笔记比例 is the platform's own "爆文" ratio; the count is read back from the same notesRate answer.
-  m.viralRate = percent('viralRate', ['notesRate.thousandLikePercent', ...recent(['thousandLikePercent30'])])
+  m.viralRate = percent('viralRate', ['notesRate.thousandLikePercent', ...reach(['thousandLikePercent30'])])
   const viral = viralCountOf(p)
   if (viral) {
     m.viralCount = viral.value
@@ -806,16 +921,16 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.priceImage = positive(p, ['picturePrice'])
   m.priceVideo = positive(p, ['videoPrice'])
   // The platform's own unit-cost estimates are 近 30 天; a 90-day row derives them from its own medians.
-  m.cpr = positive(p, recent(['pictureReadCost', 'dataSummary.picReadCost']))
-  m.cpe = positive(p, recent(['estimatePictureEngageCost', 'dataSummary.estimatePictureEngageCost']))
-  m.cpeVideo = positive(p, recent(['estimateVideoEngageCost', 'dataSummary.estimateVideoEngageCost']))
-  m.cpm = positive(p, recent(['estimatePictureCpm', 'dataSummary.estimatePictureCpm']))
+  m.cpr = positive(p, cost(['pictureReadCost', 'dataSummary.picReadCost']))
+  m.cpe = positive(p, cost(['estimatePictureEngageCost', 'dataSummary.estimatePictureEngageCost']))
+  m.cpeVideo = positive(p, cost(['estimateVideoEngageCost', 'dataSummary.estimateVideoEngageCost']))
+  m.cpm = positive(p, cost(['estimatePictureCpm', 'dataSummary.estimatePictureCpm']))
 
   m.trafficSearchRatio = fraction('trafficSearchRatio', ['notesRate.pagePercentVo.readSearchPercent'])
   m.trafficRecommendRatio = fraction('trafficRecommendRatio', ['notesRate.pagePercentVo.readHomefeedPercent'])
   m.trafficFollowRatio = fraction('trafficFollowRatio', ['notesRate.pagePercentVo.readFollowPercent'])
 
-  const signals = signalsOf(p, issues, recent)
+  const signals = signalsOf(p, issues, recent, reach)
   // No confirmed 健康等级 field yet: unknown stays unknown; 低活跃 is its own flag.
   m.health = healthFromLevel(signals.healthLevel)
   m.lowActive = signals.lowActive
@@ -827,11 +942,12 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.contentForm = contentFormOf(p)
   // Recent window only; the all-time count (businessNoteCount) is signals.coopNoteCountTotal.
   m.coopNoteCount = positiveCount(p, ['coopNoteNum30d'])
-  const scope = scopeOf(p.kcsScope)
   if (scope) {
     m.basis.trafficScope = scope.traffic
     m.basis.businessScope = scope.business
   }
+  if ((p.kcsCostFallback as Json | undefined)?.reason === 'noCoopData') m.basis.costFallback = 'noCoopData'
+  m.allTraffic = allTrafficOf(p, issues)
   m.audience = audienceOf(p)
 
   // Sections that came back empty or refused are said out loud, not left as silent blanks.
