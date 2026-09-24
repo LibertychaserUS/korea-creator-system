@@ -44,7 +44,9 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | 变量 | 说明 |
 |---|---|
 | `DATABASE_URL` | `kcs` 库 |
-| `AUTH_BASE_URL` | 任一工作端源站，用于 `GET /api/auth/get-session` 校验会话 |
+| `AUTH_BASE_URL` | 任一工作端源站，用于 `GET /api/auth/get-session` 校验会话（compose 里走内网 `http://select:3000`） |
+| `WEB_ORIGIN` | 四端源站，逗号分隔：CORS 白名单（带凭据），也是「只带 `kcs_session` cookie 的写请求」必须来自的 `Origin`，不在其中 403 `origin_not_allowed`。缺省 `http://localhost:7000`–`7005`，生产不设会记 `cors.default_origins` 警告 |
+| `API_PUBLIC_URL` | 浏览器看到的 API 地址（如 `https://api.example.com`），拼图片地址 `/api/assets/raw/<key>` 与预签名上传地址；缺省 `http://localhost:7100` |
 | `KCS_SEED` | `demo` 时启动写入演示数据（24 个样例博主、4 个项目、6 条样例任务、2 个方案，重启会覆盖同 id 的样例行）；缺省不写。生产不要设。数据源行、内置分类由迁移 `0008` 写入，与此无关 |
 | `KCS_DEV_TOKENS` | `1` 时接受 `Bearer dev:<email>`（仅非生产、仅本地临时 curl；黑盒与 E2E 都走真实登录，默认关） |
 | `SESSION_CACHE_MS` | API 侧会话正缓存，默认 10000；也是退出后旧 token 最长存活时间 |
@@ -52,7 +54,7 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `LOG_REQUESTS` | `0` 关闭请求日志；默认每个请求一行 JSON（`http.request`：method / path / status / ms），健康探针成功不记 |
 | `SHUTDOWN_TIMEOUT_MS` | 收到 SIGTERM / SIGINT 后最多等多久（默认 25000），要小于编排的宽限期（k8s `terminationGracePeriodSeconds: 30`） |
 | `KCS_VERSION` | `/api/health` 报的版本号，缺省读 `apps/api/package.json` |
-| `KCS_CURSOR_SECRET` | 选人池翻页游标的签名密钥，缺省用 `BETTER_AUTH_SECRET`；都没有时每个进程启动随机生成（记 `cursor.ephemeral_secret` 警告），多副本或重启后旧游标 400。**多副本必须配成同一个值** |
+| `KCS_CURSOR_SECRET` | 选人池翻页游标与预签名上传地址的签名密钥，缺省用 `BETTER_AUTH_SECRET`；都没有时每个进程启动随机生成（记 `cursor.ephemeral_secret` 警告），多副本或重启后旧游标 400。**多副本必须配成同一个值** |
 | `KCS_PUBLISHED_FULL_REFRESH` | `1` 时启动全量重建选人池窄表并重估各来源目标人数（5 万人约 24 秒，期间不监听端口）；缺省只补写有变化的行、重排相关的组（约 1 秒内）。改了池行推导逻辑的版本上线时设一次 |
 | `KCS_PUBLISHED_REFRESH_MS` | 后台重排全部组的间隔，默认 21600000（6 小时）；快照超过 60 天要靠它失去排位 |
 | `INGEST_WORKER` | `0` 时该进程不参与抽水，只服务 HTTP（多副本时给额外副本用；抽水本身已由顾问锁保证全局只有一条） |
@@ -81,7 +83,10 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `PGY_TRAFFIC_SCOPE` `PGY_BUSINESS_SCOPE` | 蒲公英取数口径：`all` / `organic`；`daily` / `coop`。优先于 `ingest_sources.traffic_scope` / `business_scope`，默认全部流量 · 日常笔记 |
 | `QIANGUA_TOKEN` `QIANGUA_BASE_URL` `QIANGUA_SEARCH_PATH` `QIANGUA_FIELD_MAP` | 千瓜合同接口；`FIELD_MAP` 是 `{ canonicalKey: ["path", ...] }` JSON |
 | `XINHONG_TOKEN` `XINHONG_BASE_URL` `XINHONG_SEARCH_PATH` `XINHONG_FIELD_MAP` | 新红同上（表单编码 POST，请求头 `Key`） |
-| `S3_*` / MinIO | 头像上传；缺省时 bytes 落库 |
+| `S3_ENDPOINT` `S3_REGION` `S3_BUCKET` `S3_ACCESS_KEY` `S3_SECRET_KEY` | 对象存储（阿里云 OSS 的 S3 兼容接口 / 本机 MinIO），放头像等图片与表格导入原件；`S3_ENDPOINT` + `S3_ACCESS_KEY` 都有才启用，缺省时图片字节落 Postgres。桶必须私有 |
+| `S3_FORCE_PATH_STYLE` | 默认 `true`（MinIO）；OSS 写 `false`（只认虚拟主机风格） |
+| `S3_READ_MODE` | `proxy`（默认）：图片经 API 读出；`redirect`：302 到 5 分钟有效的签名链接 |
+| `S3_PUBLIC_ENDPOINT` | `redirect` 模式签名用的外网 endpoint；API 走 OSS 内网 endpoint 时必填 |
 
 没有任何来源凭证时系统完全可用，只是全部是 `fixture`。
 
@@ -90,12 +95,28 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | 变量 | 说明 |
 |---|---|
 | `DB_DIALECT=pg` `DATABASE_URL` | TinyShip `tinyship` 库 |
-| `BETTER_AUTH_SECRET` `BETTER_AUTH_URL` | better-auth |
+| `BETTER_AUTH_SECRET` `BETTER_AUTH_URL` `APP_BASE_URL` | better-auth；后两个是本端对外地址 |
+| `AUTH_COOKIE_DOMAIN` | 五个主机共同的父域（如 `.example.com`）：开 better-auth 跨子域 cookie，`kcs_session` / `kcs_last_ws` / `kcs_consent` 都写在父域，宣传站登录后交接到各端不用再登。不设时 host-only（本机 localhost 本来就共享） |
+| `NUXT_PUBLIC_COOKIE_DOMAIN` | 与 `AUTH_COOKIE_DOMAIN` 同值（Nuxt 侧写 `kcs_last_ws` / `kcs_consent` 用） |
+| `AUTH_TRUSTED_ORIGINS` | 额外允许调用 `/api/auth/*` 的源站，逗号分隔；本端与四端 `NUXT_PUBLIC_*_URL` 已自动包含 |
 | `NUXT_PUBLIC_API_BASE` | 浏览器访问的 API 地址，默认 `http://localhost:7100` |
 | `NUXT_API_INTERNAL_BASE` | 服务端渲染访问 API 的内网地址（compose 里 `http://api:7100`）；不设就用 `NUXT_PUBLIC_API_BASE` |
 | `NUXT_PUBLIC_SELECT_URL` `NUXT_PUBLIC_OPS_URL` `NUXT_PUBLIC_DEV_URL` `NUXT_PUBLIC_MARKETING_URL` | 四端源站（宣传站按角色交接、工作区切换）。都是运行期变量，换域名不用重建镜像；旧的构建期 `KCS_*_URL` 已不再读取 |
 
-部署样例：`docker-compose.yml`、`deploy/k8s/*.yaml`、`deploy/k8s/secret.example.yaml`。
+### 生产部署（单台 ECS）
+
+上线手册是 `deploy/README.md`；全部变量及【必填】/【选填】在 `deploy/ecs/.env.example`。只在部署层出现的变量：
+
+| 变量 | 说明 |
+|---|---|
+| `KCS_DATABASE_URL` `IDENTITY_DATABASE_URL` | 用 RDS 时的两个连接串（compose 分别传给 API 的 `DATABASE_URL` 与四端的 `DATABASE_URL`）；开 SSL 用 `?sslmode=verify-full&sslrootcert=/etc/kcs/pg-ca.pem` 配 `PG_CA_FILE`，不要用 `sslmode=require` |
+| `MARKETING_HOST` `SELECT_HOST` `OPS_HOST` `DEV_HOST` `API_HOST` | 五个主机名；compose 据此拼出 `WEB_ORIGIN`、`API_PUBLIC_URL`、`NUXT_PUBLIC_*`、`BETTER_AUTH_URL` 与代理配置 |
+| `KCS_ADMIN_EMAIL` `KCS_ADMIN_PASSWORD` `KCS_ADMIN_NAME` | init 在该邮箱不存在时建首个平台管理员（密码 ≥ 12 位、不能是演示密码）；已存在不动 |
+| `INIT_ALLOW_DATA_LOSS` | `1` 时 init 才执行会删列 / 删表的身份库变更（默认拒绝并退出） |
+| `BACKUP_HOUR` `BACKUP_RETENTION_DAYS` `BACKUP_ON_START` `BACKUP_S3_*` | 每日 `pg_dump` 两库的时间、保留天数（本地与 OSS 同）、启动即备份、备份桶；`BACKUP_S3_*` 留空沿用 `S3_*` |
+| `KCS_TAG` `KCS_REGISTRY` | 镜像版本与来源；升级 / 回滚就是改 `KCS_TAG` 再 `up -d` |
+
+根目录 `docker-compose.yml` 只给本机开发（端口只绑 127.0.0.1、默认口令、演示数据）；`deploy/k8s/*.yaml` 是旧样例，未跟进、未验证。
 
 ## 当前状态
 
