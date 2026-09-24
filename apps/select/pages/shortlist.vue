@@ -26,11 +26,11 @@
                 >
               </TableHead>
               <TableHead>{{ t('kcs.console.shortlist.cols.creator') }}</TableHead>
-              <TableHead class="w-24">{{ t('kcs.console.shortlist.cols.tier') }}</TableHead>
+              <TableHead class="hidden w-24 sm:table-cell">{{ t('kcs.console.shortlist.cols.tier') }}</TableHead>
               <TableHead class="hidden w-24 md:table-cell">{{ t('kcs.console.shortlist.cols.health') }}</TableHead>
               <TableHead class="text-right">{{ t('kcs.console.shortlist.cols.followers') }}</TableHead>
               <TableHead class="hidden text-right sm:table-cell">{{ t('kcs.console.shortlist.cols.price') }}</TableHead>
-              <TableHead class="hidden w-32 xl:table-cell">{{ t('kcs.console.shortlist.cols.added') }}</TableHead>
+              <TableHead class="hidden w-32 2xl:table-cell">{{ t('kcs.console.shortlist.cols.added') }}</TableHead>
               <TableHead v-if="canWrite" class="w-12"><span class="sr-only">{{ t('kcs.console.shortlist.cols.actions') }}</span></TableHead>
             </TableRow>
           </TableHeader>
@@ -39,11 +39,11 @@
               <TableRow v-for="i in 4" :key="`sk-${i}`" class="hover:bg-transparent">
                 <TableCell><Skeleton class="size-4" /></TableCell>
                 <TableCell><Skeleton class="h-4 w-36" /></TableCell>
-                <TableCell><Skeleton class="h-5 w-12" /></TableCell>
+                <TableCell class="hidden sm:table-cell"><Skeleton class="h-5 w-12" /></TableCell>
                 <TableCell class="hidden md:table-cell"><Skeleton class="h-5 w-12" /></TableCell>
                 <TableCell><Skeleton class="ml-auto h-4 w-14" /></TableCell>
                 <TableCell class="hidden sm:table-cell"><Skeleton class="ml-auto h-4 w-16" /></TableCell>
-                <TableCell class="hidden xl:table-cell"><Skeleton class="h-4 w-20" /></TableCell>
+                <TableCell class="hidden 2xl:table-cell"><Skeleton class="h-4 w-20" /></TableCell>
                 <TableCell v-if="canWrite" />
               </TableRow>
             </template>
@@ -58,8 +58,8 @@
                 >
               </TableCell>
               <TableCell>
-                <div class="flex min-w-0 items-center gap-3">
-                  <Avatar class="size-8 shrink-0 border border-border">
+                <div class="flex min-w-0 max-w-[9rem] items-center gap-3 sm:max-w-56">
+                  <Avatar class="hidden size-8 shrink-0 border border-border sm:flex">
                     <AvatarFallback class="bg-muted text-xs text-muted-foreground">{{ row.displayName?.charAt(0) }}</AvatarFallback>
                   </Avatar>
                   <NuxtLink
@@ -71,11 +71,11 @@
                   </NuxtLink>
                 </div>
               </TableCell>
-              <TableCell><TierBadge :tier="row.tier" /></TableCell>
+              <TableCell class="hidden sm:table-cell"><TierBadge :tier="row.tier" /></TableCell>
               <TableCell class="hidden md:table-cell"><HealthBadge :health="row.metrics?.health ?? row.health" :low-active="row.metrics?.lowActive" /></TableCell>
               <TableCell class="text-right tabular-nums">{{ row.followersUnknown ? '—' : formatNumber(row.followers) }}</TableCell>
               <TableCell class="hidden text-right tabular-nums sm:table-cell">{{ formatPrice(row.price?.amountMin, row.price?.currency) }}</TableCell>
-              <TableCell class="hidden text-xs tabular-nums text-muted-foreground xl:table-cell">{{ formatDateTime(row.addedAt) }}</TableCell>
+              <TableCell class="hidden text-xs tabular-nums text-muted-foreground 2xl:table-cell">{{ formatDateTime(row.addedAt) }}</TableCell>
               <TableCell v-if="canWrite" class="text-right">
                 <Button
                   variant="ghost"
@@ -149,11 +149,6 @@
             <p v-if="assignError" role="alert" class="text-xs text-destructive" data-testid="shortlist-assign-error">{{ assignError }}</p>
           </form>
         </Card>
-
-        <p class="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
-          <Info class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {{ t('kcs.console.shortlist.order') }}
-        </p>
       </aside>
     </div>
   </PanelPage>
@@ -161,7 +156,7 @@
 
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
-import { ChevronDown, FolderInput, Info, ListChecks, Loader2, Plus, UserMinus } from 'lucide-vue-next'
+import { ChevronDown, FolderInput, ListChecks, Loader2, Plus, UserMinus } from 'lucide-vue-next'
 import { API, apiPath, can, SCREEN_TESTID, type ProjectView } from '@kcs/contract'
 
 const { t } = useI18n()

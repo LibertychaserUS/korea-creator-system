@@ -62,15 +62,15 @@
           :key="name"
           type="button"
           role="radio"
-          :aria-checked="theme === name"
+          :aria-checked="current === name"
           class="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          :class="theme === name ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'"
+          :class="current === name ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'"
           :data-theme-option="name"
           @click="setTheme(name as any)"
         >
           <component :is="themeIcon(name)" class="size-4" aria-hidden="true" />
           {{ themeName(name) }}
-          <span v-if="theme === name" class="text-[11px] text-primary">· {{ t('kcs.console.i18n.current') }}</span>
+          <span v-if="current === name" class="text-[11px] text-primary">· {{ t('kcs.console.i18n.current') }}</span>
         </button>
       </div>
     </Card>
@@ -86,7 +86,9 @@ const KINDS = ['missing', 'extra', 'empty', 'placeholderMismatch'] as const
 const { t, te, messages } = useI18n()
 const { request } = useApi()
 const { formatNumber, formatDateTime } = useFormat()
-const { theme, setTheme } = useTheme()
+const { theme, setTheme, isHydrated } = useTheme()
+// 服务端不知道本机存的配色，水合前不标当前项
+const current = computed(() => (isHydrated.value ? theme.value : null))
 
 const report = ref<DevI18nReport | null>(null)
 
