@@ -160,7 +160,9 @@
           <dl class="divide-y divide-border/40">
             <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="helpIn(field.key, metrics)">
               <dt class="min-w-0">
-                <span class="block truncate text-sm text-foreground">{{ label(field.key) }}</span>
+                <span class="block truncate text-sm text-foreground">
+                  {{ label(field.key) }}<span v-if="rowBasis(field.key, group, metrics)" class="ml-1.5 text-[11px] text-muted-foreground" data-testid="creator-row-basis">{{ rowBasis(field.key, group, metrics) }}</span>
+                </span>
                 <span v-if="percentiles[field.key]" class="mt-1 block h-1 w-28 overflow-hidden rounded-full bg-muted">
                   <span class="block h-full rounded-full bg-primary/70" :style="{ width: `${percentiles[field.key]!.percentile}%` }" />
                 </span>
@@ -284,7 +286,7 @@ const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'sele
 const inShortlist = ref(false)
 const shortlisting = ref(false)
 const shortlistError = ref('')
-const { label, helpIn, groupBasis, scopeLine, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
+const { label, helpIn, groupBasis, rowBasis, scopeLine, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)

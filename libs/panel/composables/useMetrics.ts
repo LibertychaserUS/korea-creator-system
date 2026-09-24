@@ -60,17 +60,36 @@ export function useMetrics() {
     return base ? `${base} ${hint}` : hint
   }
 
-  /** Short 口径 label for a group header: the cost group says which notes, a group with reach figures which traffic. */
+  function shortBasis(key: NumericMetricKey, metrics: BasisOf): string {
+    const basis = metricBasisOf(key, metrics)
+    return t(`kcs.scope.short.${basis === 'daily' && costFellBack(metrics) ? 'fallback' : basis}`)
+  }
+
+  /** The key whose 口径 a group header names: the first cost key, else the first reach key. */
+  function headerKey(group: MetricGroup): NumericMetricKey | null {
+    const keys = METRIC_FIELDS.filter((field) => field.group === group).map((field) => field.key)
+    if (keys.filter((key) => basisFamily(key)).length * 2 <= keys.length) return null
+    return keys.find((key) => basisFamily(key) === 'cost') ?? keys.find((key) => basisFamily(key) === 'reach') ?? null
+  }
+
+  /**
+   * Short 口径 label for a group header when most of its figures depend on one:
+   * the cost group says which notes, a reach-heavy group which traffic. The
+   * other figures carry it in their own help text.
+   */
   function groupBasis(group: MetricGroup, metrics?: BasisOf | null): string {
     if (!hasScope(metrics)) return ''
-    const keys = METRIC_FIELDS.filter((field) => field.group === group).map((field) => field.key)
-    const cost = keys.find((key) => basisFamily(key) === 'cost')
-    if (cost) {
-      const basis = metricBasisOf(cost, metrics)
-      return t(`kcs.scope.short.${basis === 'daily' && costFellBack(metrics) ? 'fallback' : basis}`)
-    }
-    const reach = keys.find((key) => basisFamily(key) === 'reach')
-    return reach ? t(`kcs.scope.short.${metricBasisOf(reach, metrics)}`) : ''
+    const key = headerKey(group)
+    return key ? shortBasis(key, metrics) : ''
+  }
+
+  /** A row's own 口径 when it differs from what its group header says (e.g. a cost we worked out from 日常 medians). */
+  function rowBasis(key: NumericMetricKey, group: MetricGroup, metrics?: BasisOf | null): string {
+    if (!hasScope(metrics) || !basisFamily(key)) return ''
+    const header = headerKey(group)
+    if (!header || basisFamily(header) !== basisFamily(key)) return ''
+    const mine = shortBasis(key, metrics)
+    return shortBasis(header, metrics) === mine ? '' : mine
   }
 
   function groupLabel(group: MetricGroup): string {
@@ -156,5 +175,5 @@ export function useMetrics() {
     return METRIC_FIELDS.filter((f) => f.group === group && !f.hidden)
   }
 
-  return { label, help, helpIn, basisSentence, groupBasis, scopeLine, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
+  return { label, help, helpIn, basisSentence, groupBasis, rowBasis, scopeLine, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
 }
