@@ -1,0 +1,35 @@
+name: KCS
+
+# Job names are the required-check names in forge.yaml (branches.main.required_checks).
+# Rename a job → update forge.yaml and the branch protection rule together.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: kcs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  i18n:
+    name: i18n
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+          cache: pnpm
+      # Only tsx and the locale sources are needed; skip the apps' `nuxt prepare` postinstall.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Three-language key parity (zh-CN / en / ko)
+        run: pnpm exec tsx scripts/ci/i18n-parity.ts
