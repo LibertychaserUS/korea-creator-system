@@ -14,6 +14,7 @@ import {
 import { getAdapter } from '../adapters'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
+import { recordRefreshMisses } from './data-status'
 import { deadLetterJob, failureOf } from './dead-letters'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
@@ -176,6 +177,9 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     let failed = Number(claimed.rows[0].failed_count ?? 0)
     let quotaUsed = Number(claimed.rows[0].quota_used ?? 0)
     let sourceMode = claimed.rows[0].source_mode ?? 'live'
+    const requestedIds = baseQuery.externalIds?.length
+      ? baseQuery.externalIds.slice(0, baseQuery.limit ?? baseQuery.externalIds.length).map(String)
+      : null
 
     while (pagesDone < maxPages) {
       // Cancelled between pages, or the lease was taken over while we were slow:
@@ -223,12 +227,22 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
         `UPDATE ingest_jobs SET cursor = $2, pages_done = $3, quota_used = $4,
          written_count = $5, skipped_dupes = $6, failed_count = $7, source_mode = $8,
          lease_expires_at = now() + make_interval(secs => $9::float8),
+         seen_external_ids = CASE WHEN $10::text[] IS NULL THEN seen_external_ids
+           ELSE ARRAY(SELECT DISTINCT unnest(COALESCE(seen_external_ids, '{}') || $10::text[])) END,
          updated_at = now() WHERE id = $1`,
-        [jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS],
+        [
+          jobId, cursor, pagesDone, quotaUsed, written, skipped, failed, sourceMode, LEASE_SECONDS,
+          requestedIds ? page.records.map((record) => String(record.externalId)) : null,
+        ],
       )
       if (!cursor) break
     }
 
+    // Only a refresh that went through every page can say an id was not there.
+    if (requestedIds && !cursor && sourceMode !== 'fixture') {
+      const seen = await env.db.query('SELECT seen_external_ids FROM ingest_jobs WHERE id = $1', [jobId])
+      await recordRefreshMisses(env, source, requestedIds, seen.rows[0]?.seen_external_ids ?? [], jobId)
+    }
     await env.db.query(
       `UPDATE ingest_jobs SET status = 'ok', cursor = $2, error = NULL,
        locked_by = NULL, lease_expires_at = NULL,

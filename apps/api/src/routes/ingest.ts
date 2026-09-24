@@ -4,6 +4,15 @@ import { retryJob } from '../ingest/jobs'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
 import { dailyTaskStatus, runDailyTaskNow } from '../ingest/daily'
 import { readSchedulerState, schedulerConfig } from '../ingest/scheduler'
+import {
+  creatorDataStatus,
+  DATA_STATUS_KINDS,
+  dataStatusConfig,
+  dataStatusCounts,
+  decideMissing,
+  listDataStatus,
+  type DataStatusKind,
+} from '../ingest/data-status'
 import { randomUUID } from 'node:crypto'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
@@ -112,6 +121,36 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     await audit(env.db, user!.id, 'ingest.discovery_update', 'discovery_search', rows[0].id, JSON.stringify(data))
     return context.json(discoverySearchView(rows[0]))
+  })
+
+  app.get('/api/ingest/data-status', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const query = context.req.query()
+    if (!query.kind) return context.json({ counts: await dataStatusCounts(env), config: dataStatusConfig() })
+    if (!DATA_STATUS_KINDS.includes(query.kind as DataStatusKind)) {
+      return jsonError(context, 400, 'VALIDATION', 'unknown_kind')
+    }
+    return context.json(await listDataStatus(env, query.kind as DataStatusKind, parsePaging(query)))
+  })
+
+  app.get('/api/ingest/data-status/:creatorId', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const status = await creatorDataStatus(env, context.req.param('creatorId'))
+    if (!status) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json(status)
+  })
+
+  app.post('/api/ingest/data-status/:creatorId/missing', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.write')
+    if (denied) return denied
+    const { data, invalid } = await readJson(context, MISSING_DECISION_BODY)
+    if (invalid) return invalid
+    const outcome = await decideMissing(env, context.req.param('creatorId'), data.decision, user!.id)
+    if (!outcome.found) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    if (!outcome.flagged) return jsonError(context, 409, 'STATE', 'not_flagged_missing')
+    return context.json(outcome.status)
   })
 
   app.get('/api/ingest/adapters', async (context) => {
@@ -259,6 +298,8 @@ const SOURCE_QUERY_KEYS = [
 ] as const satisfies readonly (keyof SourceQuery)[]
 
 /** The stored `query` holds exactly the SourceQuery fields, nothing the client tacked on. */
+const MISSING_DECISION_BODY = z.object({ decision: z.enum(['keep', 'gone']) })
+
 const DISCOVERY_SEARCH_BODY = z.object({
   name: z.string().trim().min(1).max(120),
   query: z.record(z.string(), z.unknown()),

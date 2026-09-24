@@ -83,6 +83,9 @@ export const API = {
   ingestDiscoverySearches: { method: 'GET', path: '/api/ingest/discovery-searches', perm: 'ingest.read' },
   ingestDiscoverySearchCreate: { method: 'POST', path: '/api/ingest/discovery-searches', perm: 'ingest.write' },
   ingestDiscoverySearchUpdate: { method: 'PATCH', path: '/api/ingest/discovery-searches/:id', perm: 'ingest.write' },
+  ingestDataStatus: { method: 'GET', path: '/api/ingest/data-status', perm: 'ingest.read' },
+  ingestCreatorDataStatus: { method: 'GET', path: '/api/ingest/data-status/:creatorId', perm: 'ingest.read' },
+  ingestMissingDecision: { method: 'POST', path: '/api/ingest/data-status/:creatorId/missing', perm: 'ingest.write' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
   /** multipart `file` (image, ≤ 5 MB). */
   assetUpload: { method: 'POST', path: '/api/assets', perm: 'ops.write' },

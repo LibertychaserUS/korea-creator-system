@@ -19,6 +19,7 @@ import type { AppEnv } from '../http/types'
 import { creatorKeyFromRow, type SheetRow } from '../xlsx-sheet'
 import { deadLetterRecord, failureOf } from './dead-letters'
 import { refreshIntervalDays, refreshModelConfig } from './refresh-model'
+import { markSeen, republishChanges } from './data-status'
 import { materialChanges } from './tiering'
 
 /**
@@ -161,6 +162,13 @@ async function upsertInTransaction(
     )
   }
 
+  if (existing?.metrics_locked) {
+    await client.query(
+      'UPDATE creators SET republish_changes = $2, republish_checked_at = now() WHERE id = $1',
+      [creatorId, republishChanges(existing.metrics_locked, metrics)],
+    )
+  }
+
   if (origin.kind === 'source') {
     await client.query(
       `INSERT INTO creator_sources
@@ -171,6 +179,7 @@ async function upsertInTransaction(
          last_seen_at = GREATEST(creator_sources.last_seen_at, EXCLUDED.last_seen_at)`,
       [creatorId, origin.source, origin.externalId, incoming.fetchedAt],
     )
+    await markSeen(client, creatorId, origin.source, origin.externalId)
     // Same body as an earlier fetch → stored once; this fetch still gets its own row.
     await client.query(
       `WITH body AS (SELECT $6::jsonb AS payload, sha256(convert_to($6::jsonb::text, 'UTF8')) AS hash),
@@ -319,7 +328,7 @@ async function updateRefreshStats(
   )
 }
 
-type Existing = { id: string; metrics: unknown }
+type Existing = { id: string; metrics: unknown; metrics_locked: unknown }
 
 /**
  * A 小红书号 names one account, so its owner wins over a vendor-id link or a
@@ -329,18 +338,18 @@ type Existing = { id: string; metrics: unknown }
 async function findExisting(client: PoolClient, incoming: IncomingCreator): Promise<Existing | null> {
   const { origin } = incoming
   if (incoming.xhsId) {
-    const byXhs = await client.query('SELECT id, metrics FROM creators WHERE xhs_id = $1', [incoming.xhsId])
+    const byXhs = await client.query('SELECT id, metrics, metrics_locked FROM creators WHERE xhs_id = $1', [incoming.xhsId])
     if (byXhs.rows[0]) return byXhs.rows[0] as Existing
   }
   if (origin.kind === 'source') {
     const linked = await client.query(
-      `SELECT c.id, c.metrics FROM creator_sources s JOIN creators c ON c.id = s.creator_id
+      `SELECT c.id, c.metrics, c.metrics_locked FROM creator_sources s JOIN creators c ON c.id = s.creator_id
         WHERE s.source = $1 AND s.external_id = $2`,
       [origin.source, origin.externalId],
     )
     if (linked.rows[0]) return linked.rows[0] as Existing
   }
-  const byKey = await client.query('SELECT id, metrics FROM creators WHERE creator_key = $1', [incoming.creatorKey])
+  const byKey = await client.query('SELECT id, metrics, metrics_locked FROM creators WHERE creator_key = $1', [incoming.creatorKey])
   return (byKey.rows[0] as Existing | undefined) ?? null
 }
 
