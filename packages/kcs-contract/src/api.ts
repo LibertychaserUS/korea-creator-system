@@ -29,6 +29,13 @@ export const API = {
   opsUnpublish: { method: 'POST', path: '/api/ops/creators/:id/unpublish', perm: 'ops.publish' },
   opsCategories: { method: 'GET', path: '/api/ops/categories', perm: 'ops.read' },
   opsCategoryPatch: { method: 'PATCH', path: '/api/ops/categories/:slug', perm: 'ops.categories' },
+  /** 409 `CONFLICT` / `category_exists` when the slug is taken. */
+  opsCategoryCreate: { method: 'POST', path: '/api/ops/categories', perm: 'ops.categories' },
+  opsCategoryUsage: { method: 'GET', path: '/api/ops/categories/usage', perm: 'ops.read' },
+  /** `?source=`: the platform's category / region values plus values seen on stored creators. */
+  opsDictionaries: { method: 'GET', path: '/api/ops/dictionaries', perm: 'ops.read' },
+  /** Replaces one source's platform list for one kind (`category` / `region`). */
+  opsDictionaryReplace: { method: 'POST', path: '/api/ops/dictionaries/:source/:kind', perm: 'ops.categories' },
   opsReview: { method: 'GET', path: '/api/ops/review', perm: 'ops.read' },
   opsReviewPass: { method: 'POST', path: '/api/ops/review/:id/pass', perm: 'ops.write' },
   opsBatches: { method: 'GET', path: '/api/ops/batches', perm: 'ops.read' },
@@ -56,6 +63,7 @@ export const API = {
   unassign: { method: 'DELETE', path: '/api/select/projects/:id/assignments/:creatorId', perm: 'select.assign' },
   shortlist: { method: 'GET', path: '/api/select/shortlist', perm: 'select.read' },
   shortlistAdd: { method: 'POST', path: '/api/select/shortlist', perm: 'select.write' },
+  shortlistRemove: { method: 'DELETE', path: '/api/select/shortlist/:creatorId', perm: 'select.write' },
   exportProject: { method: 'GET', path: '/api/select/projects/:id/export', perm: 'select.read' },
   devHealth: { method: 'GET', path: '/api/dev/health', perm: 'dev.read' },
   devJobs: { method: 'GET', path: '/api/dev/jobs', perm: 'dev.read' },
@@ -67,6 +75,9 @@ export const API = {
   devI18n: { method: 'GET', path: '/api/dev/i18n-theme', perm: 'dev.read' },
   /** Per-source bootstrap sample targets with their basis, group sizes, and 25/50/75 reference lines. */
   devCohorts: { method: 'GET', path: '/api/dev/cohorts', perm: 'dev.read' },
+  devCapacity: { method: 'GET', path: '/api/dev/capacity', perm: 'dev.read' },
+  /** Take today's storage reading now (replaces today's numbers). */
+  devCapacitySnapshot: { method: 'POST', path: '/api/dev/capacity/snapshot', perm: 'dev.retry' },
   devDeadLetters: { method: 'GET', path: '/api/dev/dead-letters', perm: 'dev.read' },
   devDeadLetter: { method: 'GET', path: '/api/dev/dead-letters/:id', perm: 'dev.read' },
   devDeadLetterReplay: { method: 'POST', path: '/api/dev/dead-letters/:id/replay', perm: 'dev.retry' },

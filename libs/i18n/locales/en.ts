@@ -1,3 +1,4 @@
+import { kcsConsoleCopy } from './kcs-console'
 import type { Locale } from './types'
 
 export const en: Locale = {
@@ -1896,6 +1897,7 @@ export const en: Locale = {
     backToBlog: "Back to Blog"
   },
   kcs: {
+    ...kcsConsoleCopy.en,
     metric: {
       followers: "Followers",
       followerGrowth: "Follower gain",
@@ -1934,7 +1936,7 @@ export const en: Locale = {
       storeVisitUvMedian: "Median store visitors",
       storeVisitUnitPrice: "Cost per store visitor",
       authenticity: "Follower authenticity",
-      coopNoteCount: "Sponsored posts"
+      coopNoteCount: "Sponsored posts (30 days)"
     },
     metricHelp: {
       followers: "Total followers shown on profile. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
@@ -1942,8 +1944,8 @@ export const en: Locale = {
       followerGrowthRate: "New followers ÷ start followers. Calculated by system; shown as — if unavailable.",
       readFanRatio: "Share of everyday reads that come from followers. Neither high nor low is simply better, so it is shown for reference and not ranked. Provided by Pugongying; shown as — if unavailable.",
       fanInteractionRatio: "Interacting fan ratio as given by Xinhong. Xinhong does not publish how it is calculated, so it is shown for reference and not ranked. Shown as — if unavailable.",
-      activeFanRatio: "Followers active on Xiaohongshu in the past 30 days. Provided by Pugongying; shown as — if unavailable.",
-      engagedFanRatio: "Followers engaging with posts in the past 30 days. Provided by Pugongying; shown as — if unavailable.",
+      activeFanRatio: "Followers active on Xiaohongshu in the past 28 days. Provided by Pugongying; shown as — if unavailable.",
+      engagedFanRatio: "Followers who liked, saved or commented on a post in the past 28 days. Provided by Pugongying; shown as — if unavailable.",
       impressionMedian: "Median public feed impressions per post in the period. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       readMedian: "Median actual reads per post in the period. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       interactionMedian: "Median sum of likes, saves, and comments per post. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
@@ -1952,21 +1954,21 @@ export const en: Locale = {
       commentMedian: "Median comments per post. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
       coopReadMedian: "Median reads on official sponsored posts. Provided by Pugongying; shown as — if unavailable.",
       coopInteractionMedian: "Median interactions on official sponsored posts. Provided by Pugongying; shown as — if unavailable.",
-      engagementRate: "Median interactions ÷ median reads (based on real reads). Calculated by system or Pugongying; shown as — if unavailable.",
+      engagementRate: "Likes, saves and comments per 100 reads, shares not included. Qiangua and Xinhong reads are estimates. Calculated by system or Pugongying; shown as — if unavailable.",
       completionRate: "Share of video views watched to the end. Provided by Pugongying or partner platforms; shown as — if unavailable.",
       read3sRate: "Share of image-post reads that last 3 seconds or more. Provided by Pugongying; shown as — if unavailable.",
       noteCount: "Total public posts published in the period. More is not simply better, so it is shown for reference and not ranked. Provided by Xiaohongshu or partner platforms; shown as — if unavailable.",
-      viralCount: "Posts achieving high like counts in the period. Provided by partner data platforms; shown as — if unavailable.",
-      viralRate: "Viral posts ÷ total posts. Calculated by system; shown as — if unavailable.",
+      viralCount: "Each platform defines a viral post differently: Pugongying counts posts with 1,000+ likes; Qiangua counts 1,000 likes within 12 hours or 5,000 in total; Xinhong publishes no definition. Do not compare across sources. Shown as — if unavailable.",
+      viralRate: "Viral posts ÷ total posts. Unstable with fewer than 5 posts, and definitions differ by platform, so do not compare across sources. Calculated by system; shown as — if unavailable.",
       priceImage: "Official quote for a sponsored image post (CNY). Provided by Pugongying; shown as — if unavailable.",
       priceVideo: "Official quote for a sponsored video post (CNY). Provided by Pugongying; shown as — if unavailable.",
       cpr: "Quote ÷ sponsored median reads: roughly what one read costs. Uses everyday reads when there are no sponsored reads. Calculated by system; shown as — if unavailable.",
       cpeVideo: "Video quote ÷ sponsored median interactions, kept apart from the image CPE. Calculated by system; shown as — if unavailable.",
-      cpe: "Quote ÷ sponsored median interactions. Cost per interaction. Calculated by system or Pugongying; shown as — if unavailable.",
+      cpe: "Estimated cost per interaction at the list price (quote ÷ sponsored median interactions), before booking. Platform service fees (10% standard, 20% performance mode) are not included, so the real cost is usually higher. Calculated by system or Pugongying; shown as — if unavailable.",
       cpm: "Roughly what 1,000 impressions cost: the figure Pugongying gives, or image quote ÷ median impressions × 1,000. Provided by Pugongying or calculated by system; shown as — if unavailable.",
       cpmRead: "Roughly what 1,000 reads cost (Qiangua and Xinhong call this CPM; it is not the impressions-based CPM). Provided by partner platforms or calculated by system; shown as — if unavailable.",
-      collectLikeRatio: "Median saves ÷ median likes. Higher indicates high-utility content. Calculated by system; shown as — if unavailable.",
-      purchaseIntentCommentRatio: "Share of comments asking where to buy or price details. Provided by Pugongying; shown as — if unavailable.",
+      collectLikeRatio: "Median saves ÷ median likes, compared only within similar content. Not the same as Qiangua's like-and-save ratio, which is (likes + saves) ÷ followers. Calculated by system; shown as — if unavailable.",
+      purchaseIntentCommentRatio: "Share of comments asking where to buy, the price or the shade. No platform provides this yet, so it is hidden for now.",
       trafficSearchRatio: "Share of reads originating from search. It moves opposite to feed traffic, so it is shown for reference and not ranked. Provided by Pugongying; shown as — if unavailable.",
       trafficRecommendRatio: "Share of reads originating from Explore recommendation feed. It moves opposite to search traffic, so it is shown for reference and not ranked. Provided by Pugongying; shown as — if unavailable.",
       trafficFollowRatio: "Share of reads originating from following tab. Provided by Pugongying; shown as — if unavailable.",
@@ -1974,7 +1976,7 @@ export const en: Locale = {
       storeVisitUvMedian: "Visitors that sponsored posts brought to the store (median). Provided by Pugongying; shown as — if unavailable.",
       storeVisitUnitPrice: "Roughly what one store visitor from a sponsored post costs. Provided by Pugongying; shown as — if unavailable.",
       authenticity: "Estimated percentage of authentic followers sampled. Provided by partner data platforms; shown as — if unavailable.",
-      coopNoteCount: "Total cumulative official sponsored posts on Xiaohongshu. Provided by Pugongying; shown as — if unavailable."
+      coopNoteCount: "Sponsored posts filed through Pugongying in the past 30 days, not a lifetime total. Provided by Pugongying; shown as — if unavailable."
     },
     metricGroup: {
       scale: "Scale",
@@ -1991,7 +1993,7 @@ export const en: Locale = {
       junior: "Junior",
       amateur: "Amateur",
       unknown: "Unknown",
-      hint: "Head ≥ 500K · Mid 50K – 500K · Junior 5K – 50K · Amateur 300 – 5K"
+      hint: "Head ≥ 500K · Mid 50K – 500K · Junior 5K – 50K · Amateur 300 – 5K (Qiangua's standard tiers)"
     },
     health: {
       label: "Health grade",
@@ -2002,10 +2004,10 @@ export const en: Locale = {
       unknown: "Unrated",
       lowActive: "Low activity",
       lowActiveHint: "Marked as low activity by Pugongying. This is separate from the health grade.",
-      hint: "Rated by Xiaohongshu on the 1st of each month: healthy or abnormal. Abnormal creators cannot be booked."
+      hint: "Rated by Xiaohongshu on the 1st of each month, healthy or abnormal only, based on violations, fake engagement, undisclosed ads and delivery. Abnormal creators cannot be booked. Low activity is flagged separately and is not part of the grade."
     },
     band: {
-      legend: "Colour = ranking among similar creators (same data source, same period, similar follower count); dot = highlight alert",
+      legend: "Colour = position among similar creators already in our library (same source, period and content type, similar follower count), not a platform-wide ranking; under 30 creators is for reference only. Dot = highlight alert",
       cohort: "{source} · last {window} days, {n} creators of this kind in our library",
       cohortLibrary: "Our library: compared with {n} similar {source} creators ({min}–{max} followers)",
       cohortUnknown: "Our library: compared with {n} {source} creators whose follower count is unknown",
@@ -2021,7 +2023,7 @@ export const en: Locale = {
       back: "Near the back among similar creators here (bottom third)",
       library: "In our library",
       fewPeers: "Fewer than 30 similar creators: shown as front / middle / back only, for reference",
-      platform: "Xiaohongshu: ahead of {pct}% of similar creators",
+      platform: "Xiaohongshu officially shows this is ahead of {pct}% of similar creators",
       none: "Not enough creators to rank"
     },
     source: {
@@ -2252,7 +2254,7 @@ export const en: Locale = {
       ],
       dataEyebrow: "Data integrity",
       dataTitle: "Objective platform metrics. Zero weighted black box.",
-      dataLead: "No arbitrary scoring formulas. All metrics connect directly to Pugongying official sources and partner data platforms, with calculated metrics based purely on straightforward ratios. Comparisons only occur among creators in the same platform and follower tier; missing values remain '—'.",
+      dataLead: "No arbitrary scoring formulas. All metrics connect directly to Pugongying official sources and partner data platforms, with calculated metrics based purely on straightforward ratios. Comparisons are only made among similar creators already in our library (same source, period and content type, similar follower count), not across the whole platform; missing values remain '—'.",
       sourcesTitle: "Two direct channels, one uniform view",
       sources: {
         pugongying: { label: "Xiaohongshu official data (Pugongying)", body: "Direct official connection: median impressions/reads/interactions, engagement rate, reads from fans, quotes, CPE, health grade, audience demographics, and brand history." },
@@ -2268,10 +2270,10 @@ export const en: Locale = {
         potential: "Reads-to-follower ratio, viral posts & rate, recommendation feed traffic share, growth rate",
         trust: "Health grade, follower authenticity, active and engaged fan ratios"
       },
-      tierTitle: "Compared within same tier and platform",
-      tierBody: "Head ≥ 500K, Mid 50K – 500K, Junior 5K – 50K, Amateur 300 – 5K. Rankings are strictly computed among peers within the same platform and follower tier, never across platforms.",
+      tierTitle: "Compared with similar creators",
+      tierBody: "Head ≥ 500K, Mid 50K – 500K, Junior 5K – 50K, Amateur 300 – 5K. Positions are computed only among similar creators in our library, never across sources. Tiers follow Qiangua's standard.",
       gateTitle: "Health grade is a hard gate",
-      gateBody: "Updated by Xiaohongshu on the 1st of each month. An abnormal rating (low-activity creator) triggers immediate exclusion without compromise.",
+      gateBody: "Xiaohongshu rates health on the 1st of each month, healthy or abnormal only; abnormal creators are excluded. Low activity is flagged separately and is not abnormal.",
       transformTitle: "Standardized view & original data",
       transformLine: "Different platforms, one uniform view.",
       transformBody: "Original data provided by platforms is kept in full and can be reviewed anytime. View updates require no underlying changes.",
@@ -2290,7 +2292,7 @@ export const en: Locale = {
       short: "Tide",
       name: "Tide",
       tagline: "Korean Brands × Xiaohongshu Creator Intelligence",
-      story: "Collects creator information by settings, standardizes viewing criteria, and compares performance among peers of the same platform and tier, connecting Xiaohongshu official and partner platforms.",
+      story: "Collects creator information by settings, standardizes viewing criteria, and compares performance among similar creators in our library, connecting Xiaohongshu official and partner platforms.",
       eyebrow: "Cross-Border Creator Intelligence",
       pillars: "Data Sources · Selection Plans · Project Assignment · Monitoring",
       loginAside: "Single identity system. Access granted according to assigned organizational role.",

@@ -11,7 +11,13 @@
         class="gap-0 border-border/60 py-0 shadow-xs transition-colors"
         :class="form.source === a.id ? 'border-primary/50 ring-2 ring-primary/20' : 'cursor-pointer hover:border-primary/30'"
         :data-testid="`adapter-${a.id}`"
+        role="button"
+        tabindex="0"
+        :aria-pressed="form.source === a.id"
+        :aria-label="t('kcs.console.a11y.pickSource', { name: t(`kcs.source.${a.id}`) })"
         @click="form.source = a.id"
+        @keydown.enter.prevent="form.source = a.id"
+        @keydown.space.prevent="form.source = a.id"
       >
         <div class="flex items-start justify-between gap-3 px-5 pt-4">
           <div>
@@ -76,11 +82,11 @@
           </div>
           <div :class="disabled('category')">
             <Label for="f-category" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.category') }}</Label>
-            <Input id="f-category" v-model="form.category" class="h-9" :disabled="!supports('category')" />
+            <DictionarySelect id="f-category" v-model="form.category" :options="dictionary?.category ?? []" :disabled="!supports('category')" testid="fetch-category" />
           </div>
           <div :class="disabled('region')">
             <Label for="f-region" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.region') }}</Label>
-            <Input id="f-region" v-model="form.region" class="h-9" :disabled="!supports('region')" />
+            <DictionarySelect id="f-region" v-model="form.region" :options="dictionary?.region ?? []" :disabled="!supports('region')" testid="fetch-region" />
           </div>
           <div :class="disabled('limit')">
             <Label for="f-limit" class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.limit') }}</Label>
@@ -89,17 +95,17 @@
           <fieldset :class="disabled('followersMin')">
             <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.followersRange') }}</legend>
             <div class="flex items-center gap-2">
-              <Input v-model.number="form.followersMin" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('followersMin')" />
+              <Input v-model.number="form.followersMin" :aria-label="t('kcs.console.a11y.min', { field: t('kcs.ingest.followersRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('followersMin')" />
               <span class="text-muted-foreground/60">–</span>
-              <Input v-model.number="form.followersMax" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('followersMax')" />
+              <Input v-model.number="form.followersMax" :aria-label="t('kcs.console.a11y.max', { field: t('kcs.ingest.followersRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('followersMax')" />
             </div>
           </fieldset>
           <fieldset :class="disabled('priceMin')">
             <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.priceRange') }}</legend>
             <div class="flex items-center gap-2">
-              <Input v-model.number="form.priceMin" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('priceMin')" />
+              <Input v-model.number="form.priceMin" :aria-label="t('kcs.console.a11y.min', { field: t('kcs.ingest.priceRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('priceMin')" />
               <span class="text-muted-foreground/60">–</span>
-              <Input v-model.number="form.priceMax" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('priceMax')" />
+              <Input v-model.number="form.priceMax" :aria-label="t('kcs.console.a11y.max', { field: t('kcs.ingest.priceRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('priceMax')" />
             </div>
           </fieldset>
           <fieldset class="sm:col-span-2" :class="disabled('health')">
@@ -183,6 +189,7 @@
                     size="icon"
                     class="size-7"
                     :title="t('kcs.ingest.retry')"
+                    :aria-label="t('kcs.ingest.retry')"
                     :disabled="acting === job.id"
                     data-testid="job-retry"
                     @click="act(job, 'retry')"
@@ -195,6 +202,7 @@
                     size="icon"
                     class="size-7 text-destructive hover:text-destructive"
                     :title="t('kcs.ingest.cancel')"
+                    :aria-label="t('kcs.ingest.cancel')"
                     :disabled="acting === job.id"
                     data-testid="job-cancel"
                     @click="act(job, 'cancel')"
@@ -214,7 +222,7 @@
 
 <script setup lang="ts">
 import { ChevronDown, KeyRound, Play, Radar, RotateCcw, TriangleAlert, X } from 'lucide-vue-next'
-import { API, apiPath, SOURCE_IDS, type HealthGrade, type SourceId, type SourceQuery } from '@kcs/contract'
+import { API, apiPath, SOURCE_IDS, type HealthGrade, type SourceDictionaries, type SourceId, type SourceQuery } from '@kcs/contract'
 
 type AdapterInfo = { id: SourceId; route: 'official' | 'vendor'; supports: string[]; provides: string[]; configured: boolean; envVars: string[]; optionalEnvVars?: string[] }
 
@@ -223,7 +231,7 @@ const { request } = useApi()
 const { formatNumber } = useFormat()
 const { label } = useMetrics()
 
-const healthIds: HealthGrade[] = ['excellent', 'normal', 'abnormal']
+const healthIds: HealthGrade[] = ['healthy', 'abnormal']
 const adapters = ref<AdapterInfo[]>([])
 const jobs = ref<any[]>([])
 const loadingAdapters = ref(true)
@@ -232,6 +240,7 @@ const running = ref(false)
 const result = ref<any>(null)
 const error = ref('')
 const acting = ref<string | null>(null)
+const dictionary = ref<SourceDictionaries | null>(null)
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const form = reactive<SourceQuery & { health: HealthGrade[] }>({
@@ -244,7 +253,7 @@ const form = reactive<SourceQuery & { health: HealthGrade[] }>({
   followersMax: undefined,
   priceMin: undefined,
   priceMax: undefined,
-  health: ['excellent'],
+  health: ['healthy'],
   limit: 50,
 })
 
@@ -266,7 +275,7 @@ function metricLabel(key: string) {
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
 }
-/** 把抓取参数说成人话：近 30 天 · 关键词 护肤 · 粉丝 1万–50万 · 只要优秀。 */
+/** 把抓取参数说成人话：近 30 天 · 关键词 护肤 · 粉丝 1万–50万 · 只要健康。 */
 function describe(q: any) {
   if (!q || typeof q !== 'object') return ''
   const parts: string[] = []
@@ -285,6 +294,18 @@ function range(min?: number | null, max?: number | null) {
   const b = max == null ? '' : formatNumber(max)
   return a && b ? `${a}–${b}` : a ? `≥ ${a}` : `≤ ${b}`
 }
+
+/** 类目 / 地域必须用平台自己的写法，换来源就换一份字典。 */
+async function loadDictionary(source: SourceId) {
+  dictionary.value = null
+  const res = await request<SourceDictionaries>(apiPath(API.opsDictionaries, {}, { source })).catch(() => null)
+  if (form.source === source) dictionary.value = res
+}
+watch(() => form.source, (source) => {
+  form.category = ''
+  form.region = ''
+  loadDictionary(source)
+})
 
 async function loadAdapters() {
   try {
@@ -370,6 +391,7 @@ async function runFetch() {
 onMounted(() => {
   loadAdapters()
   loadJobs()
+  loadDictionary(form.source)
 })
 onBeforeUnmount(() => {
   if (pollTimer) clearTimeout(pollTimer)

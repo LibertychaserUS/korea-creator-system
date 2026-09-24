@@ -1,11 +1,16 @@
 <template>
   <SidebarProvider>
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md focus:ring-2 focus:ring-ring"
+      data-testid="skip-to-content"
+    >{{ t('kcs.console.a11y.skip') }}</a>
     <AppSidebar />
-    <SidebarInset class="min-w-0 bg-muted/30 dark:bg-background">
+    <SidebarInset id="main-content" tabindex="-1" class="min-w-0 bg-muted/30 outline-none dark:bg-background">
       <header
         class="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border/70 bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-4"
       >
-        <SidebarTrigger class="-ml-1 text-muted-foreground hover:text-foreground" />
+        <SidebarTrigger class="-ml-1 text-muted-foreground hover:text-foreground" :aria-label="t('kcs.console.a11y.sidebar')" :title="t('kcs.console.a11y.sidebar')" />
         <Separator orientation="vertical" class="mr-1 hidden h-4 sm:block" />
         <WorkspaceSwitch />
         <div class="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">

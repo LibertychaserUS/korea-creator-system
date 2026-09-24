@@ -89,3 +89,20 @@ export type ProjectView = {
   updatedAt: string
   memberCount: number
 }
+
+/** `AUTH-DENIED` messages the API sends when the role itself is not allowed (see `requireAuth`). */
+export const PERMISSION_DENIED_MESSAGES = ['forbidden', 'no role assigned'] as const
+
+/**
+ * Whether a 403 body means "this account may not be here" (→ the denied page)
+ * rather than a refusal about this one action, such as `owner_only` when only
+ * the author may change who sees a plan (→ said in place). A body without a
+ * specific code is treated as a permission refusal.
+ */
+export function isPermissionDenial(body: unknown): boolean {
+  const error = (body as { error?: unknown } | null)?.error
+  if (!error || typeof error !== 'object') return true
+  const { code, message } = error as { code?: unknown; message?: unknown }
+  if (code !== 'AUTH-DENIED') return typeof code !== 'string'
+  return typeof message !== 'string' || (PERMISSION_DENIED_MESSAGES as readonly string[]).includes(message)
+}

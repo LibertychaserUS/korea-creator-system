@@ -23,6 +23,7 @@ branches:
       - apps (marketing)
       - blackbox
       - api-image
+      - i18n
     approvals: 1
     code_owners: false
 docs_sync: []

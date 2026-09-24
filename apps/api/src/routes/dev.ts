@@ -10,7 +10,6 @@ import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
-import { auditLogView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import { camelDeadLetters, scrub } from '../ingest/dead-letters'
 import { retryJob } from '../ingest/jobs'
@@ -243,36 +242,5 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     }
     await audit(env.db, user!.id, 'ingest.deadLetter.dismiss', 'ingest_dead_letter', id, 'dismiss')
     return context.json(camelDeadLetters(rows)[0])
-  })
-
-  app.get('/api/dev/pipeline', async (context) => {
-    const { denied } = await helpers.requireAuth(context, 'dev.read')
-    if (denied) return denied
-    const { rows } = await env.db.query(`
-      SELECT
-        (SELECT count(*) FROM ingest_sources WHERE enabled)::int AS sources,
-        (SELECT count(*) FROM ingest_jobs)::int AS jobs,
-        (SELECT count(*) FROM creators WHERE needs_review)::int AS review,
-        (SELECT count(*) FROM creators WHERE status = 'released')::int AS released
-    `)
-    return context.json(rows[0])
-  })
-
-  app.get('/api/dev/audit', async (context) => {
-    const { denied } = await helpers.requireAuth(context, 'dev.read')
-    if (denied) return denied
-    const { rows } = await env.db.query(
-      'SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100',
-    )
-    return context.json({ items: rows.map(auditLogView) })
-  })
-
-  app.get('/api/dev/i18n-theme', async (context) => {
-    const { denied } = await helpers.requireAuth(context, 'dev.read')
-    if (denied) return denied
-    return context.json({
-      locales: ['zh-CN', 'en', 'ko'],
-      themes: ['light', 'dark', 'system'],
-    })
   })
 }

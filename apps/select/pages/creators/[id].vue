@@ -30,7 +30,7 @@
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="text-lg font-semibold tracking-tight">{{ creator.displayName }}</h2>
               <TierBadge :tier="creator.tier" />
-              <HealthBadge :health="metrics.health" />
+              <HealthBadge :health="metrics.health" :low-active="metrics.lowActive" />
               <SourceBadge :source="creator.source" :mode="creator.sourceMode" />
             </div>
             <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

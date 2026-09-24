@@ -12,6 +12,7 @@ export default defineNuxtConfig({
       perm: 'select.read',
       nav: [
         { to: '/', labelKey: 'kcs.panel.pool' },
+        { to: '/shortlist', labelKey: 'kcs.console.nav.shortlist' },
         { to: '/projects', labelKey: 'kcs.panel.projects' },
       ],
     },

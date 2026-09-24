@@ -61,6 +61,12 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `RETENTION_DEAD_LETTER_DAYS` | 已处理的搁置记录保留天数；不设或 `0` 全留（默认）；待处理的永远不删 |
 | `RETENTION_AUDIT_DAYS` | 审计日志保留天数；不设或 `0` 全留（默认） |
 | `RETENTION_INTERVAL_HOURS` | 上面任一类打开后的清理间隔，默认 24；`0` 关闭。只有抽水进程执行，历史快照永不删（见 `docs/04` §保留期限） |
+| `KCS_CAPACITY_DAILY` | `0` 关掉每天一次的存储记录（运维端仍可手动记录）；缺省开，只在持有抓取队列锁的进程里、每个北京日跑一次 |
+| `KCS_CAPACITY_DATA_PATH` | 数据盘上的一个路径，用来量磁盘总量 / 已用；缺省用数据库的 `data_directory`（仅当它在本机） |
+| `KCS_CAPACITY_DISK_BYTES` | 磁盘读不到时（托管 Postgres）按这个大小算，已用 = 数据库 + WAL |
+| `KCS_BACKUP_DIR` | 要量的备份目录（可选） |
+| `KCS_CAPACITY_INDEX_OVERHEAD` | 最坏情况里的索引开销比例，缺省用 `creator_raw` 实测的索引 ÷ 表 |
+| `PGAPPNAME` | API 进程启动时改成 `<原值或 kcs-api>:<主机名>:<pid>`，用来认出哪个进程持有队列锁；外面设的值会作为前缀保留 |
 | `PGY_ACCESS_TOKEN` | 蒲公英；网关 token（TikHub / JustOneAPI）或官方 access token |
 | `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official` |
 | `PGY_BASE_URL` `PGY_BRAND_USER_ID` `PGY_ENRICH` | 可选：自定义网关地址、官方品牌账号、搜索结果是否逐个补全详情 |

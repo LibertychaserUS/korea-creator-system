@@ -14,6 +14,8 @@ export default defineNuxtConfig({
         { to: '/creators', labelKey: 'kcs.nav.creators' },
         { to: '/creators/new', labelKey: 'kcs.panel.createCreator' },
         { to: '/sources', labelKey: 'kcs.nav.sources' },
+        { to: '/batches', labelKey: 'kcs.console.nav.batches' },
+        { to: '/categories', labelKey: 'kcs.console.nav.categories' },
       ],
     },
   },

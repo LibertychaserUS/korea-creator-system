@@ -8,7 +8,7 @@
     </template>
 
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      <KpiTile :label="t('kcs.panel.storage')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
+      <KpiTile :label="t('kcs.console.health.database')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
         <span class="flex items-center gap-2 text-xl md:text-2xl">
           <span class="relative flex size-2.5" aria-hidden="true">
             <span v-if="health.ok" class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
@@ -24,6 +24,8 @@
       <KpiTile :label="t('kcs.panel.failures')" :value="formatNumber(failedCount)" :icon="AlertTriangle" :tone="failedCount ? 'coral' : 'ink'" />
       <KpiTile :label="t('kcs.panel.sources')" :value="formatNumber(health.sourcesEnabled)" :icon="Plug" tone="sand" />
     </div>
+
+    <CapacityCard />
 
     <div class="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
       <!-- 状态分布 -->
