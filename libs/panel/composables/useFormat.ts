@@ -6,6 +6,10 @@ export function useFormat() {
     if (value === null || value === undefined || value === '') return '—'
     const n = Number(value)
     if (Number.isNaN(n)) return String(value)
+    if (opts.notation === 'compact') {
+      const digits = Math.abs(n) >= 1000 ? { maximumSignificantDigits: 3 } : { maximumFractionDigits: 0 }
+      return new Intl.NumberFormat(locale.value, { ...digits, ...opts }).format(n)
+    }
     return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 0, ...opts }).format(n)
   }
 

@@ -1,3 +1,4 @@
+import { kcsConsoleCopy } from './kcs-console'
 import type { Locale } from './types'
 
 export const zhCN: Locale = {
@@ -1903,6 +1904,7 @@ export const zhCN: Locale = {
     backToBlog: "返回博客"
   },
   kcs: {
+    ...kcsConsoleCopy['zh-CN'],
     metric: {
       followers: "粉丝数",
       followerGrowth: "近期涨粉",

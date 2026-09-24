@@ -37,8 +37,13 @@
       <KpiTile :label="t('kcs.panel.members')" :value="formatNumber(assignments.length)" :icon="Users" tone="sea" />
       <KpiTile :label="t('kcs.metric.cpe')" :value="format('cpe', medianCpe)" :icon="Gauge" tone="sand" :hint="t('kcs.metricHelp.cpe')" />
       <KpiTile :label="t('kcs.creators.cols.fans')" :value="formatNumber(totalFollowers, { notation: 'compact' })" :icon="Radio" tone="moss" />
-      <KpiTile :label="t('kcs.panel.quote')" :icon="Coins" tone="ink">
-        {{ formatPrice(totalQuote, 'CNY') }}
+      <KpiTile
+        :label="t('kcs.panel.quote')"
+        :icon="Coins"
+        tone="ink"
+        :hint="quote.missing ? t('kcs.display.quoteMissing', { n: quote.missing }) : undefined"
+      >
+        {{ formatPrice(quote.total, 'CNY') }}
       </KpiTile>
     </div>
 
@@ -155,7 +160,7 @@ const id = computed(() => String(route.params.id))
 const localePath = useLocalePath()
 const { request, download } = useApi()
 const { user } = useSession()
-const { formatPrice, toCny } = useCurrency()
+const { formatPrice, sumCny } = useCurrency()
 const { formatNumber } = useFormat()
 const { format } = useMetrics()
 const project = ref<any>({ name: '', note: '', assignments: [] })
@@ -169,7 +174,7 @@ const medianCpe = computed(() => {
   return vals.length ? vals[Math.floor(vals.length / 2)] : null
 })
 const totalFollowers = computed(() => assignments.value.reduce((sum, r) => sum + (Number(r.followers) || 0), 0))
-const totalQuote = computed(() => assignments.value.reduce((sum, r) => sum + toCny(r.price?.amountMin, r.price?.currency), 0))
+const quote = computed(() => sumCny(assignments.value.map((r) => ({ amount: r.price?.amountMin, currency: r.price?.currency, fxToCny: r.price?.fxToCny }))))
 
 const exporting = ref(false)
 const removing = ref<any>(null)

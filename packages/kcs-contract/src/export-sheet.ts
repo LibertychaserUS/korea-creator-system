@@ -1,3 +1,4 @@
+import { exportUnitValue } from './display-format'
 import { metricField, tierOf, type CreatorMetrics, type CreatorTier, type NumericMetricKey } from './metrics'
 import { DEFAULT_QUERY_COLUMNS } from './saved-query'
 import type { SourceId } from './source-adapter'
@@ -96,25 +97,38 @@ export function exportLocale(raw: string | null | undefined): ExportLocale {
   return (EXPORT_LOCALES as readonly string[]).includes(raw ?? '') ? (raw as ExportLocale) : 'zh-CN'
 }
 
-/** Quote when needed, and defuse text a spreadsheet would run as a formula. */
+/** Quote when needed, and defuse text a spreadsheet would run as a formula. A plain negative number stays a number. */
 export function exportCell(value: unknown): string {
   let text = value == null ? '' : String(value)
-  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text) && !/^-\d+(\.\d+)?%?$/.test(text)) text = `'${text}`
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-export function exportMetric(key: NumericMetricKey, value: number | null | undefined): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
-  switch (metricField(key).unit) {
-    case 'ratio':
-      return `${Number((value * 100).toFixed(1))}%`
-    case 'cny':
-    case 'cnyPerUnit':
-      return String(Number(value.toFixed(2)))
-    default:
-      return String(Math.round(value))
-  }
+/**
+ * An identifier that must stay text: a spreadsheet would drop the leading
+ * zero of `0123` and round a 17-digit number. Digits only, so the `="…"`
+ * wrapper cannot carry a formula.
+ */
+export function exportTextCell(value: string | null | undefined): string {
+  if (value == null) return ''
+  if (/^\d+$/.test(value) && (value.startsWith('0') || value.length > 15)) return `"=""${value}"""`
+  return exportCell(value)
 }
+
+/** Same digits as the screen (see display-format.ts), without grouping or currency sign. */
+export function exportMetric(key: NumericMetricKey, value: number | null | undefined): string {
+  return exportUnitValue(metricField(key).unit, value)
+}
+
+/** Calendar day of `value` in `timeZone` (the team works in Beijing time), `YYYY-MM-DD`. */
+export function exportDay(value: string | Date | null | undefined, timeZone = EXPORT_TIME_ZONE): string {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
+
+export const EXPORT_TIME_ZONE = 'Asia/Shanghai'
 
 export type ExportRow = {
   displayName: string | null
@@ -126,22 +140,21 @@ export type ExportRow = {
   metricsLockedAt: string | Date | null
 }
 
-export function projectSheet(rows: ExportRow[], locale: ExportLocale = 'zh-CN'): string {
+export function projectSheet(rows: ExportRow[], locale: ExportLocale = 'zh-CN', timeZone = EXPORT_TIME_ZONE): string {
   const l = EXPORT_LABELS[locale]
   const header = [l.creator, l.xhsId, l.source, l.tier, ...EXPORT_METRICS.map((key) => l.metrics[key] ?? key), l.status, l.publishedAt]
   const lines = rows.map((row) => {
     const metrics = row.metrics ?? {}
     const followers = metrics.followers ?? row.followers
     const source = row.source && row.source in l.sources ? l.sources[row.source as SourceId] : row.source ? row.source : l.sources.manual
-    const lockedAt = row.metricsLockedAt ? new Date(row.metricsLockedAt) : null
     return [
       exportCell(row.displayName),
-      exportCell(row.xhsId),
+      exportTextCell(row.xhsId),
       exportCell(source),
       exportCell(l.tiers[tierOf(followers)]),
       ...EXPORT_METRICS.map((key) => exportCell(exportMetric(key, key === 'followers' ? followers : (metrics[key] as number | null | undefined)))),
       exportCell(row.poolGone ? l.statuses.withdrawn : l.statuses.assigned),
-      exportCell(lockedAt && !Number.isNaN(lockedAt.getTime()) ? lockedAt.toISOString().slice(0, 10) : ''),
+      exportCell(exportDay(row.metricsLockedAt, timeZone)),
     ].join(',')
   })
   return `\uFEFF${[header.map(exportCell).join(','), ...lines].join('\r\n')}\r\n`
