@@ -94,21 +94,26 @@ export default defineNuxtConfig({
     dev: process.env.NODE_ENV === 'development',
   },
 
-  // DATABASE_URL / BETTER_AUTH_SECRET stay out of runtimeConfig: anything read
-  // from process.env here is frozen into .output at build time, and
-  // @libs/database / @libs/auth read them from process.env at runtime anyway.
+  // Anything read from process.env here is frozen into .output at build time.
+  // Origins are therefore plain defaults that Nuxt overrides at runtime from
+  // NUXT_<KEY> / NUXT_PUBLIC_<KEY> (e.g. NUXT_PUBLIC_OPS_URL), so one image
+  // serves any domain; DATABASE_URL / BETTER_AUTH_SECRET are not copied in at
+  // all (@libs/database and @libs/auth read process.env at runtime).
   runtimeConfig: {
     // OAuth provider credentials (public redirect flow only; secrets stay server-side)
     wechatAppId: process.env.WECHAT_APP_ID || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     appleClientId: process.env.APPLE_CLIENT_ID || '',
+    // Server-only: where SSR reaches the API (compose: http://api:7100, no
+    // hairpin through the public domain). Empty = use public.apiBase.
+    apiInternalBase: '',
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:7100',
+      apiBase: 'http://localhost:7100',
       // The four 听潮 apps, for cross-app login redirects and marketing CTAs
-      marketingUrl: process.env.KCS_MARKETING_URL || 'http://localhost:7000',
-      selectUrl: process.env.KCS_SELECT_URL || 'http://localhost:7004',
-      opsUrl: process.env.KCS_OPS_URL || 'http://localhost:7002',
-      devUrl: process.env.KCS_DEV_URL || 'http://localhost:7003',
+      marketingUrl: 'http://localhost:7000',
+      selectUrl: 'http://localhost:7004',
+      opsUrl: 'http://localhost:7002',
+      devUrl: 'http://localhost:7003',
       captchaEnabled: String(appConfig.captcha.enabled),
       turnstileSiteKey: appConfig.captcha.cloudflare.siteKey || '0x4AAAAAAABkMYinukNdH9ly',
       wechatAppId: appConfig.auth.socialProviders.wechat.appId || '',

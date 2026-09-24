@@ -22,7 +22,8 @@ export function useApi() {
     const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
     if (!isForm && !headers.has('content-type')) headers.set('content-type', 'application/json')
     if (token.value) headers.set('authorization', `Bearer ${token.value}`)
-    const res = await fetch(`${origin === 'self' ? '' : config.public.apiBase}${path}`, {
+    const apiBase = (import.meta.server && config.apiInternalBase) || config.public.apiBase
+    const res = await fetch(`${origin === 'self' ? '' : apiBase}${path}`, {
       ...opts,
       headers,
       credentials: 'include',

@@ -91,8 +91,9 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 |---|---|
 | `DB_DIALECT=pg` `DATABASE_URL` | TinyShip `tinyship` 库 |
 | `BETTER_AUTH_SECRET` `BETTER_AUTH_URL` | better-auth |
-| `NUXT_PUBLIC_API_BASE` | API 地址 |
-| `KCS_SELECT_URL` `KCS_OPS_URL` `KCS_DEV_URL` `KCS_MARKETING_URL`（运行时也可用 `NUXT_PUBLIC_*_URL` 覆盖） | 宣传站登录后按角色跳转的目标源站 |
+| `NUXT_PUBLIC_API_BASE` | 浏览器访问的 API 地址，默认 `http://localhost:7100` |
+| `NUXT_API_INTERNAL_BASE` | 服务端渲染访问 API 的内网地址（compose 里 `http://api:7100`）；不设就用 `NUXT_PUBLIC_API_BASE` |
+| `NUXT_PUBLIC_SELECT_URL` `NUXT_PUBLIC_OPS_URL` `NUXT_PUBLIC_DEV_URL` `NUXT_PUBLIC_MARKETING_URL` | 四端源站（宣传站按角色交接、工作区切换）。都是运行期变量，换域名不用重建镜像；旧的构建期 `KCS_*_URL` 已不再读取 |
 
 部署样例：`docker-compose.yml`、`deploy/k8s/*.yaml`、`deploy/k8s/secret.example.yaml`。
 
