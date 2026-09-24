@@ -19,9 +19,30 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  *   `th-500`         always HTTP 500
  *   `th-slow-MS`     a page, answered after MS milliseconds (timeouts)
  *   anything else    1 page of 2 kols
- * Every answer has a `request_id` of `th-<n>`; the call log records it.
+ * The data sections answer by what was asked, so tests can tell the 口径 apart:
+ *   get_blogger_data_summary  business=1 (合作) → 合作 costs, except for a user id
+ *                             containing `nocoop` (no cost at all); business=0 → 日常 costs
+ *   get_blogger_notes_rate    advertise_switch=0 → 自然流量 medians; 1 → higher 含投放 ones
+ * Every answer has a `request_id` of `th-<n>`; the call log records it and the
+ * `business` / `advertise_switch` sent.
  */
-export type TikhubCall = { at: number; keyword: string; cursor: string | null; status: number; path: string; requestId: string }
+export type TikhubCall = {
+  at: number
+  keyword: string
+  cursor: string | null
+  status: number
+  path: string
+  requestId: string
+  params?: { business?: unknown; advertiseSwitch?: unknown }
+}
+
+/** What the stand-in answers per 口径 (see above). */
+export const TIKHUB_SECTIONS = {
+  coopCost: { estimatePictureEngageCost: 42, picReadCost: 1.6 },
+  dailyCost: { estimatePictureEngageCost: 18, picReadCost: 0.7 },
+  organic: { noteNumber: 6, impMedian: 5_000, readMedian: 1_800, interactionMedian: 120, interactionRate: '4.0' },
+  all: { noteNumber: 6, impMedian: 8_000, readMedian: 2_600, interactionMedian: 180, interactionRate: '5.0' },
+} as const
 
 const PAGE_SIZE = 20
 const counters = new Map<string, number>()
@@ -70,8 +91,9 @@ export async function handleTikhub(
   }
   const keyword = String(body.keyword ?? body.user_id ?? '')
   const page = Number(body.page_num ?? 1) || 1
+  const params = 'business' in body || 'advertise_switch' in body ? { business: body.business, advertiseSwitch: body.advertise_switch } : undefined
   const send = (status: number, payload: unknown, headers: Record<string, string> = {}) => {
-    log({ at: Date.now(), keyword, cursor: body.page_num == null ? null : String(page), status, path: url.pathname, requestId })
+    log({ at: Date.now(), keyword, cursor: body.page_num == null ? null : String(page), status, path: url.pathname, requestId, ...(params ? { params } : {}) })
     res.statusCode = status
     res.setHeader('content-type', 'application/json')
     for (const [name, value] of Object.entries(headers)) res.setHeader(name, value)
@@ -91,6 +113,11 @@ export async function handleTikhub(
   const endpoint = url.pathname.split('/').at(-1)
   if (endpoint !== 'get_blogger_list') {
     if (endpoint === 'get_blogger_detail') return ok({ ...kol(keyword, 1, 1), userId: keyword, redId: `red_${keyword}` })
+    if (endpoint === 'get_blogger_data_summary') {
+      if (Number(body.business) !== 1) return ok({ noteNumber: 6, ...TIKHUB_SECTIONS.dailyCost })
+      return ok(keyword.includes('nocoop') ? { noteNumber: 2 } : { noteNumber: 6, ...TIKHUB_SECTIONS.coopCost })
+    }
+    if (endpoint === 'get_blogger_notes_rate') return ok(Number(body.advertise_switch) === 1 ? TIKHUB_SECTIONS.all : TIKHUB_SECTIONS.organic)
     return ok({ noteNumber: 6, readMedian: 1_800 })
   }
 

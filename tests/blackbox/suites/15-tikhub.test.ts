@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { authed, login, type Session } from '../helpers/auth'
 import { PATHS } from '../helpers/contract'
 import { type Json } from '../helpers/http'
+import { TIKHUB_SECTIONS } from '../helpers/mock-tikhub'
 import { VENDOR_URL, vendorCalls, type VendorCall } from '../helpers/mock-vendor'
 import { closePool, sqlExec, sqlRead } from '../helpers/postgres'
 
@@ -161,7 +162,7 @@ describe('TikHub — 计费', () => {
     expect(after.costTodayUsd - before.costTodayUsd).toBeCloseTo(PRICE, 6)
   })
 
-  it('按次预留：日配额还剩 7 次时，刷新 2 位博主（每人 5 次）正好停在第 7 次，partial QUOTA_EXHAUSTED', async (ctx) => {
+  it('按次预留：日配额还剩 7 次时，刷新 2 位博主（每人 6 次）正好停在第 7 次，partial QUOTA_EXHAUSTED', async (ctx) => {
     if (!live) return ctx.skip(skipReason)
     const before = await source()
     await setSource({ quota: before.callsToday + 7 })
@@ -176,7 +177,7 @@ describe('TikHub — 计费', () => {
     }
   })
 
-  it('日预算：还剩 $0.10 时停在第 5 次（partial BUDGET_EXHAUSTED），一次也不多发', async (ctx) => {
+  it('日预算：还剩 $0.10 时停在第 5 次（第一位博主的 6 次还差 1 次，partial BUDGET_EXHAUSTED），一次也不多发', async (ctx) => {
     if (!live) return ctx.skip(skipReason)
     const before = await source()
     await setSource({ budget: Math.round((before.costTodayUsd + 5 * PRICE) * 10_000) / 10_000 })
@@ -200,6 +201,47 @@ describe('TikHub — 计费', () => {
     const after = await source()
     expect(after.emptyToday - before.emptyToday).toBe(1)
     expect(after.callsToday - before.callsToday).toBe(1)
+  })
+})
+
+describe('TikHub — 口径（成本默认合作笔记、传播默认自然流量）', () => {
+  it('按口径发请求：成本先问合作笔记，没有合作数据再问日常；传播问自然流量，另取一次含投放作对照；存下的口径与数一一对应', async (ctx) => {
+    if (!live) return ctx.skip(skipReason)
+    const scope = await sqlRead<{ traffic_scope: string | null; business_scope: string | null }>(
+      'SELECT traffic_scope, business_scope FROM ingest_sources WHERE id = $1',
+      [SOURCE],
+    )
+    if (scope[0]?.traffic_scope || scope[0]?.business_scope) return ctx.skip('来源行上写了口径，不是默认值')
+    const coop = keyword('basis')
+    const nocoop = keyword('nocoop')
+    const job = await waitFor((await enqueue({ externalIds: [coop, nocoop] })).id, settled)
+    // 合作有数：详情 + 数据概览（合作）+ 粉丝 + 笔记表现（自然）+ 粉丝画像 + 笔记表现（含投放）= 6；没有合作数据的多问一次日常 = 7。
+    expect(job).toMatchObject({ status: 'ok', writtenCount: 2, quotaUsed: 13 })
+
+    const sent = async (id: string, endpoint: string) =>
+      (await vendorCalls()).filter((call) => call.keyword === id && call.path?.endsWith(endpoint)).map((call) => call.params)
+    expect(await sent(coop, 'get_blogger_data_summary')).toEqual([{ business: 1 }])
+    expect(await sent(nocoop, 'get_blogger_data_summary')).toEqual([{ business: 1 }, { business: 0 }])
+    for (const id of [coop, nocoop]) {
+      expect(await sent(id, 'get_blogger_notes_rate')).toEqual([{ business: 0, advertiseSwitch: 0 }, { business: 0, advertiseSwitch: 1 }])
+    }
+
+    const stored = await sqlRead<{ external_id: string; metrics: Record<string, any> }>(
+      `SELECT cs.external_id, c.metrics FROM creator_sources cs JOIN creators c ON c.id = cs.creator_id
+        WHERE cs.source = $1 AND cs.external_id = ANY($2::text[])`,
+      [SOURCE, [coop, nocoop]],
+    )
+    const by = Object.fromEntries(stored.map((row) => [row.external_id, row.metrics]))
+    expect(by[coop]!.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'coop' })
+    expect(by[coop]!.basis.costFallback).toBeUndefined()
+    expect(by[coop]!.cpe).toBe(TIKHUB_SECTIONS.coopCost.estimatePictureEngageCost)
+    expect(by[nocoop]!.basis).toMatchObject({ trafficScope: 'organic', businessScope: 'daily', costFallback: 'noCoopData' })
+    expect(by[nocoop]!.cpe).toBe(TIKHUB_SECTIONS.dailyCost.estimatePictureEngageCost)
+    for (const id of [coop, nocoop]) {
+      // 排位与排序用自然流量；含投放只作对照，另存一份。
+      expect(by[id]!.readMedian).toBe(TIKHUB_SECTIONS.organic.readMedian)
+      expect(by[id]!.allTraffic).toMatchObject({ readMedian: TIKHUB_SECTIONS.all.readMedian, impressionMedian: TIKHUB_SECTIONS.all.impMedian })
+    }
   })
 })
 
