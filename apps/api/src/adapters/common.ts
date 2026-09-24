@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import {
   METRIC_FIELDS,
   SHARE_METRIC_KEYS,
+  ZERO_MEANS_HIDDEN_KEYS,
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
@@ -98,10 +99,10 @@ export function fieldMapFromEnv(envName: string, defaults: FieldMap): FieldMap {
  * First usable value among `paths`. A placeholder ("-", "暂无" …) counts as
  * missing, so it never hides a real value under a later alias.
  */
-export function first(payload: unknown, spec: FieldSpec | undefined): unknown {
+export function first(payload: unknown, spec: FieldSpec | undefined, accept: (value: unknown) => boolean = () => true): unknown {
   for (const path of fieldPaths(spec)) {
     const value = pickPath(payload, path)
-    if (value !== undefined && value !== null && value !== '' && !isPlaceholder(value)) return value
+    if (value !== undefined && value !== null && value !== '' && !isPlaceholder(value) && accept(value)) return value
   }
   return undefined
 }
@@ -122,6 +123,7 @@ export function readMetric(
   else if (field?.unit === 'cny' || field?.unit === 'cnyPerUnit') parsed = toAmount(value)
   else if (field?.unit === 'ratio') parsed = parseRatio(value, unit, { share: SHARE_METRIC_KEYS.includes(key) })
   else parsed = parseNumber(value)
+  if (parsed.value === 0 && ZERO_MEANS_HIDDEN_KEYS.includes(key)) parsed = { value: null, issue: 'notShown' }
   if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
   else if (parsed.value == null) warnings.push(`${key}.missing`)
   return parsed.value
@@ -140,7 +142,11 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult 
   for (const key of numericKeys) {
     const spec = map[key]
     if (!spec) continue
-    ;(metrics as Record<string, unknown>)[key] = readMetric(key, first(raw.payload, spec), warnings, fieldUnit(spec))
+    // A 0 under one alias must not hide a shown value under the next.
+    const value = ZERO_MEANS_HIDDEN_KEYS.includes(key)
+      ? first(raw.payload, spec, (v) => toNumber(v) !== 0) ?? first(raw.payload, spec)
+      : first(raw.payload, spec)
+    ;(metrics as Record<string, unknown>)[key] = readMetric(key, value, warnings, fieldUnit(spec))
   }
   metrics.health = toHealth(first(raw.payload, map.health))
   metrics.coopBrands = toStringArray(first(raw.payload, map.coopBrands))

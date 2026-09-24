@@ -57,7 +57,7 @@ describe('ids past 2^53', () => {
 
     it('two ids become two creators with the ids as sent', async () => {
       expect(Number(ids[0])).toBe(Number(ids[1]))
-      const page = await qianguaAdapter.fetch({ window: 30 })
+      const page = await qianguaAdapter.fetch({ source: 'qiangua', window: 30 })
       expect(page.records.map((r) => r.externalId)).toEqual(ids)
       expect(await persistPage(ctx.env, qianguaAdapter, page, null, 'qiangua')).toEqual({ written: 2, skipped: 0, failed: 0 })
       const [a, b] = [await linksOf(ctx, 'qiangua', ids[0]), await linksOf(ctx, 'qiangua', ids[1])]

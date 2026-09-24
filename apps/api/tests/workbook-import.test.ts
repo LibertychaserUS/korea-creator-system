@@ -1,5 +1,6 @@
 import { crc32, deflateRawSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readSheetRow } from '../src/ingest/persist'
 import { runWorkbookIngest } from '../src/ingest/workbook'
 import { replayRecord } from '../src/ingest/worker'
 import { parseXlsx } from '../src/xlsx-sheet'
@@ -89,6 +90,14 @@ describe('parseXlsx', () => {
       '<row><c t="s"><v>1</v></c><c t="s"><v>2</v></c><c><v>1.2E+7</v></c></row>',
     ], sst))
     expect(rows).toEqual([{ displayName: '富文本', xhsId: '&lt;tag&gt;', followers: '1.2E+7', __line: '2' }])
+  })
+})
+
+describe('readSheetRow', () => {
+  it('a 0 quote is "not quoted", not a free creator', () => {
+    const result = readSheetRow({ displayName: '零报价', followers: '8000', price: '0' }, new Date())
+    expect(result.ok && result.incoming.metrics.priceImage).toBeNull()
+    expect(result.ok && result.incoming.metrics.followers).toBe(8000)
   })
 })
 

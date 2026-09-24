@@ -292,7 +292,7 @@ export function pickPath(obj: unknown, path: string | undefined): unknown {
  *   outOfRange  — a number that cannot be right for this field (negative
  *                 count, share above 100%, count past the integer column)
  */
-export type NumberIssue = 'placeholder' | 'range' | 'lowerBound' | 'unparseable' | 'outOfRange'
+export type NumberIssue = 'placeholder' | 'range' | 'lowerBound' | 'unparseable' | 'outOfRange' | 'notShown'
 
 export type ParsedNumber = { value: number | null; issue: NumberIssue | null }
 
@@ -411,6 +411,16 @@ export function fieldPaths(spec: FieldSpec | undefined): readonly string[] {
 export function fieldUnit(spec: FieldSpec | undefined): RatioUnit | undefined {
   return spec && !Array.isArray(spec) ? (spec as { unit?: RatioUnit }).unit : undefined
 }
+
+/**
+ * Medians, quotes and unit costs: vendors write 0 when the platform does not
+ * show the number (too few notes, no quote set). A real 0 is not possible, so
+ * 0 is read as "not shown" and never ranks as the cheapest CPE.
+ */
+export const ZERO_MEANS_HIDDEN_KEYS: readonly NumericMetricKey[] = [
+  'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
+  'coopReadMedian', 'coopInteractionMedian', 'priceImage', 'priceVideo', 'cpv', 'cpe', 'cpm',
+]
 
 /** Ratio metrics that are a share of a whole: outside 0–1 they cannot be right. */
 export const SHARE_METRIC_KEYS: readonly NumericMetricKey[] = [

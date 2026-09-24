@@ -51,6 +51,20 @@ describe('vendor values reach the metrics as numbers', () => {
     expect(creator.warnings).toContain('followers.outOfRange')
   })
 
+  it('千瓜 0 for CPE, quote or read median means not shown, not free', () => {
+    const creator = qg({ CPE: 0, 预估报价: '0', 阅读中位数: 0, 近30天发文: 0, 涨粉: 0 })
+    expect(creator.metrics.cpe).toBeNull()
+    expect(creator.metrics.priceImage).toBeNull()
+    expect(creator.metrics.readMedian).toBeNull()
+    expect(creator.warnings).toEqual(expect.arrayContaining(['cpe.notShown', 'priceImage.notShown', 'readMedian.notShown']))
+    expect(creator.metrics.noteCount).toBe(0)
+    expect(creator.metrics.followerGrowth).toBe(0)
+  })
+
+  it('a 0 under one alias does not hide a shown value under the next', () => {
+    expect(qg({ 预估报价: 0, 图文报价: '1.2万' }).metrics.priceImage).toBe(12_000)
+  })
+
   it('蒲公英 fans30GrowthRate "-0.8" is a 0.8% drop', () => {
     const result = pugongyingAdapter.normalize({
       source: 'pugongying', platform: 'xhs', externalId: 'u1', fetchedAt: '',

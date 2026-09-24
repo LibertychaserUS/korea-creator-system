@@ -246,7 +246,9 @@ export function readSheetRow(row: SheetRow, now: Date): SheetRowResult {
   const displayName = row.displayName || row.xhsId || row.userId
   if (!displayName) return { ok: false, errors: ['displayName.missing'] }
   const followers = toCount(row.followers)
-  const price = toAmount(row.price)
+  const parsedPrice = toAmount(row.price)
+  // A 0 quote in a sheet means "not quoted", same as a vendor's 0.
+  const price = parsedPrice.value === 0 ? { value: null, issue: null } : parsedPrice
   const errors = [
     ['followers', followers.issue],
     ['price', price.issue],
