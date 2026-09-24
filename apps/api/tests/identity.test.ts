@@ -5,13 +5,19 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { RawRecord, SourceId } from '@kcs/contract'
 import { qianguaAdapter, xinhongAdapter } from '../src/adapters'
 import { parseVendorJson } from '../src/adapters/common'
-import { persistPage } from '../src/ingest/persist'
+import { persistPage, readSheetRow, upsertCreatorFromNormalized } from '../src/ingest/persist'
 import { createTestApp, type TestCtx } from './helpers'
 
 const RUN = `ident${Date.now().toString(36)}`
 
 function raw(source: SourceId, payload: Record<string, unknown>): RawRecord {
   return { source, platform: 'xhs', externalId: String(payload['达人ID']), fetchedAt: new Date().toISOString(), payload }
+}
+
+function readSheetOk(row: Record<string, string>) {
+  const result = readSheetRow(row, new Date())
+  if (!result.ok) throw new Error(result.errors.join())
+  return result.incoming
 }
 
 async function linksOf(ctx: TestCtx, source: SourceId, externalId: string) {
@@ -104,6 +110,29 @@ describe('identity across sources', () => {
     await persistPage(ctx.env, qianguaAdapter, { records: [raw('qiangua', { 达人ID: id, 昵称: '丙', 小红书号: `${RUN}_c` })], nextCursor: null }, null, 'qiangua')
     await persistPage(ctx.env, qianguaAdapter, { records: [raw('qiangua', { 达人ID: id, 昵称: '丙' })], nextCursor: null }, null, 'qiangua')
     expect((await linksOf(ctx, 'qiangua', id)).xhs_id).toBe(`${RUN}_c`)
+  })
+})
+
+describe('source signals are stored beside the metrics', () => {
+  let ctx: TestCtx
+  beforeAll(async () => {
+    ctx = await createTestApp()
+  })
+  afterAll(() => ctx.close())
+
+  it('on the creator and on its snapshot; a sheet row leaves them alone', async () => {
+    const id = `${RUN}-sig`
+    await persistPage(ctx.env, xinhongAdapter, { records: [raw('xinhong', { 达人ID: id, 昵称: '信号', 互动粉丝比: '4.5', 健康等级: '异常', 小红书号: `${RUN}_sig` })], nextCursor: null }, null, 'xinhong')
+    const creator = await linksOf(ctx, 'xinhong', id)
+    const row = (await ctx.db.query('SELECT source_signals, metrics FROM creators WHERE id = $1', [creator.id])).rows[0]
+    expect(row.source_signals).toMatchObject({ healthLevel: 'abnormal', vendorEngagedFanRatio: 0.045 })
+    expect(row.metrics.health).toBe('abnormal')
+    const history = await ctx.db.query('SELECT signals FROM creator_metrics_history WHERE creator_id = $1', [creator.id])
+    expect(history.rows[0].signals).toMatchObject({ healthLevel: 'abnormal' })
+
+    await upsertCreatorFromNormalized(ctx.env, null, readSheetOk({ displayName: '信号', xhsId: `${RUN}_sig`, followers: '9000' }))
+    const after = (await ctx.db.query('SELECT source_signals, followers FROM creators WHERE id = $1', [creator.id])).rows[0]
+    expect(after).toMatchObject({ followers: 9000, source_signals: expect.objectContaining({ healthLevel: 'abnormal' }) })
   })
 })
 

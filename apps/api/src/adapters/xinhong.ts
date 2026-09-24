@@ -23,6 +23,7 @@ import {
   normalizeRecord,
   type AdapterPage,
   type FieldMap,
+  type SignalFieldMap,
 } from './common'
 
 const DEFAULT_FIELD_MAP: FieldMap = {
@@ -46,7 +47,6 @@ const DEFAULT_FIELD_MAP: FieldMap = {
   priceVideo: ['视频报价', 'price_video', 'videoPrice'],
   cpe: ['CPE', 'cpe'],
   cpm: ['CPM', 'cpm'],
-  engagedFanRatio: { paths: ['互动粉丝比', 'engaged_fan_ratio'], unit: 'percent' },
   authenticity: { paths: ['粉丝真实度', 'real_fan_ratio', 'authenticity'], unit: 'percent' },
   vendorIndex: ['新红指数', 'index', 'xinhongIndex'],
   coopBrands: ['合作品牌', 'brands', 'coopBrands'],
@@ -55,15 +55,20 @@ const DEFAULT_FIELD_MAP: FieldMap = {
 
 export const FIELD_MAP: FieldMap = fieldMapFromEnv('XINHONG_FIELD_MAP', DEFAULT_FIELD_MAP)
 
+/** 新红「互动粉丝比」has no published definition, so it is not 蒲公英's 互动粉丝占比. */
+const SIGNAL_MAP: SignalFieldMap = {
+  vendorEngagedFanRatio: { paths: ['互动粉丝比', 'engaged_fan_ratio'], unit: 'percent' },
+}
+
 export const xinhongAdapter: SourceAdapter = {
   id: 'xinhong',
   supports: ['window', 'keyword', 'category', 'region', 'followersMin', 'followersMax', 'priceMin', 'priceMax', 'externalIds', 'cursor', 'limit'],
-  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'engagedFanRatio', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
+  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const token = process.env.XINHONG_TOKEN
     if (!token) {
       const page = fixturePage('xinhong', new URL('./fixtures/xinhong.json', import.meta.url), query)
-      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP))
+      return filterFixturePage(page, query, (raw) => normalizeRecord(raw, FIELD_MAP, SIGNAL_MAP))
     }
     const base = (process.env.XINHONG_BASE_URL || 'https://api.newrank.cn').replace(/\/$/, '')
     const path = process.env.XINHONG_SEARCH_PATH || '/api/sync/xh/account/search'
@@ -77,6 +82,6 @@ export const xinhongAdapter: SourceAdapter = {
     })
   },
   normalize(raw) {
-    return normalizeRecord(raw, FIELD_MAP)
+    return normalizeRecord(raw, FIELD_MAP, SIGNAL_MAP)
   },
 }

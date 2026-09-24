@@ -6,6 +6,8 @@ import {
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  emptySignals,
+  healthFromLevel,
   fieldPaths,
   fieldUnit,
   isPlaceholder,
@@ -15,11 +17,12 @@ import {
   pickPath,
   toAmount,
   toCount,
-  toHealth,
+  toHealthLevel,
   toNumber,
   toStringArray,
   type CreatorMetrics,
   type FieldSpec,
+  type HealthGrade,
   type NormalizeResult,
   type NumericMetricKey,
   type ParsedNumber,
@@ -40,6 +43,9 @@ export type FieldMap = Partial<Record<
   | 'externalId',
   FieldSpec
 >>
+
+/** Vendor fields that land in `SourceSignals`, not in the shared metrics. */
+export type SignalFieldMap = Partial<Record<'vendorEngagedFanRatio' | 'videoCompletionRate' | 'picture3sReadRate', FieldSpec>>
 
 export type AdapterPage = SourcePage & { sourceMode: 'live' | 'fixture' }
 
@@ -130,7 +136,7 @@ export function readMetric(
   return parsed.value
 }
 
-export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult {
+export function normalizeRecord(raw: RawRecord, map: FieldMap, signalMap: SignalFieldMap = {}): NormalizeResult {
   const externalId = String(first(raw.payload, map.externalId) ?? raw.externalId ?? '').trim()
   const displayName = String(first(raw.payload, map.displayName) ?? '').trim()
   if (!externalId || !displayName) return { ok: false, errors: [!externalId ? 'externalId.missing' : 'displayName.missing'] }
@@ -149,7 +155,17 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult 
       : first(raw.payload, spec)
     ;(metrics as Record<string, unknown>)[key] = readMetric(key, value, warnings, fieldUnit(spec))
   }
-  metrics.health = toHealth(first(raw.payload, map.health))
+  const signals = emptySignals()
+  signals.healthLevel = toHealthLevel(first(raw.payload, map.health))
+  metrics.health = healthFromLevel(signals.healthLevel)
+  for (const key of ['vendorEngagedFanRatio', 'videoCompletionRate', 'picture3sReadRate'] as const) {
+    const spec = signalMap[key]
+    const value = spec ? first(raw.payload, spec) : undefined
+    if (value === undefined) continue
+    const parsed = parseRatio(value, fieldUnit(spec) ?? 'ratio', { share: true })
+    if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
+    signals[key] = parsed.value
+  }
   metrics.coopBrands = toStringArray(first(raw.payload, map.coopBrands))
   const indexValue = toNumber(first(raw.payload, map.vendorIndex))
   if (indexValue != null) metrics.vendorIndex = { name: raw.source === 'qiangua' ? '千瓜指数' : '新红指数', value: indexValue, max: 1000 }
@@ -168,6 +184,7 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap): NormalizeResult 
       regions: toStringArray(first(raw.payload, map.regions)),
       verticals: toStringArray(first(raw.payload, map.verticals)),
       metrics: deriveMetrics(metrics),
+      signals,
       warnings,
     },
   }
@@ -194,6 +211,18 @@ export function fixturePage(source: SourceId, fixtureUrl: URL, query: SourceQuer
   }
 }
 
+/**
+ * The health filter as the vendors apply it: a list without `abnormal` drops
+ * 异常 and 低活跃 creators (蒲公英 `excludeLowActive`); `['abnormal']` alone
+ * keeps only those. `excellent` and `normal` both mean 健康 now.
+ */
+export function matchesHealth(wanted: readonly HealthGrade[], health: HealthGrade | null, lowActive: boolean | null): boolean {
+  const flagged = health === 'abnormal' || lowActive === true
+  const wantsFlagged = wanted.includes('abnormal')
+  const wantsHealthy = wanted.some((grade) => grade !== 'abnormal')
+  return flagged ? wantsFlagged : wantsHealthy
+}
+
 export function filterFixturePage(
   page: AdapterPage,
   query: SourceQuery,
@@ -214,7 +243,7 @@ export function filterFixturePage(
     if (query.followersMax != null && (metrics.followers == null || metrics.followers > query.followersMax)) return false
     if (query.priceMin != null && (metrics.priceImage == null || metrics.priceImage < query.priceMin)) return false
     if (query.priceMax != null && (metrics.priceImage == null || metrics.priceImage > query.priceMax)) return false
-    if (query.health?.length && (metrics.health == null || !query.health.includes(metrics.health))) return false
+    if (query.health?.length && !matchesHealth(query.health, metrics.health, creator.signals?.lowActive ?? null)) return false
     return true
   })
   return { ...page, records }

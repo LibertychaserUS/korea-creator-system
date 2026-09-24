@@ -58,7 +58,7 @@ describe('usable demo seed', () => {
     expect(items.some((row) => (row.followers ?? 0) > 0)).toBe(true)
     expect(items.some((row) => row.hasCollaborated && row.collabBrands.length > 0)).toBe(true)
     expect(new Set(items.map((row) => row.source))).toEqual(new Set(['pugongying', 'qiangua', 'xinhong']))
-    expect(items.some((row) => row.metrics.health === 'excellent')).toBe(true)
+    expect(items.some((row) => row.metrics.health === 'excellent')).toBe(false)
     expect(items.some((row) => row.metrics.health === 'normal')).toBe(true)
     expect(items.some((row) => row.metrics.health === 'abnormal')).toBe(true)
     expect(items.some((row) => row.status === 'released' && row.metricsLocked != null)).toBe(true)

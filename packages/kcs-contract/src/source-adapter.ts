@@ -77,8 +77,68 @@ export type NormalizedCreator = {
   regions: string[]
   verticals: string[]
   metrics: CreatorMetrics
+  /** What the source said beyond the shared metrics (see `SourceSignals`). */
+  signals?: SourceSignals
   /** Field-level notes: which fields were missing or estimated by the vendor. */
   warnings: string[]
+}
+
+/**
+ * 健康等级 as the platform grades it: since 2024-09 蒲公英 has two levels,
+ * 健康 / 异常 (monthly, on violations, faked data, unreported ads, delivery).
+ * There is no 「优秀」. 低活跃 is a different fact and lives in `lowActive`.
+ */
+export type HealthLevel = 'healthy' | 'abnormal'
+
+/** 蒲公英「超过 X% 同类博主」per metric, as a 0–1 share. */
+export const PLATFORM_RANK_KEYS = [
+  'impressionMedian', 'readMedian', 'interactionMedian', 'interactionRate', 'followerGrowth',
+  'activeFanRatio', 'engagedFanRatio', 'readFanRatio', 'videoCompletionRate',
+] as const
+export type PlatformRankKey = (typeof PLATFORM_RANK_KEYS)[number]
+
+/**
+ * Facts a source reports that do not fit a shared metric, or that must not be
+ * mixed with one. Stored next to the metrics (`creators.source_signals`,
+ * `creator_metrics_history.signals`); `null` = the source did not say.
+ */
+export type SourceSignals = {
+  healthLevel: HealthLevel | null
+  /** 蒲公英 低活跃: few recent posts. Not a health grade. */
+  lowActive: boolean | null
+  /** 蒲公英 dataSummary.isActive. */
+  recentlyActive: boolean | null
+  /** 视频完播率 (0–1). */
+  videoCompletionRate: number | null
+  /** 图文 3 秒阅读率 (0–1). */
+  picture3sReadRate: number | null
+  /** 合作笔记总数 (all time); `metrics.coopNoteCount` is the recent window. */
+  coopNoteCountTotal: number | null
+  /** 新红「互动粉丝比」: no published definition, so kept apart from 蒲公英's 互动粉丝占比. */
+  vendorEngagedFanRatio: number | null
+  /** 外溢进店 UV 中位数: 近 30 日跨域合作笔记的进店 UV 中位数. */
+  storeVisitUvMedian: number | null
+  /** 外溢进店单价 (元 / UV). */
+  storeVisitUnitCost: number | null
+  platformRank: Partial<Record<PlatformRankKey, number>>
+  /** How many days a field covers when that is not `metrics.window` (蒲公英 活跃粉丝 = 28). */
+  windowDays: Partial<Record<string, number>>
+}
+
+export function emptySignals(): SourceSignals {
+  return {
+    healthLevel: null,
+    lowActive: null,
+    recentlyActive: null,
+    videoCompletionRate: null,
+    picture3sReadRate: null,
+    coopNoteCountTotal: null,
+    vendorEngagedFanRatio: null,
+    storeVisitUvMedian: null,
+    storeVisitUnitCost: null,
+    platformRank: {},
+    windowDays: {},
+  }
 }
 
 export type NormalizeResult = { ok: true; creator: NormalizedCreator } | { ok: false; errors: string[] }
@@ -469,11 +529,20 @@ export function toStringArray(value: unknown): string[] {
   return []
 }
 
-export function toHealth(value: unknown): HealthGrade | null {
+/** A vendor's 健康等级 text on the two official levels; 「优秀」「普通」 are both 健康. */
+export function toHealthLevel(value: unknown): HealthLevel | null {
   if (value == null) return null
-  const s = String(value).trim().toLowerCase()
-  if (['优秀', 'excellent', 'good', 'a', '1'].includes(s)) return 'excellent'
-  if (['普通', 'normal', 'b', '2'].includes(s)) return 'normal'
-  if (['异常', 'abnormal', 'bad', 'c', '3'].includes(s)) return 'abnormal'
+  const s = String(value).normalize('NFKC').trim().toLowerCase()
+  if (['健康', '正常', '优秀', '良好', '普通', 'healthy', 'normal', 'excellent', 'good', 'a', 'b'].includes(s)) return 'healthy'
+  if (['异常', '不健康', 'abnormal', 'unhealthy', 'bad', 'c'].includes(s)) return 'abnormal'
   return null
+}
+
+/** The metric grade for a level: 健康 → `normal`. `excellent` is no longer produced. */
+export function healthFromLevel(level: HealthLevel | null): HealthGrade | null {
+  return level === 'healthy' ? 'normal' : level === 'abnormal' ? 'abnormal' : null
+}
+
+export function toHealth(value: unknown): HealthGrade | null {
+  return healthFromLevel(toHealthLevel(value))
 }

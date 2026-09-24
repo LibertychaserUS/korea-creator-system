@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from '../src/adapters'
-import { fieldMapFromEnv, fixturePage, normalizeRecord, type FieldMap } from '../src/adapters/common'
+import { fieldMapFromEnv, fixturePage, matchesHealth, normalizeRecord, type FieldMap } from '../src/adapters/common'
 
 describe.each([pugongyingAdapter, qianguaAdapter, xinhongAdapter])('$id adapter', (adapter) => {
   it('normalizes every fixture without inventing missing values', () => {
@@ -18,7 +18,9 @@ describe.each([pugongyingAdapter, qianguaAdapter, xinhongAdapter])('$id adapter'
       expect(result.creator.creatorKey).toBe(`${adapter.id}:${result.creator.externalId}`)
       expect(result.creator.metrics.cpe).not.toBeNull()
       expect(result.creator.metrics.engagementRate).not.toBeNull()
-      expect(['excellent', 'normal', 'abnormal']).toContain(result.creator.metrics.health)
+      // Two official levels only; 蒲公英 has no documented 健康等级 field, 低活跃 is a separate flag.
+      if (adapter.id === 'pugongying') expect(result.creator.metrics.health).toBeNull()
+      else expect(['normal', 'abnormal']).toContain(result.creator.metrics.health)
     }
   })
 })
@@ -129,5 +131,25 @@ describe('ratio units are declared per field, never guessed from size', () => {
     } finally {
       delete process.env.KCS_TEST_FIELD_MAP
     }
+  })
+})
+
+describe('health and vendor-specific fields', () => {
+  it('新红「互动粉丝比」is kept apart from 蒲公英\'s 互动粉丝占比', () => {
+    const result = xinhongAdapter.normalize({ source: 'xinhong', platform: 'xhs', externalId: 'x', fetchedAt: '', payload: { 达人ID: 'x', 昵称: 'n', 互动粉丝比: '4.5', 健康等级: '优秀' } })
+    if (!result.ok) throw new Error(result.errors.join())
+    expect(result.creator.metrics.engagedFanRatio).toBeNull()
+    expect(result.creator.signals?.vendorEngagedFanRatio).toBeCloseTo(0.045, 10)
+    expect(result.creator.metrics.health).toBe('normal')
+    expect(result.creator.signals?.healthLevel).toBe('healthy')
+  })
+
+  it('a health filter treats 异常 and 低活跃 alike and all other grades as 健康', () => {
+    expect(matchesHealth(['excellent'], 'normal', null)).toBe(true)
+    expect(matchesHealth(['excellent'], null, false)).toBe(true)
+    expect(matchesHealth(['excellent', 'normal'], null, true)).toBe(false)
+    expect(matchesHealth(['normal'], 'abnormal', null)).toBe(false)
+    expect(matchesHealth(['abnormal'], null, true)).toBe(true)
+    expect(matchesHealth(['abnormal'], 'normal', false)).toBe(false)
   })
 })

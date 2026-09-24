@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_COUNT, fieldPaths, fieldUnit, isPlaceholder, normalizeXhsId, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
+import { MAX_COUNT, emptySignals, fieldPaths, healthFromLevel, toHealth, toHealthLevel, fieldUnit, isPlaceholder, normalizeXhsId, parseNumber, parseRatio, toAmount, toCount, toNumber, toRatio } from '../src/source-adapter'
 
 describe('toNumber: what vendors write for a number', () => {
   it.each([
@@ -152,5 +152,25 @@ describe('normalizeXhsId', () => {
     expect(normalizeXhsId('\u3000ＣＨＥＯＮＧＤＡＭ_skin')).toBe('cheongdam_skin')
     expect(normalizeXhsId(12345)).toBe('12345')
     for (const empty of [null, undefined, '', '  ', '-', '暂无', {}]) expect(normalizeXhsId(empty)).toBeNull()
+  })
+})
+
+describe('health level', () => {
+  it('has two official levels; 优秀 and 普通 are both 健康', () => {
+    for (const text of ['健康', '优秀', '普通', '正常', 'Normal', 'excellent']) expect(toHealthLevel(text), text).toBe('healthy')
+    for (const text of ['异常', 'abnormal']) expect(toHealthLevel(text), text).toBe('abnormal')
+    expect(toHealthLevel('低活跃')).toBeNull()
+    expect(toHealthLevel(null)).toBeNull()
+  })
+
+  it('never produces 「优秀」 as a metric grade', () => {
+    expect(healthFromLevel('healthy')).toBe('normal')
+    expect(healthFromLevel('abnormal')).toBe('abnormal')
+    expect(healthFromLevel(null)).toBeNull()
+    expect(toHealth('优秀')).toBe('normal')
+  })
+
+  it('empty signals say nothing', () => {
+    expect(emptySignals()).toMatchObject({ healthLevel: null, lowActive: null, platformRank: {}, windowDays: {} })
   })
 })

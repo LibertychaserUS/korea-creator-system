@@ -24,6 +24,9 @@ import {
   creatorKeyFor,
   deriveMetrics,
   emptyMetrics,
+  emptySignals,
+  healthFromLevel,
+  PLATFORM_RANK_KEYS,
   SHARE_METRIC_KEYS,
   isPlaceholder,
   normalizeXhsId,
@@ -33,14 +36,15 @@ import {
   toNumber,
   type AudienceProfile,
   type CreatorMetrics,
-  type HealthGrade,
   type NormalizeResult,
   type NumericMetricKey,
   type PgyGateway,
+  type PlatformRankKey,
   type RatioUnit,
   type RawRecord,
   type SourceAdapter,
   type SourceQuery,
+  type SourceSignals,
 } from '@kcs/contract'
 import { filterFixturePage, fixturePage, readVendorJson, type AdapterPage } from './common'
 
@@ -315,7 +319,7 @@ function positiveCount(payload: Json, paths: readonly string[]): number | null {
  * as fractions. Unusable values leave a `<key>.<issue>` warning.
  */
 function ratioMetric(
-  key: NumericMetricKey,
+  key: NumericMetricKey | 'videoCompletionRate' | 'picture3sReadRate',
   payload: Json,
   paths: readonly string[],
   unit: RatioUnit,
@@ -323,19 +327,60 @@ function ratioMetric(
 ): number | null {
   const value = pick(payload, paths)
   if (value === undefined) return null
-  const parsed = parseRatio(value, unit, { share: SHARE_METRIC_KEYS.includes(key) })
+  const share = key === 'videoCompletionRate' || key === 'picture3sReadRate' || SHARE_METRIC_KEYS.includes(key)
+  const parsed = parseRatio(value, unit, { share })
   if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
   return parsed.value
 }
 
-function healthOf(payload: Json): HealthGrade | null {
-  const lowActive = payload.lowActive
-  if (lowActive === true) return 'abnormal'
-  if (lowActive === false) {
-    const active = pickPath(payload, 'dataSummary.isActive')
-    return active === false ? 'normal' : 'excellent'
-  }
+function flag(value: unknown): boolean | null {
+  if (value === true || value === 1 || value === '1' || value === 'true') return true
+  if (value === false || value === 0 || value === '0' || value === 'false') return false
   return null
+}
+
+/** 「超过 X% 同类博主」fields; the notesRate one matches the window we asked for. */
+const RANK_PATHS: Record<PlatformRankKey, readonly string[]> = {
+  impressionMedian: ['notesRate.impMedianBeyondRate'],
+  readMedian: ['notesRate.readMedianBeyondRate', 'dataSummary.readMedianBeyondRate'],
+  interactionMedian: ['notesRate.interactionMedianBeyondRate'],
+  interactionRate: ['notesRate.interactionBeyondRate', 'dataSummary.interactionBeyondRate'],
+  followerGrowth: ['fansSummary.fansGrowthBeyondRate'],
+  activeFanRatio: ['fansSummary.activeFansBeyondRate'],
+  engagedFanRatio: ['fansSummary.engageFansBeyondRate'],
+  readFanRatio: ['fansSummary.readFansBeyondRate'],
+  videoCompletionRate: ['notesRate.videoFullViewBeyondRate'],
+}
+
+/**
+ * Everything 蒲公英 says that the shared metrics cannot hold as-is. There is
+ * no documented 健康等级 field in the solar responses we relay, so
+ * `healthLevel` stays null until one is confirmed (待实测); 低活跃 is its own flag.
+ */
+function signalsOf(p: Json, warnings: string[]): SourceSignals {
+  const signals = emptySignals()
+  signals.lowActive = flag(p.lowActive)
+  signals.recentlyActive = flag(pickPath(p, 'dataSummary.isActive'))
+  signals.videoCompletionRate = ratioMetric('videoCompletionRate', p, ['notesRate.videoFullViewRate', 'videoFinishRate'], 'percent', warnings)
+  signals.picture3sReadRate = ratioMetric('picture3sReadRate', p, ['notesRate.picture3sViewRate'], 'percent', warnings)
+  signals.coopNoteCountTotal = positiveCount(p, ['businessNoteCount'])
+  // 外溢进店: field names from relayed responses, not yet seen on a live account (待实测).
+  signals.storeVisitUvMedian = positiveCount(p, ['notesRate.mCpuvNum', 'dataSummary.mCpuvNum', 'mCpuvNum'])
+  signals.storeVisitUnitCost = positive(p, ['notesRate.estimateCpuv', 'dataSummary.estimateCpuv30d', 'estimateCpuv30d', 'estimateCpuv'])
+  for (const key of PLATFORM_RANK_KEYS) {
+    const value = pick(p, RANK_PATHS[key])
+    if (value === undefined) continue
+    const parsed = parseRatio(value, 'percent', { share: true })
+    if (parsed.issue) warnings.push(`platformRank.${key}.${parsed.issue}`)
+    else if (parsed.value != null) signals.platformRank[key] = parsed.value
+  }
+  // Field names carry the window: activeFansL28 / engageFansL30 / readFansIn30.
+  if (pickPath(p, 'fansSummary.activeFansRate') != null) signals.windowDays.activeFanRatio = 28
+  if (pickPath(p, 'fansSummary.engageFansRate') != null) signals.windowDays.engagedFanRatio = 30
+  if (pickPath(p, 'fansSummary.readFansRate') != null) signals.windowDays.readFanRatio = 30
+  signals.windowDays.coopNoteCount = 30
+  if (signals.storeVisitUvMedian != null || signals.storeVisitUnitCost != null) signals.windowDays.storeVisit = 30
+  return signals
 }
 
 function verticalsOf(payload: Json): string[] {
@@ -413,6 +458,7 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.coopReadMedian = positiveCount(p, ['readMidCoop30'])
   m.coopInteractionMedian = positiveCount(p, ['interMidCoop30'])
   m.engagementRate = percent('engagementRate', ['notesRate.interactionRate'])
+  // Still the video completion rate; the 3-second read rate is kept apart in signals.
   m.retentionRate = percent('retentionRate', ['notesRate.videoFullViewRate', 'videoFinishRate'])
   m.noteCount = positiveCount(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
   // 千赞笔记比例 is the platform's own "爆文" ratio; no absolute count is exposed.
@@ -428,12 +474,14 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.trafficRecommendRatio = fraction('trafficRecommendRatio', ['notesRate.pagePercentVo.readHomefeedPercent'])
   m.trafficFollowRatio = fraction('trafficFollowRatio', ['notesRate.pagePercentVo.readFollowPercent'])
 
-  m.health = healthOf(p)
-  m.coopNoteCount = positiveCount(p, ['coopNoteNum30d', 'businessNoteCount'])
+  const signals = signalsOf(p, issues)
+  m.health = healthFromLevel(signals.healthLevel)
+  // Recent window only; the all-time count (businessNoteCount) is signals.coopNoteCountTotal.
+  m.coopNoteCount = positiveCount(p, ['coopNoteNum30d'])
   m.audience = audienceOf(p)
 
   const metrics = deriveMetrics(m)
-  const warnings = (['followers', 'readMedian', 'interactionMedian', 'priceImage', 'cpe', 'health'] as const)
+  const warnings = (['followers', 'readMedian', 'interactionMedian', 'priceImage', 'cpe'] as const)
     .filter((key) => metrics[key] == null)
     .map((key) => `${key}.missing`)
     .concat(issues)
@@ -450,6 +498,7 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
       regions: regionsOf(p),
       verticals: verticalsOf(p),
       metrics,
+      signals,
       warnings,
     },
   }
@@ -467,7 +516,7 @@ export const pugongyingAdapter: SourceAdapter = {
     'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
     'coopReadMedian', 'coopInteractionMedian', 'engagementRate', 'retentionRate', 'noteCount', 'viralRate',
     'priceImage', 'priceVideo', 'cpv', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio',
-    'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'health', 'coopNoteCount', 'audience',
+    'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'coopNoteCount', 'audience',
   ],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const resolved = resolveGateway()

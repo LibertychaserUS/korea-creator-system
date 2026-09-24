@@ -49,7 +49,7 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.trafficSearchRatio).toBe(0.18)
     expect(m.trafficRecommendRatio).toBe(0.75)
     expect(m.trafficFollowRatio).toBe(0.03)
-    expect(m.health).toBe('excellent')
+    expect(m.health).toBeNull()
     expect(m.authenticity).toBeNull()
     expect(m.coopNoteCount).toBe(6)
     expect(m.audience?.femaleRatio).toBe(0.86)
@@ -71,18 +71,47 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.noteCount).toBeNull()
     expect(m.engagementRate).toBeCloseTo(4100 / 61000, 4)
     expect(m.cpe).toBe(2.39)
-    expect(m.health).toBe('excellent')
+    expect(m.health).toBeNull()
     expect(m.audience).toBeNull()
   })
 
-  it('maps lowActive / isActive onto the health gate', () => {
-    const abnormal = normalizePugongying(record(7))
-    const normal = normalizePugongying(record(2))
-    expect(abnormal.ok && abnormal.creator.metrics.health).toBe('abnormal')
-    expect(normal.ok && normal.creator.metrics.health).toBe('normal')
+  it('keeps 低活跃 as its own flag instead of turning it into a health grade', () => {
+    const low = normalizePugongying(record(7))
+    const active = normalizePugongying(record(0))
+    expect(low.ok && low.creator.metrics.health).toBeNull()
+    expect(low.ok && low.creator.signals?.lowActive).toBe(true)
+    expect(active.ok && active.creator.signals).toMatchObject({ lowActive: false, recentlyActive: true, healthLevel: null })
     const bare = normalizePugongying({ ...record(1), payload: { userId: 'x', name: 'y' } })
     expect(bare.ok && bare.creator.metrics.health).toBeNull()
+    expect(bare.ok && bare.creator.signals?.lowActive).toBeNull()
     expect(bare.ok && bare.creator.warnings).toContain('followers.missing')
+  })
+
+  it('keeps 完播率 and 3 秒阅读率 apart, and the 30-day and all-time 合作笔记 apart', () => {
+    const result = normalizePugongying(record(0))
+    if (!result.ok) throw new Error(result.errors.join())
+    const { metrics, signals } = result.creator
+    expect(metrics.retentionRate).toBeCloseTo(0.412, 10)
+    expect(signals?.videoCompletionRate).toBeCloseTo(0.412, 10)
+    expect(signals?.picture3sReadRate).toBeCloseTo(0.7, 10)
+    expect(metrics.coopNoteCount).toBe(6)
+    expect(signals?.coopNoteCountTotal).toBe(241)
+    expect(signals?.windowDays).toMatchObject({ activeFanRatio: 28, engagedFanRatio: 30, coopNoteCount: 30 })
+  })
+
+  it('reads the platform\'s own 「超过 X% 同类博主」ranks', () => {
+    const result = normalizePugongying(record(0))
+    if (!result.ok) throw new Error(result.errors.join())
+    expect(result.creator.signals?.platformRank).toMatchObject({
+      readMedian: 0.9, impressionMedian: 0.9, interactionRate: 0.85, followerGrowth: 0.8,
+      activeFanRatio: 0.6, engagedFanRatio: 0.7, readFanRatio: 0.65, videoCompletionRate: 0.5,
+    })
+  })
+
+  it('reads 外溢进店 UV and 单价 when the response carries them (field names 待实测)', () => {
+    const result = normalizePugongying({ ...record(1), payload: { userId: 'x', name: 'y', notesRate: { mCpuvNum: '1,200', estimateCpuv: '3.5' } } })
+    if (!result.ok) throw new Error(result.errors.join())
+    expect(result.creator.signals).toMatchObject({ storeVisitUvMedian: 1200, storeVisitUnitCost: 3.5 })
   })
 })
 

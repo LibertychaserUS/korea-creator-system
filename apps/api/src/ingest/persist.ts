@@ -12,6 +12,7 @@ import {
   type SourceAdapter,
   type SourceId,
   type SourcePage,
+  type SourceSignals,
 } from '@kcs/contract'
 import { parseMetrics, saveRelations } from '../http/creators'
 import type { AppEnv } from '../http/types'
@@ -44,6 +45,7 @@ export type IncomingCreator = {
   regions: string[]
   verticals: string[]
   metrics: CreatorMetrics
+  signals: SourceSignals | null
   fetchedAt: string
   origin:
     | { kind: 'source'; source: SourceId; externalId: string; raw: RawRecord }
@@ -110,7 +112,8 @@ async function upsertInTransaction(
          xhs_id = COALESCE($6, xhs_id),
          metrics = $7, metrics_window = $8,
          source = COALESCE($9, source), external_id = COALESCE($10, external_id),
-         metrics_fetched_at = $11, last_ingest_job_id = $12, updated_at = now()
+         metrics_fetched_at = $11, last_ingest_job_id = $12,
+         source_signals = COALESCE($13::jsonb, source_signals), updated_at = now()
        WHERE id = $1`,
       [
         creatorId,
@@ -125,6 +128,7 @@ async function upsertInTransaction(
         externalId,
         incoming.fetchedAt,
         jobId,
+        incoming.signals ? JSON.stringify(incoming.signals) : null,
       ],
     )
   } else {
@@ -132,8 +136,8 @@ async function upsertInTransaction(
       `INSERT INTO creators (
          id, creator_key, display_name, status, needs_review, followers, followers_unknown,
          regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-         metrics_fetched_at, last_ingest_job_id, note
-       ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+         metrics_fetched_at, last_ingest_job_id, note, source_signals
+       ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         creatorId,
         incoming.creatorKey,
@@ -150,6 +154,7 @@ async function upsertInTransaction(
         incoming.fetchedAt,
         jobId,
         origin.kind === 'sheet' ? origin.note : null,
+        incoming.signals ? JSON.stringify(incoming.signals) : null,
       ],
     )
   }
@@ -178,9 +183,12 @@ async function upsertInTransaction(
     )
     await client.query(
       `INSERT INTO creator_metrics_history
-         (id, creator_id, source, "window", fetched_at, job_id, metrics)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [randomUUID(), creatorId, origin.source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics)],
+         (id, creator_id, source, "window", fetched_at, job_id, metrics, signals)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        randomUUID(), creatorId, origin.source, metrics.window, incoming.fetchedAt, jobId, JSON.stringify(metrics),
+        incoming.signals ? JSON.stringify(incoming.signals) : null,
+      ],
     )
   } else if (!existing) {
     // A hand-typed row starts life like a hand-made draft: unknown cooperation
@@ -248,6 +256,7 @@ export function incomingFromSource(
     regions: creator.regions,
     verticals: creator.verticals,
     metrics: creator.metrics,
+    signals: creator.signals ?? null,
     fetchedAt: raw.fetchedAt,
     origin: { kind: 'source', source, externalId: creator.externalId, raw },
   }
@@ -283,6 +292,7 @@ export function readSheetRow(row: SheetRow, now: Date): SheetRowResult {
       regions: row.region ? [row.region] : [],
       verticals: [row.vertical, row.keywords, row.persona].filter(Boolean) as string[],
       metrics: deriveMetrics({ ...emptyMetrics(), followers: followers.value, priceImage: price.value }),
+      signals: null,
       fetchedAt: now.toISOString(),
       origin: { kind: 'sheet', note: row.persona || null, price: price.value },
     },

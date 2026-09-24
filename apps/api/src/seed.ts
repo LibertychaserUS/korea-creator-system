@@ -43,7 +43,7 @@ const SAVED_QUERIES: SavedQuery[] = [
     'seed_query_kbeauty_value',
     defaultSavedQuery({
       name: '韩妆性价比',
-      health: ['excellent'],
+      health: ['normal'],
       filters: [{ key: 'cpe', op: 'lte', value: 3 }],
       sort: { key: 'cpe', dir: 'asc' },
       columns: [...DEFAULT_QUERY_COLUMNS],
