@@ -281,8 +281,30 @@ export const enKcs = {
     traffic: { all: "All traffic (incl. paid boosts)", organic: "Organic traffic only" },
     business: { daily: "Everyday posts", coop: "Sponsored posts" },
     line: "{traffic} · {business}",
-    hint: "These figures come from Pugongying for {traffic} · {business}.",
-    fromEnv: "Scope set by environment variable"
+    sourceLine: "Reach: {traffic} · Cost: {business}",
+    fromEnv: "Scope set by environment variable",
+    rule: "Cost is based on sponsored posts, or on everyday posts when there are none; reach counts organic traffic only, without paid boosts.",
+    cost: {
+      coop: "Cost is based on sponsored posts.",
+      daily: "Cost is based on everyday posts.",
+      fallback: "This creator has no sponsored posts on record, so cost is based on everyday posts."
+    },
+    reach: {
+      organic: "Reach counts organic traffic only, without paid boosts.",
+      all: "Reach counts all traffic, including paid boosts."
+    },
+    short: {
+      coop: "Sponsored posts",
+      daily: "Everyday posts",
+      fallback: "Everyday posts (no sponsored ones)",
+      organic: "Organic traffic",
+      all: "Incl. paid boosts"
+    },
+    allTraffic: {
+      title: "Incl. paid boosts",
+      note: "The same period including paid boosts, for comparison only; not used for ranking or sorting",
+      fetchedAt: "Fetched {date}"
+    }
   },
   ingest: {
     queued: "Collection started. The background will finish steadily within allowed limits and show in the records below.",

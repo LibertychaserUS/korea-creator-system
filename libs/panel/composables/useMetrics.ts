@@ -1,8 +1,11 @@
 import {
   FIVE_BAND_MIN_SAMPLE,
   METRIC_FIELDS,
-  SCOPED_METRIC_KEYS,
+  basisFamily,
+  costFellBack,
   formatMetricValue,
+  metricBasisOf,
+  type CreatorMetrics,
   type MetricGroup,
   type MetricPercentile,
   type NumericMetricKey,
@@ -32,15 +35,42 @@ export function useMetrics() {
     return t('kcs.scope.line', { traffic: t(`kcs.scope.traffic.${traffic}`), business: t(`kcs.scope.business.${business}`) })
   }
 
-  /** `help(key)`, plus which traffic and notes the number describes when it depends on that. */
-  function helpIn(key: NumericMetricKey, basis?: Record<string, string> | null): string {
+  type BasisOf = Pick<CreatorMetrics, 'basis'> & Partial<Pick<CreatorMetrics, 'derived'>>
+
+  /** Only records fetched under a recorded scope say which one; older ones and other sources stay silent. */
+  function hasScope(metrics?: BasisOf | null): metrics is BasisOf {
+    return Boolean(metrics?.basis?.trafficScope && metrics.basis.businessScope)
+  }
+
+  /** 「成本按合作笔记计。」/「传播按自然流量计，不含投放。」 for a metric that depends on it, else ''. */
+  function basisSentence(key: NumericMetricKey, metrics?: BasisOf | null): string {
+    if (!hasScope(metrics)) return ''
+    const family = basisFamily(key)
+    const basis = metricBasisOf(key, metrics)
+    if (family === 'cost') return t(`kcs.scope.cost.${basis === 'daily' && costFellBack(metrics) ? 'fallback' : basis}`)
+    if (family === 'reach') return t(`kcs.scope.reach.${basis}`)
+    return ''
+  }
+
+  /** `help(key)`, plus which traffic or notes the number is on when it depends on that. */
+  function helpIn(key: NumericMetricKey, metrics?: BasisOf | null): string {
     const base = help(key)
-    if (!SCOPED_METRIC_KEYS.includes(key) || !scopeLine(basis)) return base
-    const hint = t('kcs.scope.hint', {
-      traffic: t(`kcs.scope.traffic.${basis!.trafficScope}`),
-      business: t(`kcs.scope.business.${basis!.businessScope}`),
-    })
+    const hint = basisSentence(key, metrics)
+    if (!hint) return base
     return base ? `${base} ${hint}` : hint
+  }
+
+  /** Short 口径 label for a group header: the cost group says which notes, a group with reach figures which traffic. */
+  function groupBasis(group: MetricGroup, metrics?: BasisOf | null): string {
+    if (!hasScope(metrics)) return ''
+    const keys = METRIC_FIELDS.filter((field) => field.group === group).map((field) => field.key)
+    const cost = keys.find((key) => basisFamily(key) === 'cost')
+    if (cost) {
+      const basis = metricBasisOf(cost, metrics)
+      return t(`kcs.scope.short.${basis === 'daily' && costFellBack(metrics) ? 'fallback' : basis}`)
+    }
+    const reach = keys.find((key) => basisFamily(key) === 'reach')
+    return reach ? t(`kcs.scope.short.${metricBasisOf(reach, metrics)}`) : ''
   }
 
   function groupLabel(group: MetricGroup): string {
@@ -126,5 +156,5 @@ export function useMetrics() {
     return METRIC_FIELDS.filter((f) => f.group === group && !f.hidden)
   }
 
-  return { label, help, helpIn, scopeLine, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
+  return { label, help, helpIn, basisSentence, groupBasis, scopeLine, groupLabel, format, bandClass, bandDot, bandLabel, rankText, groups, fieldsIn, fields: METRIC_FIELDS }
 }
