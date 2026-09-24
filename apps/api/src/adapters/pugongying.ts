@@ -289,7 +289,26 @@ function toRecord(payload: Json, fetchedAt: string): RawRecord {
   return { source: 'pugongying', platform: 'xhs', externalId: String(payload.userId ?? ''), fetchedAt, payload }
 }
 
-async function fetchLive(query: SourceQuery, resolved: ResolvedGateway): Promise<AdapterPage> {
+/** Every gateway method call is one billed request (paid gateways charge 200s, empty or not). */
+function counting(gateway: Gateway): { gateway: Gateway; calls: () => number } {
+  let calls = 0
+  const wrapped = Object.fromEntries(Object.entries(gateway).map(([name, method]) => [
+    name,
+    (...args: unknown[]) => {
+      calls += 1
+      return (method as (...a: unknown[]) => Promise<Json | null>)(...args)
+    },
+  ])) as Gateway
+  return { gateway: wrapped, calls: () => calls }
+}
+
+async function fetchLive(query: SourceQuery, live: ResolvedGateway): Promise<AdapterPage> {
+  const counter = counting(live.gateway)
+  const page = await fetchPage(query, { ...live, gateway: counter.gateway })
+  return { ...page, calls: counter.calls() }
+}
+
+async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise<AdapterPage> {
   const { gateway } = resolved
   const fetchedAt = new Date().toISOString()
   if (query.externalIds?.length) {

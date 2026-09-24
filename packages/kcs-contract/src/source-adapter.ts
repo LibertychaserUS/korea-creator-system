@@ -65,6 +65,11 @@ export type SourcePage = {
   nextCursor: string | null
   /** Vendor-side quota left, when exposed; surfaced on the dev page. */
   quotaRemaining?: number | null
+  /**
+   * Paid vendor calls this page actually made (list + detail + enrichment);
+   * the queue charges the daily quota this many. Omitted = 1.
+   */
+  calls?: number
 }
 
 export type NormalizedCreator = {

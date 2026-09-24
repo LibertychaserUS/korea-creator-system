@@ -213,7 +213,10 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
         // No vendor was called (demo data) — give the reserved call back, 04 §fixture 模式「不计配额」.
         await releaseQuota(env, source, reserved.day)
       } else {
-        quotaUsed += 1
+        // Enrichment inside one page (蒲公英 detail + 4 data calls per creator) is billed too.
+        const calls = Math.max(1, Math.floor(Number(page.calls ?? 1)) || 1)
+        if (calls > 1) await chargeQuota(env, source, reserved.day, calls - 1)
+        quotaUsed += calls
       }
       const counts = await persistPage(env, adapter, page, jobId, source as SourceId)
       written += counts.written
@@ -533,6 +536,15 @@ async function releaseQuota(env: AppEnv, source: string, day: string) {
   await env.db.query(
     `UPDATE ingest_source_usage SET calls = GREATEST(0, calls - 1) WHERE source = $1 AND day = $2`,
     [source, day],
+  )
+}
+
+/** Calls a page made beyond the one reserved before it; may run past the quota, the next page stops. */
+async function chargeQuota(env: AppEnv, source: string, day: string, extra: number) {
+  await env.db.query(
+    `INSERT INTO ingest_source_usage (source, day, calls) VALUES ($1, $2, $3)
+     ON CONFLICT (source, day) DO UPDATE SET calls = ingest_source_usage.calls + EXCLUDED.calls`,
+    [source, day, extra],
   )
 }
 

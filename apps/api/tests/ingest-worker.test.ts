@@ -190,6 +190,28 @@ describe('ingest worker', () => {
     expect(usage.rows).toEqual([{ day: '2026-09-24', calls: 1 }, { day: '2026-09-25', calls: 1 }])
   })
 
+  it('charges every vendor call a page reports (detail enrichment), not just one per page', async () => {
+    const adapter = pagedAdapter()
+    const billed: SourceAdapter = {
+      ...adapter,
+      async fetch(query) {
+        return { ...(await adapter.fetch(query)), calls: 5 }
+      },
+    }
+    const context = await createTestApp({ getAdapter: (source) => source === billed.id ? billed : undefined })
+    contexts.push(context)
+    const token = (await context.loginJson('ops@kcs.local')).token
+    await context.db.query("UPDATE ingest_sources SET quota = 7 WHERE id = 'qiangua'")
+    const { job } = await (await enqueue(context, token)).json()
+    // Page 1 costs 5 of 7; page 2 fits the reservation check (5 < 7) and brings the day to 10.
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', pagesDone: 2, quotaUsed: 10 })
+    const usage = await context.db.query("SELECT sum(calls)::int AS calls FROM ingest_source_usage WHERE source = 'qiangua'")
+    expect(usage.rows[0].calls).toBe(10)
+
+    const again = (await (await enqueue(context, token)).json()).job
+    expect(await processJob(context.env, again.id)).toMatchObject({ status: 'partial', pagesDone: 0, errorCode: 'QUOTA_EXHAUSTED' })
+  })
+
   it('does not charge quota for demo-data pages', async () => {
     const adapter = pagedAdapter()
     const fixtureAdapter: SourceAdapter = {

@@ -152,6 +152,7 @@ describe('蒲公英 gateways', () => {
     expect(page.records[0]!.externalId).toBe('pgy_002')
     expect(page.nextCursor).toBeNull()
     expect(calls).toHaveLength(1)
+    expect(page.calls).toBe(1)
     expect(calls[0]!.url).toBe('https://api.tikhub.io/api/v1/xiaohongshu/pgy/get_blogger_list')
     expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe('Bearer test-token')
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
@@ -174,6 +175,8 @@ describe('蒲公英 gateways', () => {
     })
     const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 90, externalIds: ['pgy_002'] })
     expect(calls).toHaveLength(5)
+    // Every one of them is billed, and the page says so for the quota ledger.
+    expect(page.calls).toBe(5)
     const notesCall = calls.find((c) => c.url.endsWith('get_blogger_notes_rate'))!
     // TikHub: 1 ≈ 7 天, 2 = 30 天, 3 = 90 天 (待实测).
     expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 3, business: 0, note_type: 3 })
