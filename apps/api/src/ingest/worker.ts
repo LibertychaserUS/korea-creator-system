@@ -18,6 +18,8 @@ import { deadLetterJob, failureOf } from './dead-letters'
 import { ensureSource } from './jobs'
 import { persistPage } from './persist'
 import { retentionConfig, retentionEnabled, runRetention, type RetentionConfig } from './retention'
+import { dailyConfig, runDueDailyTasks, type DailyConfig } from './daily'
+import './daily-tasks'
 import { WORKBOOK_SOURCE, ingestSheetRow } from './workbook'
 import { errorMessage, logEvent } from '../log'
 
@@ -298,6 +300,8 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
  * - it takes one due job per tick and finishes it before looking again. Vendor
  *   calls are billed per request and capped per minute, so concurrency would
  *   only raise the bill and the 429 rate;
+ * - the same holder runs the registered daily tasks (`./daily`, once per
+ *   local day) between jobs;
  * - the same holder runs the optional retention sweep once per
  *   `retention.intervalMs` (first time right after it wins the lock), so at
  *   most one process deletes — and only when ops turned a kind on explicitly;
@@ -306,10 +310,11 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
  */
 export function startIngestWorker(
   env: AppEnv,
-  options: { intervalMs?: number; retention?: RetentionConfig } = {},
+  options: { intervalMs?: number; retention?: RetentionConfig; daily?: DailyConfig } = {},
 ) {
   const intervalMs = options.intervalMs ?? 2_000
   const retention = options.retention ?? retentionConfig()
+  const daily = options.daily ?? dailyConfig()
   if (process.env.INGEST_WORKER === '0') {
     return async () => undefined
   }
@@ -354,6 +359,8 @@ export function startIngestWorker(
     try {
       if (!(await acquire())) return
       await sweep()
+      if (stopped) return
+      await runDueDailyTasks(env, daily)
       if (stopped) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs

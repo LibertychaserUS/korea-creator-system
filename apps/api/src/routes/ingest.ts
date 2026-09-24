@@ -2,6 +2,7 @@ import { parsePaging, SOURCE_IDS, type SourceQuery } from '@kcs/contract'
 import { adapterDescriptions } from '../adapters'
 import { retryJob } from '../ingest/jobs'
 import { enqueueIngestJob, processJob } from '../ingest/worker'
+import { dailyTaskStatus, runDailyTaskNow } from '../ingest/daily'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
 import { z } from 'zod'
@@ -26,6 +27,22 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
         quota: row.quota,
       })),
     })
+  })
+
+  app.get('/api/ingest/daily', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    return context.json({ items: await dailyTaskStatus(env) })
+  })
+
+  app.post('/api/ingest/daily/:task/run', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ingest.retry')
+    if (denied) return denied
+    const task = context.req.param('task')
+    const outcome = await runDailyTaskNow(env, task)
+    if (!outcome) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    await audit(env.db, user!.id, 'ingest.daily_run', 'daily_task', task, `${outcome.day} ${outcome.ok ? 'ok' : 'failed'}`)
+    return context.json(outcome)
   })
 
   app.get('/api/ingest/adapters', async (context) => {

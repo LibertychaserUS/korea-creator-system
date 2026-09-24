@@ -75,6 +75,9 @@ export const API = {
   ingestSample: { method: 'GET', path: '/api/ingest/jobs/:id/sample', perm: 'ingest.read' },
   ingestJobRetry: { method: 'POST', path: '/api/ingest/jobs/:id/retry', perm: 'ingest.retry' },
   ingestJobCancel: { method: 'POST', path: '/api/ingest/jobs/:id/cancel', perm: 'ingest.write' },
+  /** Registered daily tasks and their last run. */
+  ingestDaily: { method: 'GET', path: '/api/ingest/daily', perm: 'ingest.read' },
+  ingestDailyRun: { method: 'POST', path: '/api/ingest/daily/:task/run', perm: 'ingest.retry' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
   /** multipart `file` (image, ≤ 5 MB). */
   assetUpload: { method: 'POST', path: '/api/assets', perm: 'ops.write' },
