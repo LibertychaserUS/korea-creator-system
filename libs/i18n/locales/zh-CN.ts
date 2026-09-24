@@ -2598,6 +2598,8 @@ export const zhCN: Locale = {
       manual: "手动录入",
       cols: { creator: "博主", source: "来源", followers: "粉丝", tier: "量级", updated: "更新时间", status: "状态" },
       needsReview: "有新数据",
+      republishable: "有新数字，可重新发布",
+      platformMissing: "平台上已找不到",
       empty: {
         review: "没有待审核的博主",
         released: "还没有已发布的博主",
@@ -2620,6 +2622,19 @@ export const zhCN: Locale = {
       updatedAt: "{date} 更新",
       notFound: "找不到这位博主，可能已被删除。",
       newNumbers: "抓到了新数字，对照下方「发布时与最新」看看差多少。",
+      dataStatus: {
+        republishTitle: "有新数字，可重新发布",
+        republishBody: "和发布时相比，{fields}变化较大。想让选人端用上新数字：先下架，再重新发布。",
+        republishMore: "{fields} 等 {n} 项",
+        missingTitle: "平台上已找不到这位博主",
+        missingBody: "连续 {n} 次刷新都没取到（{date} 起）。选人端先不显示 TA，资料和记录都还在。",
+        missingConfirmed: "{date} 已确认平台上找不到。",
+        keep: "还在，恢复显示",
+        gone: "确认已不在",
+        keepDone: "已恢复，选人端会重新显示",
+        goneDone: "已确认，选人端继续不显示",
+        readOnly: "你的账号只能查看，不能处理。"
+      },
       confirm: {
         approveTitle: "通过并发布这位博主？",
         approveBody: "发布后选人端就能看到 TA，并按现在这组数字筛选和排序；之后抓到的新数字不会自动替换。",

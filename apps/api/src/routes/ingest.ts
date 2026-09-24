@@ -9,6 +9,7 @@ import {
   DATA_STATUS_KINDS,
   dataStatusConfig,
   dataStatusCounts,
+  dataStatusFor,
   decideMissing,
   listDataStatus,
   type DataStatusKind,
@@ -24,6 +25,8 @@ import { csv, pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
 import { jobSampleView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
+
+const DATA_STATUS_IDS_MAX = 100
 
 export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
   app.get('/api/ingest/sources', async (context) => {
@@ -129,6 +132,11 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     const { denied } = await helpers.requireAuth(context, 'ingest.read')
     if (denied) return denied
     const query = context.req.query()
+    // A list page's own rows: one call instead of one per creator; unknown ids are left out.
+    if (query.ids !== undefined) {
+      const ids = [...new Set(csv(query.ids))].slice(0, DATA_STATUS_IDS_MAX)
+      return context.json({ items: await dataStatusFor(env, ids), config: dataStatusConfig() })
+    }
     if (!query.kind) return context.json({ counts: await dataStatusCounts(env), config: dataStatusConfig() })
     if (!DATA_STATUS_KINDS.includes(query.kind as DataStatusKind)) {
       return jsonError(context, 400, 'VALIDATION', 'unknown_kind')

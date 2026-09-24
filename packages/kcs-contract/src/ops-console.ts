@@ -154,3 +154,21 @@ export function checkLocaleKeys(messages: Record<string, unknown>, reference = O
   const ok = locales.every((l) => !l.missing.length && !l.extra.length && !l.empty.length && !l.placeholderMismatch.length)
   return { reference, locales, ok }
 }
+
+/** `GET /api/ingest/data-status/:creatorId` (and each item of the lists): what the data says, for ops to act on. */
+export type CreatorDataStatus = {
+  creatorId: string
+  displayName: string
+  status: string
+  lastFetchedAt: string | null
+  stale: boolean
+  daysSinceFetch: number | null
+  /** 「平台上已找不到」: flagged after N refreshes in a row came back without this id. */
+  platformMissing: { since: string | null; confirmedAt: string | null } | null
+  /** Newer numbers than the publish snapshot, past the snapshot tolerances. */
+  republishable: boolean
+  /** Metric keys that moved past tolerance since publish; `null` when never published. */
+  changedSincePublish: string[] | null
+  publishedAt: string | null
+  sources: { source: string; externalId: string; lastSeenAt: string | null; missCount: number; missingSince: string | null; missingAt: string | null }[]
+}

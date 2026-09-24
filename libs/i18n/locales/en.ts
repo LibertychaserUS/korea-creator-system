@@ -2591,6 +2591,8 @@ export const en: Locale = {
       manual: "Added by hand",
       cols: { creator: "Creator", source: "Source", followers: "Followers", tier: "Tier", updated: "Updated", status: "Status" },
       needsReview: "New numbers",
+      republishable: "New numbers to republish",
+      platformMissing: "Not found on platform",
       empty: {
         review: "Nothing waiting for review",
         released: "No published creators yet",
@@ -2613,6 +2615,19 @@ export const en: Locale = {
       updatedAt: "Updated {date}",
       notFound: "This creator could not be found. It may have been deleted.",
       newNumbers: "New numbers came in. Compare them under “At publish vs latest”.",
+      dataStatus: {
+        republishTitle: "New numbers — ready to republish",
+        republishBody: "Compared with what was published, {fields} changed noticeably. To show the new numbers to selectors, take the creator down and publish again.",
+        republishMore: "{fields} and {n} more",
+        missingTitle: "No longer found on the platform",
+        missingBody: "{n} refreshes in a row came back without this creator (since {date}). Selectors don't see them for now; the profile and history are kept.",
+        missingConfirmed: "Confirmed not found on {date}.",
+        keep: "Still there, show again",
+        gone: "Confirm it's gone",
+        keepDone: "Restored; selectors will see them again",
+        goneDone: "Confirmed; selectors still don't see them",
+        readOnly: "Your account can view this but not act on it."
+      },
       confirm: {
         approveTitle: "Approve and publish this creator?",
         approveBody: "The selection workspace will see this creator and filter and sort on today’s numbers. Numbers fetched later will not replace them automatically.",

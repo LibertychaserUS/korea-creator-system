@@ -190,6 +190,23 @@ describe('data status', () => {
     ])
   })
 
+  it('a list page asks for its own rows by id in one call', async () => {
+    const [a, b] = [`${RUN}-ids-a`, `${RUN}-ids-b`]
+    await seed(a)
+    await seed(b)
+    present.delete(b)
+    for (let i = 0; i < 3; i += 1) await refresh([b])
+    const [ida, idb] = [await creatorOf(a), await creatorOf(b)]
+    const res = await get(`/api/ingest/data-status?ids=${idb},nobody,${ida},${idb}`)
+    expect(res.status).toBe(200)
+    expect(res.json.items.map((item: { creatorId: string }) => item.creatorId)).toEqual([idb, ida])
+    expect(res.json.items[0].platformMissing).not.toBeNull()
+    expect(res.json.items[1]).toMatchObject({ platformMissing: null, republishable: false })
+    expect((await get('/api/ingest/data-status?ids=')).json.items).toEqual([])
+    const selector = { authorization: 'Bearer test:selector@kcs.local', 'content-type': 'application/json' }
+    expect((await get(`/api/ingest/data-status?ids=${ida}`, selector)).status).toBe(403)
+  })
+
   it('demo data and runs that stop before the last page never count a miss', async () => {
     const id = `${RUN}-nocount`
     await seed(id)

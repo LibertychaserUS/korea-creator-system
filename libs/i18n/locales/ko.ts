@@ -724,6 +724,8 @@ export const ko: Locale = {
       manual: "직접 등록",
       cols: { creator: "크리에이터", source: "출처", followers: "팔로워", tier: "팔로워 구간", updated: "업데이트", status: "상태" },
       needsReview: "새 수치",
+      republishable: "새 수치, 다시 게시 가능",
+      platformMissing: "플랫폼에서 찾을 수 없음",
       empty: {
         review: "검토 대기 중인 크리에이터가 없습니다",
         released: "아직 게시된 크리에이터가 없습니다",
@@ -746,6 +748,19 @@ export const ko: Locale = {
       updatedAt: "{date} 업데이트",
       notFound: "크리에이터를 찾을 수 없습니다. 삭제되었을 수 있습니다.",
       newNumbers: "새 수치가 들어왔습니다. 아래 ‘게시 시점과 최신’에서 차이를 확인하세요.",
+      dataStatus: {
+        republishTitle: "새 수치가 있어 다시 게시할 수 있습니다",
+        republishBody: "게시할 때와 비교해 {fields} 수치가 크게 바뀌었습니다. 선정 화면에 새 수치를 쓰려면 게시를 내린 뒤 다시 게시하세요.",
+        republishMore: "{fields} 외 {n}개",
+        missingTitle: "플랫폼에서 더 이상 찾을 수 없습니다",
+        missingBody: "{date}부터 {n}번 연속 새로 고침에서 이 크리에이터가 나오지 않았습니다. 선정 화면에는 잠시 보이지 않으며 프로필과 기록은 그대로 남아 있습니다.",
+        missingConfirmed: "{date}에 찾을 수 없음을 확인했습니다.",
+        keep: "아직 있음, 다시 표시",
+        gone: "없어진 것으로 확인",
+        keepDone: "다시 표시합니다. 선정 화면에 다시 보입니다",
+        goneDone: "확인했습니다. 선정 화면에는 계속 보이지 않습니다",
+        readOnly: "이 계정은 보기만 할 수 있고 처리할 수는 없습니다."
+      },
       confirm: {
         approveTitle: "이 크리에이터를 승인하고 게시할까요?",
         approveBody: "게시하면 선정 화면에 표시되고 지금 수치로 필터링·정렬됩니다. 이후 수집된 수치로 자동 교체되지 않습니다.",

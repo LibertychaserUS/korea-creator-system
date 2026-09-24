@@ -112,7 +112,9 @@
               <TableCell>
                 <div class="flex flex-wrap items-center gap-1.5">
                   <StatusBadge kind="stage" :status="c.stage" />
-                  <span v-if="c.needsReview && c.stage !== 'review'" class="text-[11px] text-amber-700 dark:text-amber-300">{{ t('kcs.opsCreators.needsReview') }}</span>
+                  <span v-if="statusOf(c)?.platformMissing" class="text-[11px] text-destructive" data-testid="row-platform-missing">{{ t('kcs.opsCreators.platformMissing') }}</span>
+                  <span v-if="statusOf(c)?.republishable" class="text-[11px] text-amber-700 dark:text-amber-300" data-testid="row-republishable">{{ t('kcs.opsCreators.republishable') }}</span>
+                  <span v-else-if="!statusOf(c) && c.needsReview && c.stage !== 'review'" class="text-[11px] text-amber-700 dark:text-amber-300">{{ t('kcs.opsCreators.needsReview') }}</span>
                 </div>
               </TableCell>
               <TableCell class="text-right"><ChevronRight class="size-4 text-muted-foreground" /></TableCell>
@@ -164,7 +166,9 @@
             </div>
             <p class="mt-1.5 text-[11px] tabular-nums text-muted-foreground">
               {{ t('kcs.opsCreators.cols.updated') }} {{ formatDate(c.updatedAt) }}
-              <span v-if="c.needsReview && c.stage !== 'review'" class="text-amber-700 dark:text-amber-300"> · {{ t('kcs.opsCreators.needsReview') }}</span>
+              <span v-if="statusOf(c)?.platformMissing" class="text-destructive"> · {{ t('kcs.opsCreators.platformMissing') }}</span>
+              <span v-if="statusOf(c)?.republishable" class="text-amber-700 dark:text-amber-300"> · {{ t('kcs.opsCreators.republishable') }}</span>
+              <span v-else-if="!statusOf(c) && c.needsReview && c.stage !== 'review'" class="text-amber-700 dark:text-amber-300"> · {{ t('kcs.opsCreators.needsReview') }}</span>
             </p>
           </div>
         </div>
@@ -188,7 +192,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, Search, UserPlus, Users } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
-import { API, apiPath, SOURCE_IDS, TESTID, pageCount, tierOf, type CreatorStage } from '@kcs/contract'
+import { API, apiPath, SOURCE_IDS, TESTID, can, pageCount, tierOf, type CreatorDataStatus, type CreatorStage } from '@kcs/contract'
 
 type Row = {
   id: string
@@ -211,6 +215,9 @@ const route = useRoute()
 const router = useRouter()
 const { request } = useApi()
 const { formatNumber } = useFormat()
+const { user } = useSession()
+const canReadStatus = computed(() => Boolean(user.value && can(user.value.role, 'ingest.read')))
+const statuses = ref(new Map<string, CreatorDataStatus>())
 
 const tabs = [
   { stage: 'review' as const, testid: TESTID.opsCreatorTabReview },
@@ -248,6 +255,7 @@ async function load() {
     const res = await request<{ items: Row[]; total: number; counts: Record<CreatorStage, number> }>(apiPath(API.opsCreators, {}, params))
     if (mine !== loadSeq) return
     items.value = res.items ?? []
+    loadStatuses(mine)
     total.value = res.total ?? 0
     counts.value = res.counts ?? counts.value
     error.value = ''
@@ -257,6 +265,23 @@ async function load() {
   } finally {
     if (mine === loadSeq) loading.value = false
   }
+}
+/** 这一页各行的数据状态（有新数字 / 平台上已找不到），一次取回；取不到就退回旧的「有新数据」提示。 */
+async function loadStatuses(seq: number) {
+  const ids = items.value.map((c) => c.id)
+  if (!canReadStatus.value || !ids.length) {
+    statuses.value = new Map()
+    return
+  }
+  try {
+    const res = await request<{ items: CreatorDataStatus[] }>(apiPath(API.ingestDataStatus, {}, { ids: ids.join(',') }))
+    if (seq === loadSeq) statuses.value = new Map(res.items.map((item) => [item.creatorId, item]))
+  } catch {
+    if (seq === loadSeq) statuses.value = new Map()
+  }
+}
+function statusOf(c: Row) {
+  return statuses.value.get(c.id) ?? null
 }
 const debouncedLoad = useDebounceFn(load, 250)
 

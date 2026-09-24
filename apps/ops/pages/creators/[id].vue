@@ -65,8 +65,57 @@
             </p>
           </div>
         </div>
+        <div
+          v-if="dataStatus?.platformMissing"
+          class="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-destructive/20 bg-destructive/5 px-5 py-3 text-xs"
+          role="status"
+          data-testid="ops-creator-missing"
+        >
+          <div class="flex min-w-0 flex-1 items-start gap-2 text-destructive">
+            <SearchX class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <div class="min-w-0">
+              <p class="font-medium">{{ t('kcs.opsCreator.dataStatus.missingTitle') }}</p>
+              <p class="mt-0.5 text-foreground/80">
+                {{ t('kcs.opsCreator.dataStatus.missingBody', { n: missCount, date: formatDate(dataStatus.platformMissing.since ?? '') }) }}
+                <template v-if="dataStatus.platformMissing.confirmedAt">
+                  {{ t('kcs.opsCreator.dataStatus.missingConfirmed', { date: formatDate(dataStatus.platformMissing.confirmedAt) }) }}
+                </template>
+              </p>
+            </div>
+          </div>
+          <div v-if="canDecideMissing" class="flex shrink-0 flex-wrap gap-2">
+            <Button size="sm" variant="outline" class="h-8" :disabled="deciding" data-testid="btn-missing-keep" @click="decideMissing('keep')">
+              <Undo2 class="size-3.5" aria-hidden="true" />
+              {{ t('kcs.opsCreator.dataStatus.keep') }}
+            </Button>
+            <Button
+              v-if="!dataStatus.platformMissing.confirmedAt"
+              size="sm"
+              variant="ghost"
+              class="h-8 text-destructive hover:text-destructive"
+              :disabled="deciding"
+              data-testid="btn-missing-gone"
+              @click="decideMissing('gone')"
+            >
+              {{ t('kcs.opsCreator.dataStatus.gone') }}
+            </Button>
+          </div>
+          <p v-else class="w-full text-muted-foreground">{{ t('kcs.opsCreator.dataStatus.readOnly') }}</p>
+        </div>
+        <div
+          v-if="dataStatus?.republishable"
+          class="flex items-start gap-2 border-t border-amber-500/20 bg-amber-500/5 px-5 py-3 text-xs text-amber-800 dark:text-amber-200"
+          role="status"
+          data-testid="ops-creator-republishable"
+        >
+          <TriangleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <div class="min-w-0">
+            <p class="font-medium">{{ t('kcs.opsCreator.dataStatus.republishTitle') }}</p>
+            <p class="mt-0.5 text-foreground/80">{{ t('kcs.opsCreator.dataStatus.republishBody', { fields: changedFields }) }}</p>
+          </div>
+        </div>
         <p
-          v-if="creator.needsReview && creator.stage !== 'review'"
+          v-else-if="!dataStatus && creator.needsReview && creator.stage !== 'review'"
           class="flex items-start gap-2 border-t border-amber-500/20 bg-amber-500/5 px-5 py-2.5 text-xs text-amber-800 dark:text-amber-200"
         >
           <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
@@ -272,12 +321,14 @@
 </template>
 
 <script setup lang="ts">
-import { Archive, ArrowLeft, FileSearch, Loader2, Lock, RotateCcw, Save, Send, TriangleAlert, UserX } from 'lucide-vue-next'
+import { Archive, ArrowLeft, FileSearch, Loader2, Lock, RotateCcw, Save, SearchX, Send, TriangleAlert, Undo2, UserX } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import {
   API,
   apiPath,
   type CategoryView,
+  type CreatorDataStatus,
+  isMetricKey,
   TESTID,
   can,
   emptyMetrics,
@@ -303,6 +354,7 @@ const route = useRoute()
 const localePath = useLocalePath()
 const { request } = useApi()
 const { user } = useSession()
+const { label } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)
@@ -335,6 +387,17 @@ const role = computed(() => user.value?.role ?? null)
 const canWrite = computed(() => Boolean(role.value && can(role.value, 'ops.write')))
 const canPublish = computed(() => Boolean(role.value && can(role.value, 'ops.publish')))
 const canReadRaw = computed(() => Boolean(role.value && can(role.value, 'ingest.read')))
+const canDecideMissing = computed(() => Boolean(role.value && can(role.value, 'ingest.write')))
+const dataStatus = ref<CreatorDataStatus | null>(null)
+const deciding = ref(false)
+const missCount = computed(() => Math.max(0, ...(dataStatus.value?.sources ?? []).map((s) => s.missCount)))
+const CHANGED_SHOWN = 3
+const changedFields = computed(() => {
+  const keys = (dataStatus.value?.changedSincePublish ?? []).filter(isMetricKey)
+  const sep = locale.value === 'zh-CN' ? '、' : ', '
+  const names = keys.slice(0, CHANGED_SHOWN).map((key) => label(key)).join(sep)
+  return keys.length > CHANGED_SHOWN ? t('kcs.opsCreator.dataStatus.republishMore', { fields: names, n: keys.length }) : names
+})
 const latest = computed<CreatorMetrics>(() => ({ ...emptyMetrics(), ...(creator.value?.metrics ?? {}) }))
 const backPath = computed(() => localePath({ path: '/creators', query: { tab: (creator.value?.stage as CreatorStage | undefined) ?? 'review' } }))
 
@@ -373,6 +436,31 @@ async function load() {
   fillForm()
 }
 
+async function loadDataStatus() {
+  if (!canReadRaw.value) return
+  try {
+    dataStatus.value = await request<CreatorDataStatus>(apiPath(API.ingestCreatorDataStatus, { creatorId: String(route.params.id) }))
+  } catch {
+    dataStatus.value = null
+  }
+}
+
+async function decideMissing(decision: 'keep' | 'gone') {
+  deciding.value = true
+  try {
+    dataStatus.value = await request<CreatorDataStatus>(
+      apiPath(API.ingestMissingDecision, { creatorId: String(route.params.id) }),
+      { method: 'POST', body: JSON.stringify({ decision }) },
+    )
+    toast.success(t(decision === 'keep' ? 'kcs.opsCreator.dataStatus.keepDone' : 'kcs.opsCreator.dataStatus.goneDone'))
+  } catch {
+    toast.error(t('kcs.opsCreator.toast.failed'))
+    await loadDataStatus()
+  } finally {
+    deciding.value = false
+  }
+}
+
 async function loadHistory() {
   loadingHistory.value = true
   try {
@@ -402,7 +490,7 @@ async function confirm() {
       toast.success(t(!res.refreshed ? 'kcs.opsCreator.toast.unchanged' : action === 'republish' ? 'kcs.opsCreator.toast.republished' : 'kcs.opsCreator.toast.published'))
     }
     pending.value = null
-    await load()
+    await Promise.all([load(), loadDataStatus()])
   } catch (e: any) {
     const incomplete = e?.status === 400 || e?.data?.error === 'incomplete'
     toast.error(t(incomplete ? 'kcs.opsCreator.toast.incomplete' : 'kcs.opsCreator.toast.failed'))
@@ -490,6 +578,7 @@ onMounted(async () => {
     return
   }
   loadHistory()
+  loadDataStatus()
   request<{ items: CategoryView[] }>(API.opsCategories.path)
     .then((res) => {
       categories.value = (res.items ?? []).filter((c) => c.enabled)
