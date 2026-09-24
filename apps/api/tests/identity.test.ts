@@ -70,7 +70,8 @@ describe('ids past 2^53', () => {
       expect(a.id).not.toBe(b.id)
       expect(a).toMatchObject({ display_name: '大号一', creator_key: `qiangua:${ids[0]}` })
       expect(b).toMatchObject({ display_name: '大号二', creator_key: `qiangua:${ids[1]}` })
-      const { rows } = await ctx.db.query(`SELECT payload->>'达人ID' AS id FROM creator_raw WHERE source = 'qiangua' AND external_id = ANY($1) ORDER BY external_id`, [ids])
+      const { rows } = await ctx.db.query(`SELECT COALESCE(r.payload, p.payload)->>'达人ID' AS id FROM creator_raw r LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
+          WHERE r.source = 'qiangua' AND r.external_id = ANY($1) ORDER BY r.external_id`, [ids])
       expect(rows.map((r) => r.id)).toEqual(ids)
     })
   })

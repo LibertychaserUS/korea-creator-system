@@ -77,6 +77,14 @@ export async function runRetention(
          WHERE rn > $1 LIMIT $2)`,
       [config.rawPerSource],
     )
+    // Bodies no remaining fetch points at (a body is shared by identical fetches).
+    await drain(
+      db,
+      `DELETE FROM raw_payloads WHERE hash IN (
+         SELECT p.hash FROM raw_payloads p
+         WHERE NOT EXISTS (SELECT 1 FROM creator_raw r WHERE r.payload_hash = p.hash) LIMIT $1)`,
+      [],
+    )
   }
   if (config.deadLetterDays > 0) {
     result.deadLetters = await drain(

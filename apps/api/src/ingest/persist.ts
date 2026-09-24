@@ -169,9 +169,15 @@ async function upsertInTransaction(
          last_seen_at = GREATEST(creator_sources.last_seen_at, EXCLUDED.last_seen_at)`,
       [creatorId, origin.source, origin.externalId, incoming.fetchedAt],
     )
+    // Same body as an earlier fetch → stored once; this fetch still gets its own row.
     await client.query(
-      `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+      `WITH body AS (SELECT $6::jsonb AS payload, sha256(convert_to($6::jsonb::text, 'UTF8')) AS hash),
+            stored AS (
+              INSERT INTO raw_payloads (hash, payload, bytes)
+              SELECT hash, payload, octet_length(payload::text) FROM body
+              ON CONFLICT (hash) DO NOTHING)
+       INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload_hash)
+       SELECT $1,$2,$3,$4,$5, hash FROM body`,
       [
         randomUUID(),
         creatorId,

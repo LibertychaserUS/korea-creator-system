@@ -114,6 +114,10 @@ describe('runRetention', () => {
     )
     expect(kept.filter((id) => id.startsWith('raw-xinhong'))).toHaveLength(4)
     const after = await context.db.query('SELECT count(*)::int AS n FROM creator_metrics_history')
+    const orphans = await context.db.query(
+      'SELECT count(*)::int AS n FROM raw_payloads p WHERE NOT EXISTS (SELECT 1 FROM creator_raw r WHERE r.payload_hash = p.hash)',
+    )
+    expect(orphans.rows[0].n).toBe(0)
     expect(after.rows[0].n).toBe(history.rows[0].n)
   })
 

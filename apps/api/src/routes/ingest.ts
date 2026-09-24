@@ -76,8 +76,10 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (denied) return denied
     const limit = Math.max(1, Math.min(100, Number(context.req.query('limit') || 30)))
     const { rows } = await env.db.query(
-      `SELECT id, creator_id, source, external_id, fetched_at, payload
-       FROM creator_raw WHERE creator_id = $1 ORDER BY fetched_at DESC, id DESC LIMIT $2`,
+      `SELECT r.id, r.creator_id, r.source, r.external_id, r.fetched_at,
+              COALESCE(r.payload, p.payload) AS payload, encode(r.payload_hash, 'hex') AS content_hash
+       FROM creator_raw r LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
+       WHERE r.creator_id = $1 ORDER BY r.fetched_at DESC, r.id DESC LIMIT $2`,
       [context.req.param('creatorId'), limit],
     )
     if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
@@ -88,6 +90,8 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
       externalId: row.external_id,
       fetchedAt: row.fetched_at instanceof Date ? row.fetched_at.toISOString() : row.fetched_at,
       payload: row.payload,
+      /** Fetches with the same content share one stored body; equal hashes = identical JSON. */
+      contentHash: row.content_hash ?? null,
     }))
     // Top-level fields stay the newest record, as before; `items` is every record, newest first.
     return context.json({ ...items[0], items })
