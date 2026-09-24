@@ -55,7 +55,7 @@ import {
   type SourceSignals,
   type VendorNote,
 } from '@kcs/contract'
-import { billedCall, isMeterStop, isVendorInnerError, requestIdOf, VendorInnerError } from './billing'
+import { billedCall, isMeterStop, isVendorInnerError, requestIdOf, VendorCodeError, VendorInnerError, type VendorCodeKind } from './billing'
 import { filterFixturePage, fixturePage, type AdapterPage } from './common'
 
 type Json = Record<string, unknown>
@@ -97,6 +97,44 @@ function readFlat(json: Json): { value: Reply; empty: boolean } {
   return { value: { data, empty, requestId: requestIdOf(json) }, empty }
 }
 
+/**
+ * JustOneAPI answers HTTP 200 and says how it went in the body `code`, per
+ * its docs (待实测 against a live token):
+ *   0 成功 · 100 token 无效 · 301 / 302 / 500 繁忙或上游异常，稍后再试 ·
+ *   303 当日额度用完 · 400 参数错误 · 600 上游拒绝 · 601 / 602 余额不足.
+ * A code the table does not know is a refusal like any other inner failure.
+ */
+export const JUSTONEAPI_CODES: Record<number, VendorCodeKind | 'ok'> = {
+  0: 'ok',
+  100: 'credential',
+  301: 'busy',
+  302: 'busy',
+  303: 'busy',
+  400: 'rejected',
+  500: 'busy',
+  600: 'rejected',
+  601: 'balance',
+  602: 'balance',
+}
+
+/** JustOneAPI's day resets at 00:00 Asia/Shanghai (UTC+8, no DST); a 303 waits for it. */
+export function untilShanghaiMidnight(now = Date.now()): number {
+  const day = 86_400_000
+  const shifted = now + 8 * 3_600_000
+  return day - (shifted % day)
+}
+
+function readJustOne(json: Json): { value: Reply; empty: boolean } {
+  if (json.code == null) return readFlat(json)
+  const code = Number(json.code)
+  const kind = Number.isFinite(code) ? JUSTONEAPI_CODES[code] : undefined
+  if (kind === 'ok') return readFlat(json)
+  const detail = text(json.message ?? json.msg)
+  const requestId = requestIdOf(json)
+  if (!kind) throw new VendorInnerError('pugongying', String(json.code), detail, requestId)
+  throw new VendorCodeError('pugongying', 'justoneapi', kind, String(code), detail, requestId, code === 303 ? untilShanghaiMidnight() : null)
+}
+
 // ---------------------------------------------------------------------------
 // Gateways
 // ---------------------------------------------------------------------------
@@ -118,6 +156,14 @@ type DateType = number | string
 /** solar `business` (0 = 日常笔记, 1 = 合作笔记) and `advertiseSwitch` (1 = 全部流量, 0 = 仅自然流量). */
 function solarScope(scope: SourceScope): { business: number; advertiseSwitch: number } {
   return { business: scope.business === 'coop' ? 1 : 0, advertiseSwitch: scope.traffic === 'organic' ? 0 : 1 }
+}
+
+/** JustOneAPI spells the same switches as string enums (待实测). */
+function justOneScope(scope: SourceScope): { business: string; advertiseSwitch: string } {
+  return {
+    business: scope.business === 'coop' ? 'COOPERATE_NOTE' : 'DAILY_NOTE',
+    advertiseSwitch: scope.traffic === 'organic' ? 'ORGANIC_ONLY' : 'ALL',
+  }
 }
 
 /**
@@ -237,7 +283,7 @@ function justoneapi(token: string, base: string, context?: FetchContext): Gatewa
       init: { method: 'GET' },
       rule: 'every-response',
       timeoutMs: pgyTimeoutMs(),
-      read: readFlat,
+      read: readJustOne,
     })
     return value
   }
@@ -257,10 +303,10 @@ function justoneapi(token: string, base: string, context?: FetchContext): Gatewa
         excludeLowActive: wantsLowActiveExcluded(query) || undefined,
       }),
     detail: (userId) => call('cooperator/user/blogger/userId/v1', { userId }),
-    dataSummary: (userId, scope) => call('kol/dataV3/dataSummary/v1', { userId, business: solarScope(scope).business }),
+    dataSummary: (userId, scope) => call('kol/dataV3/dataSummary/v1', { userId, business: justOneScope(scope).business }),
     fansSummary: (userId) => call('kol/dataV3/fansSummary/v1', { userId }),
     notesRate: (userId, dateType, scope) =>
-      call('kol/dataV3/notesRate/v1', { userId, noteType: 3, dateType, ...solarScope(scope) }),
+      call('kol/dataV3/notesRate/v1', { userId, noteType: 'PHOTO_TEXT_AND_VIDEO', dateType, ...justOneScope(scope) }),
     fansProfile: (userId) => call('kol/data/userId/fans_profile/v1', { userId }),
   }
 }

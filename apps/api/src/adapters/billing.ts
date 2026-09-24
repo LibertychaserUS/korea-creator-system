@@ -83,6 +83,40 @@ export class VendorInnerError extends Error {
   }
 }
 
+/**
+ * What a gateway's own body `code` means when the HTTP status says nothing
+ * (JustOneAPI answers 200 and puts the outcome in `code`). The message is
+ * worded so the queue's failure classes pick it up like the HTTP equivalents:
+ *   credential — like 401 (permanent, 凭证失效)
+ *   balance    — like 402 (permanent, pauses the source)
+ *   rejected   — like other 4xx (permanent, not sent again)
+ *   busy       — like 5xx / 429 (sent again later; `retryAfterMs` when the
+ *                gateway's day quota is what ran out)
+ */
+export type VendorCodeKind = 'credential' | 'balance' | 'rejected' | 'busy'
+
+const CODE_WORDING: Record<VendorCodeKind, string> = {
+  credential: 'credential invalid',
+  balance: 'balance exhausted',
+  rejected: 'request rejected',
+  busy: 'busy',
+}
+
+export class VendorCodeError extends Error {
+  constructor(
+    readonly source: string,
+    readonly gateway: string,
+    readonly kind: VendorCodeKind,
+    readonly code: string,
+    readonly detail: string | null,
+    readonly requestId: string | null = null,
+    readonly retryAfterMs: number | null = null,
+  ) {
+    super(`${source} ${CODE_WORDING[kind]} (${gateway} code ${code}${detail ? `: ${detail.slice(0, 160)}` : ''})`)
+    this.name = 'VendorCodeError'
+  }
+}
+
 export function isVendorInnerError(error: unknown): error is VendorInnerError {
   return error instanceof VendorInnerError
 }

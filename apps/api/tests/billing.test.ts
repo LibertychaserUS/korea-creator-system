@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { billedCall, VendorTimeoutError } from '../src/adapters/billing'
 import { VendorHttpError } from '../src/adapters/common'
-import { pgyTimeoutMs, pugongyingAdapter } from '../src/adapters/pugongying'
+import { pgyTimeoutMs, pugongyingAdapter, untilShanghaiMidnight } from '../src/adapters/pugongying'
 import { pipelineReport } from '../src/routes/dev-console'
 import { processJob } from '../src/ingest/worker'
 import { dailyBudget, vendorPriceOverrides } from '../src/ingest/meter'
@@ -620,5 +620,70 @@ describe('refresh tiers (蒲公英)', () => {
     process.env.PGY_ENRICH = '1'
     expect(await search()).toMatchObject({ quotaUsed: 9 })
     expect(sent).toHaveLength(9)
+  })
+})
+
+describe('JustOneAPI body code (HTTP 200 either way)', () => {
+  function stubJustOne(reply: (path: string, params: URLSearchParams) => Record<string, unknown>) {
+    const sent: { path: string; params: URLSearchParams }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const parsed = new URL(url)
+      sent.push({ path: parsed.pathname, params: parsed.searchParams })
+      return new Response(JSON.stringify(reply(parsed.pathname, parsed.searchParams)), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    return sent
+  }
+  const justOne = async () => {
+    const context = await setup()
+    process.env.PGY_GATEWAY = 'justoneapi'
+    return context
+  }
+
+  it('sends the string enums for business / noteType / dateType / advertiseSwitch', async () => {
+    const context = await justOne()
+    await context.db.query("UPDATE ingest_sources SET traffic_scope = 'organic', business_scope = 'coop' WHERE id = 'pugongying'")
+    const sent = stubJustOne((path) => (path.includes('user/blogger') ? { code: 0, data: DETAIL('j1') } : { code: 0, data: { noteNumber: 3 } }))
+    const job = await refreshJob(context, ['j1'])
+    expect(await processJob(context.env, job.id)).toMatchObject({ status: 'ok', quotaUsed: 5 })
+    const notes = Object.fromEntries(sent.find((c) => c.path.endsWith('notesRate/v1'))!.params)
+    expect(notes).toMatchObject({ userId: 'j1', business: 'COOPERATE_NOTE', noteType: 'PHOTO_TEXT_AND_VIDEO', dateType: 'DAY_30', advertiseSwitch: 'ORGANIC_ONLY' })
+    expect(sent.find((c) => c.path.endsWith('dataSummary/v1'))!.params.get('business')).toBe('COOPERATE_NOTE')
+  })
+
+  it('601 / 602 are like 402 (source paused), 100 like 401, 400 / 600 refused once, 301 / 302 / 500 / 303 retried, unknown codes are inner failures (noted, not retried)', async () => {
+    const context = await justOne()
+    const outcome = async (code: number) => {
+      const sent = stubJustOne(() => ({ code, message: `code ${code}`, requestId: `jo-${code}` }))
+      await context.db.query("UPDATE ingest_sources SET paused_at = NULL, paused_code = NULL, paused_detail = NULL WHERE id = 'pugongying'")
+      const job = await refreshJob(context, [`j${code}`])
+      const done = await processJob(context.env, job.id)
+      const paused = (await context.db.query("SELECT paused_code FROM ingest_sources WHERE id = 'pugongying'")).rows[0].paused_code
+      return { status: done!.status, errorCode: done!.errorCode, sent: sent.length, paused }
+    }
+    expect(await outcome(601)).toEqual({ status: 'failed', errorCode: 'BALANCE_EXHAUSTED', sent: 1, paused: 'BALANCE_EXHAUSTED' })
+    expect(await outcome(602)).toMatchObject({ errorCode: 'BALANCE_EXHAUSTED', paused: 'BALANCE_EXHAUSTED' })
+    expect(await outcome(100)).toEqual({ status: 'failed', errorCode: 'CREDENTIAL_INVALID', sent: 1, paused: null })
+    expect(await outcome(400)).toEqual({ status: 'failed', errorCode: 'VENDOR_REJECTED', sent: 1, paused: null })
+    expect(await outcome(600)).toMatchObject({ status: 'failed', errorCode: 'VENDOR_REJECTED', sent: 1 })
+    for (const code of [301, 302, 500, 303]) {
+      expect(await outcome(code)).toEqual({ status: 'queued', errorCode: 'SOURCE_UNAVAILABLE', sent: 1, paused: null })
+    }
+    // Like a TikHub inner failure on the detail: noted against the creator, not sent again, the run goes on.
+    expect(await outcome(777)).toEqual({ status: 'ok', errorCode: null, sent: 1, paused: null })
+    const notes = await context.db.query("SELECT vendor_notes FROM ingest_jobs WHERE query->'externalIds' ? 'j777'")
+    expect(notes.rows[0].vendor_notes).toMatchObject([{ kind: 'innerError', endpoint: 'detail', externalId: 'j777', code: '777', requestId: 'jo-777' }])
+
+    const logged = await context.db.query("SELECT error FROM ingest_jobs WHERE error_code = 'CREDENTIAL_INVALID'")
+    expect(logged.rows[0].error).toBe('pugongying credential invalid (justoneapi code 100: code 100)')
+    const waits = await context.db.query(
+      "SELECT query->'externalIds'->>0 AS id, next_run_at FROM ingest_jobs WHERE query->'externalIds' ?| array['j301', 'j303']",
+    )
+    const at = Object.fromEntries(waits.rows.map((row) => [row.id, new Date(row.next_run_at).getTime()]))
+    expect(at.j303).toBeGreaterThan(at.j301)
+  })
+
+  it('303 (the gateway day quota) waits for 00:00 Asia/Shanghai', () => {
+    expect(untilShanghaiMidnight(Date.parse('2026-09-24T15:00:00Z'))).toBe(60 * 60_000)
+    expect(untilShanghaiMidnight(Date.parse('2026-09-24T16:00:00Z'))).toBe(24 * 60 * 60_000)
   })
 })
