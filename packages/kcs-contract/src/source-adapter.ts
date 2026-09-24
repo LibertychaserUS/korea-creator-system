@@ -264,8 +264,13 @@ export interface SourceAdapter {
   normalize(raw: RawRecord): NormalizeResult
 }
 
-export function creatorKeyFor(platform: Platform, externalId: string): string {
-  return `${platform}:${externalId}`
+/**
+ * `scope` is the source the id came from: vendor ids are only unique inside
+ * one vendor (千瓜 10001 and 新红 10001 are different people), so a key
+ * without the source would merge strangers.
+ */
+export function creatorKeyFor(scope: SourceId | Platform, externalId: string): string {
+  return `${scope}:${externalId}`
 }
 
 export function pickPath(obj: unknown, path: string | undefined): unknown {

@@ -15,7 +15,7 @@ describe('蒲公英 normalize (solar field names)', () => {
     if (!result.ok) return
     const { creator } = result
     expect(creator.externalId).toBe('pgy_001')
-    expect(creator.creatorKey).toBe('xhs:pgy_001')
+    expect(creator.creatorKey).toBe('pugongying:pgy_001')
     expect(creator.xhsId).toBe('cheongdam_skin')
     expect(creator.regions).toEqual(['上海', '上海', '徐汇区'])
     expect(creator.verticals).toEqual(expect.arrayContaining(['护肤', '面部保养', '美妆', '测评']))

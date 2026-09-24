@@ -416,7 +416,7 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   return {
     ok: true,
     creator: {
-      creatorKey: creatorKeyFor('xhs', externalId),
+      creatorKey: creatorKeyFor('pugongying', externalId),
       externalId,
       platform: 'xhs',
       displayName,

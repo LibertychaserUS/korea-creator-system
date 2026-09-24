@@ -88,14 +88,16 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap, percentFields: re
   const indexValue = toNumber(first(raw.payload, map.vendorIndex))
   if (indexValue != null) metrics.vendorIndex = { name: raw.source === 'qiangua' ? '千瓜指数' : '新红指数', value: indexValue, max: 1000 }
 
+  const xhsId = first(raw.payload, map.xhsId)
   return {
     ok: true,
     creator: {
-      creatorKey: creatorKeyFor('xhs', externalId),
+      creatorKey: creatorKeyFor(raw.source, externalId),
       externalId,
       platform: 'xhs',
       displayName,
-      xhsId: String(first(raw.payload, map.xhsId) ?? externalId) || null,
+      // A vendor id is not a 小红书号: without one the creator stays unmerged.
+      xhsId: xhsId == null ? null : String(xhsId).trim() || null,
       avatarUrl: String(first(raw.payload, map.avatarUrl) ?? '') || null,
       regions: toStringArray(first(raw.payload, map.regions)),
       verticals: toStringArray(first(raw.payload, map.verticals)),

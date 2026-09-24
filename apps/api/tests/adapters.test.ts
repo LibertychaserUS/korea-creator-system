@@ -15,7 +15,7 @@ describe.each([pugongyingAdapter, qianguaAdapter, xinhongAdapter])('$id adapter'
       const result = adapter.normalize(raw)
       expect(result.ok).toBe(true)
       if (!result.ok) continue
-      expect(result.creator.creatorKey).toBe(`xhs:${result.creator.externalId}`)
+      expect(result.creator.creatorKey).toBe(`${adapter.id}:${result.creator.externalId}`)
       expect(result.creator.metrics.cpe).not.toBeNull()
       expect(result.creator.metrics.engagementRate).not.toBeNull()
       expect(['excellent', 'normal', 'abnormal']).toContain(result.creator.metrics.health)
