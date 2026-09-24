@@ -27,8 +27,39 @@ import { errorMessage, logEvent } from '../log'
 const WORKER_ID = `${hostname()}:${process.pid}`
 const LEASE_SECONDS = Number(process.env.INGEST_LEASE_MS || INGEST_LEASE_MS) / 1_000
 
-const buckets = new Map<string, TokenBucket>()
+/**
+ * Retry delay after a transient failure: "full jitter" — a uniform draw in
+ * [0, min(cap, base · 2^attempt)] — so retries from many jobs spread out
+ * instead of arriving together. A vendor `Retry-After` is a floor (capped at
+ * `retryAfterCapMs`), never ignored.
+ */
+export type BackoffConfig = { baseMs: number; capMs: number; retryAfterCapMs: number }
 
+export function backoffConfig(source: NodeJS.ProcessEnv = process.env): BackoffConfig {
+  const pick = (value: string | undefined, fallback: number) => {
+    const n = Number(value)
+    return value !== undefined && value !== '' && Number.isFinite(n) && n >= 0 ? n : fallback
+  }
+  return {
+    baseMs: pick(source.INGEST_BACKOFF_BASE_MS, 1_000),
+    capMs: pick(source.INGEST_BACKOFF_CAP_MS, 5 * 60_000),
+    retryAfterCapMs: pick(source.INGEST_RETRY_AFTER_CAP_MS, 60 * 60_000),
+  }
+}
+
+export function backoffDelayMs(
+  attempt: number,
+  retryAfterMs: number | null,
+  config: BackoffConfig = backoffConfig(),
+  random: () => number = Math.random,
+): number {
+  const ceiling = Math.min(config.capMs, config.baseMs * 2 ** Math.max(0, attempt))
+  const jitter = Math.floor(random() * ceiling)
+  if (retryAfterMs == null) return jitter
+  return Math.max(jitter, Math.min(retryAfterMs, config.retryAfterCapMs))
+}
+
+/** Pure token-bucket arithmetic (the live bucket is `takePgToken`, same maths in SQL). */
 export class TokenBucket {
   private tokens: number
   private updatedAt: number
@@ -135,9 +166,6 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     const quotaTz = quotaTimeZone(sourceRow.rows[0]?.quota_tz)
     const rateLimit = Math.max(1, Number(sourceRow.rows[0]?.rate_limit ?? 60))
     const quota = Math.max(0, Number(sourceRow.rows[0]?.quota ?? 1000))
-    const bucketKey = `${source}:${rateLimit}`
-    const bucket = buckets.get(bucketKey) ?? new TokenBucket(rateLimit, env.now().getTime())
-    buckets.set(bucketKey, bucket)
 
     const baseQuery = parseQuery(claimed.rows[0].query, source as SourceId)
     let cursor = claimed.rows[0].cursor ?? baseQuery.cursor ?? null
@@ -159,7 +187,7 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       if (current.rows[0]?.status !== 'running' || current.rows[0]?.locked_by !== lease) {
         return readJob(env, jobId)
       }
-      if (options.shouldStop?.() || !(await takeRateToken(bucket, env, options.shouldStop))) {
+      if (options.shouldStop?.() || !(await takeRateToken(env, source, rateLimit, options.shouldStop))) {
         return requeueJob(env, jobId, lease, source, cursor, pagesDone)
       }
       const reserved = await reserveQuota(env, source, quota, quotaTz)
@@ -247,7 +275,7 @@ async function requeueJob(
  * silently lost and a replay continues rather than restarts.
  */
 async function failJob(env: AppEnv, jobId: string, source: string, error: unknown) {
-  const { code, permanent, message } = failureOf(error)
+  const { code, permanent, message, retryAfterMs } = failureOf(error)
   const row = await env.db.query(
     'SELECT attempts, max_attempts, cursor, query FROM ingest_jobs WHERE id = $1',
     [jobId],
@@ -260,13 +288,13 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
     `UPDATE ingest_jobs SET attempts = $2::int, attempt = $2::int,
        status = CASE WHEN $3::boolean THEN 'failed' ELSE 'queued' END,
        next_run_at = CASE WHEN $3::boolean THEN NULL
-         ELSE now() + make_interval(secs => power(2, $2::int)::int) END,
+         ELSE now() + make_interval(secs => $6::float8 / 1000) END,
        error = $4, error_code = $5, error_summary = $4,
        ended_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
        dead_lettered_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
        locked_by = NULL, lease_expires_at = NULL,
        updated_at = now() WHERE id = $1 RETURNING *`,
-    [jobId, attempts, exhausted, message, code],
+    [jobId, attempts, exhausted, message, code, backoffDelayMs(attempts, retryAfterMs)],
   )
   logEvent(exhausted ? 'error' : 'warn', 'ingest.job_failed', {
     jobId,
@@ -275,6 +303,7 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
     attempt: attempts,
     permanent,
     willRetry: !exhausted,
+    retryAfterMs,
     message,
   })
   if (exhausted) {
@@ -493,14 +522,45 @@ async function releaseQuota(env: AppEnv, source: string, day: string) {
   )
 }
 
+/**
+ * One token from the source's bucket in Postgres, or how long until the next
+ * one. Capacity = `rate_limit` per minute, refilled continuously; a changed
+ * rate limit starts a fresh, full bucket (as ops would expect after raising it).
+ */
+export async function takePgToken(env: AppEnv, source: string, ratePerMinute: number): Promise<{ ok: boolean; waitMs: number }> {
+  const capacity = Math.max(1, ratePerMinute)
+  const now = env.now()
+  const refill = `CASE WHEN b.capacity <> EXCLUDED.capacity THEN EXCLUDED.capacity
+      ELSE LEAST(EXCLUDED.capacity, b.tokens
+        + GREATEST(0, EXTRACT(EPOCH FROM (EXCLUDED.updated_at - b.updated_at))) * EXCLUDED.capacity / 60.0) END`
+  const { rows } = await env.db.query(
+    `INSERT INTO ingest_rate_buckets AS b (source, capacity, tokens, updated_at) VALUES ($1, $2::float8, $2::float8 - 1, $3::timestamptz)
+     ON CONFLICT (source) DO UPDATE SET
+       tokens = ${refill} - 1,
+       capacity = EXCLUDED.capacity,
+       updated_at = EXCLUDED.updated_at
+     WHERE ${refill} >= 1
+     RETURNING tokens`,
+    [source, capacity, now],
+  )
+  if (rows[0]) return { ok: true, waitMs: 0 }
+  const state = await env.db.query(
+    `SELECT LEAST(capacity, tokens + GREATEST(0, EXTRACT(EPOCH FROM ($2::timestamptz - updated_at))) * capacity / 60.0) AS tokens
+       FROM ingest_rate_buckets WHERE source = $1`,
+    [source, now],
+  )
+  const tokens = Number(state.rows[0]?.tokens ?? 0)
+  return { ok: false, waitMs: Math.max(1, Math.ceil((1 - tokens) / (capacity / 60_000))) }
+}
+
 /** Waits for a rate token; false if asked to stop while waiting. */
-async function takeRateToken(bucket: TokenBucket, env: AppEnv, shouldStop?: () => boolean) {
-  while (!bucket.tryTake(env.now().getTime())) {
+async function takeRateToken(env: AppEnv, source: string, ratePerMinute: number, shouldStop?: () => boolean) {
+  for (;;) {
+    const taken = await takePgToken(env, source, ratePerMinute)
+    if (taken.ok) return true
     if (shouldStop?.()) return false
-    const wait = Math.min(500, bucket.waitMs(env.now().getTime()))
-    await new Promise((resolve) => setTimeout(resolve, wait))
+    await new Promise((resolve) => setTimeout(resolve, Math.min(500, taken.waitMs)))
   }
-  return true
 }
 
 function resolveAdapter(env: AppEnv, source: string): SourceAdapter | undefined {

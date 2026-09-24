@@ -64,6 +64,35 @@ export function parseVendorJson(text: string): unknown {
   )
 }
 
+/**
+ * A non-2xx vendor answer. The message keeps the `<source> HTTP <status>` form
+ * the failure classifier reads; `retryAfterMs` is the vendor's own `Retry-After`
+ * (seconds or an HTTP date), when it sent one.
+ */
+export class VendorHttpError extends Error {
+  constructor(
+    readonly source: string,
+    readonly status: number,
+    readonly retryAfterMs: number | null,
+  ) {
+    super(`${source} HTTP ${status}`)
+    this.name = 'VendorHttpError'
+  }
+}
+
+/** `Retry-After: 120` or `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT` → milliseconds from `now`. */
+export function parseRetryAfter(value: string | null | undefined, now = Date.now()): number | null {
+  if (!value) return null
+  const text = value.trim()
+  if (/^\d+(\.\d+)?$/.test(text)) return Math.round(Number(text) * 1_000)
+  const at = Date.parse(text)
+  return Number.isFinite(at) ? Math.max(0, at - now) : null
+}
+
+export function vendorHttpError(source: string, response: Response): VendorHttpError {
+  return new VendorHttpError(source, response.status, parseRetryAfter(response.headers.get('retry-after')))
+}
+
 export async function readVendorJson(response: Response): Promise<Record<string, unknown>> {
   return parseVendorJson(await response.text()) as Record<string, unknown>
 }
@@ -276,7 +305,7 @@ export async function fetchJsonPage(input: {
       body,
       signal: controller.signal,
     })
-    if (!response.ok) throw new Error(`${input.source} HTTP ${response.status}`)
+    if (!response.ok) throw vendorHttpError(input.source, response)
     const json = await readVendorJson(response)
     const candidates = [json.data, (json.data as Record<string, unknown> | undefined)?.list, json.list, json.records]
     const payloads = candidates.find(Array.isArray) as Record<string, unknown>[] | undefined

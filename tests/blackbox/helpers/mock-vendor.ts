@@ -14,6 +14,7 @@ import { createServer, type Server } from 'node:http'
  *   `bb-fail`         always HTTP 500 (transient — worth retrying)
  *   `bb-flaky-K`      first K calls HTTP 500, then 1 page
  *   `bb-reject`       always HTTP 403 (permanent — retrying changes nothing)
+ *   `bb-429-S`        first call HTTP 429 with `Retry-After: S` (seconds), then 1 page
  *   `bb-shape`        HTTP 200 with a body that has no record list at all
  *   `bb-badrecord`    1 page where the first creator has no name (unreadable)
  *   `bb-grow`         1 page of the same 2 creators, 40 000 more followers on every call
@@ -104,10 +105,11 @@ export function startMockVendor(port = VENDOR_PORT): Promise<Server> {
     const cursor = body.cursor == null || body.cursor === '' ? null : String(body.cursor)
     const page = cursor ? Number(cursor) : 1
 
-    const reply = (status: number, payload: unknown) => {
+    const reply = (status: number, payload: unknown, headers: Record<string, string> = {}) => {
       calls.push({ at: Date.now(), keyword, cursor, status })
       res.statusCode = status
       res.setHeader('content-type', 'application/json')
+      for (const [name, value] of Object.entries(headers)) res.setHeader(name, value)
       res.end(JSON.stringify(payload))
     }
 
@@ -119,6 +121,13 @@ export function startMockVendor(port = VENDOR_PORT): Promise<Server> {
     if (keyword.includes('bb-badrecord')) {
       const broken = { ...record(keyword, page, 1), nickname: '', 昵称: '' }
       return reply(200, { data: [broken, record(keyword, page, 2)], next_cursor: null })
+    }
+
+    const limited = keyword.match(/bb-429-(\d+)/)
+    if (limited) {
+      const seen = (flakyCounters.get(keyword) ?? 0) + 1
+      flakyCounters.set(keyword, seen)
+      if (seen === 1) return reply(429, { error: 'slow down' }, { 'retry-after': limited[1] })
     }
 
     const flaky = keyword.match(/bb-flaky-(\d+)/)

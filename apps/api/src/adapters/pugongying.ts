@@ -46,7 +46,7 @@ import {
   type SourceQuery,
   type SourceSignals,
 } from '@kcs/contract'
-import { filterFixturePage, fixturePage, readVendorJson, type AdapterPage } from './common'
+import { filterFixturePage, fixturePage, readVendorJson, vendorHttpError, type AdapterPage } from './common'
 
 type Json = Record<string, unknown>
 
@@ -101,7 +101,7 @@ async function http(url: string, init: RequestInit): Promise<Json> {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const response = await fetch(url, { ...init, signal: controller.signal })
-    if (!response.ok) throw new Error(`pugongying HTTP ${response.status}`)
+    if (!response.ok) throw vendorHttpError('pugongying', response)
     return await readVendorJson(response)
   } finally {
     clearTimeout(timer)

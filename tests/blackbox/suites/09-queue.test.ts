@@ -489,7 +489,7 @@ describe('队列 — 失败、退避与取消（需要替身供应商）', () =>
     expect(devView.json.status).toBe('failed')
   }, 60_000)
 
-  it('退避时间递增：第 1 次失败约 2 秒后再试，第 2 次约 4 秒', async (ctx) => {
+  it('退避带随机抖动：第 1 次失败后 0–2 秒内再试，第 2 次 0–4 秒（再加 2 秒轮询）', async (ctx) => {
     if (!live) return ctx.skip(skipReason)
     const kw = keyword('bb-fail-backoff')
     const { job } = await fetchJob(ops, { source: SOURCE, window: 30, keyword: kw, maxPages: 1 })
@@ -498,11 +498,23 @@ describe('队列 — 失败、退避与取消（需要替身供应商）', () =>
     expect(calls.length).toBe(3)
     const gap1 = calls[1].at - calls[0].at
     const gap2 = calls[2].at - calls[1].at
-    // Backoff 2 s / 4 s, observed through a 2 s worker tick: 2–4.5 s then 4–6.5 s.
-    expect(gap1).toBeGreaterThanOrEqual(1_800)
+    // Full jitter: uniform in [0, 2 s) then [0, 4 s), observed through a 2 s worker tick.
     expect(gap1).toBeLessThan(4_800)
-    expect(gap2).toBeGreaterThanOrEqual(3_800)
-    expect(gap2).toBeLessThan(7_000)
+    expect(gap2).toBeLessThan(6_800)
+  }, 60_000)
+
+  it('供应商回 429 带 Retry-After：至少等它说的秒数再试，然后成功', async (ctx) => {
+    if (!live) return ctx.skip(skipReason)
+    const kw = keyword('bb-429-6')
+    const { job } = await fetchJob(ops, { source: SOURCE, window: 30, keyword: kw, maxPages: 1 })
+    const done = await waitFor(job.id, settled, 30_000)
+    expect(done.status).toBe('ok')
+    expect(done.attempts).toBe(1)
+    const calls = await vendorCalls(kw)
+    expect(calls.map((c) => c.status)).toEqual([429, 200])
+    // Retry-After 6 s is a floor over the ≤2 s jitter; plus one 2 s tick at most.
+    expect(calls[1].at - calls[0].at).toBeGreaterThanOrEqual(5_800)
+    expect(calls[1].at - calls[0].at).toBeLessThan(9_000)
   }, 60_000)
 
   it('供应商抖一下就恢复：第一次失败后自动重试成功 → ok，attempts 记 1，错误字段清空', async (ctx) => {

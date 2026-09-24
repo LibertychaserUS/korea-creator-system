@@ -171,7 +171,8 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | case | spec | HTTP |
 |------|------|------|
 | vendor 500 ×3 → failed, attempts 3, `SOURCE_UNAVAILABLE`, endedAt set, nextRunAt null; visible in `/api/dev/failures` | 04 队列图「3 次后 failed」 | poll `GET /api/dev/failures` `GET /api/dev/jobs/:id` |
-| backoff 2 s then 4 s between attempts | 04 队列图「指数退避」 | vendor call log timestamps |
+| backoff full jitter under 2 s then 4 s between attempts | 04 队列图「指数退避」 | vendor call log timestamps |
+| 429 + `Retry-After: 6` → next call ≥ 6 s later, then ok | 04 §失败「Retry-After 是下限」 | vendor call log timestamps (`bb-429-6`) |
 | one hiccup then ok: attempts 1, error fields cleared | 04 队列图 | poll |
 | failed → retry → attempts 0, queued; fails again after 3 more | 04 §任务状态 failed「可重试」 | `POST /api/ingest/jobs/:id/retry` |
 | cancel a running job: 200 failed/cancelled, worker stops at the page boundary, no further vendor calls | 04 §任务状态 running「可取消」 | `POST /api/ingest/jobs/:id/cancel` |
