@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import type { PoolClient } from 'pg'
 import {
+  DEFAULT_QUOTA_TIME_ZONE,
   INGEST_LEASE_MS,
   INGEST_MAX_ATTEMPTS,
   INGEST_QUEUE_LOCK,
@@ -126,9 +127,10 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
     const adapter = resolveAdapter(env, source)
     if (!adapter) throw new Error(`unsupported adapter: ${source}`)
     const sourceRow = await env.db.query(
-      'SELECT rate_limit, quota FROM ingest_sources WHERE id = $1',
+      'SELECT rate_limit, quota, quota_tz FROM ingest_sources WHERE id = $1',
       [source],
     )
+    const quotaTz = quotaTimeZone(sourceRow.rows[0]?.quota_tz)
     const rateLimit = Math.max(1, Number(sourceRow.rows[0]?.rate_limit ?? 60))
     const quota = Math.max(0, Number(sourceRow.rows[0]?.quota ?? 1000))
     const bucketKey = `${source}:${rateLimit}`
@@ -158,15 +160,15 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       if (options.shouldStop?.() || !(await takeRateToken(bucket, env, options.shouldStop))) {
         return requeueJob(env, jobId, lease, source, cursor, pagesDone)
       }
-      const reserved = await reserveQuota(env, source, quota)
-      if (!reserved) {
+      const reserved = await reserveQuota(env, source, quota, quotaTz)
+      if (!reserved.ok) {
         await env.db.query(
           `UPDATE ingest_jobs SET status = 'partial', cursor = $2, next_run_at = $3,
            error = 'quota_exhausted', error_code = 'QUOTA_EXHAUSTED',
            error_summary = 'daily source quota exhausted', ended_at = now(),
            locked_by = NULL, lease_expires_at = NULL, updated_at = now()
            WHERE id = $1`,
-          [jobId, cursor, nextUtcMidnight(env.now())],
+          [jobId, cursor, reserved.resetsAt],
         )
         logEvent('warn', 'ingest.job_partial', { jobId, source, code: 'QUOTA_EXHAUSTED', pages: pagesDone })
         return readJob(env, jobId)
@@ -175,7 +177,7 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
       sourceMode = (page as SourcePage & { sourceMode?: string }).sourceMode ?? sourceMode
       if (sourceMode === 'fixture') {
         // No vendor was called (demo data) — give the reserved call back, 04 §fixture 模式「不计配额」.
-        await releaseQuota(env, source)
+        await releaseQuota(env, source, reserved.day)
       } else {
         quotaUsed += 1
       }
@@ -436,9 +438,33 @@ export async function replayRecord(
   return persistPage(env, adapter, page, input.jobId, input.source)
 }
 
-async function reserveQuota(env: AppEnv, source: string, quota: number) {
-  if (quota <= 0) return false
-  const day = env.now().toISOString().slice(0, 10)
+function quotaTimeZone(value: unknown): string {
+  if (typeof value !== 'string' || !value) return DEFAULT_QUOTA_TIME_ZONE
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return value
+  } catch {
+    return DEFAULT_QUOTA_TIME_ZONE
+  }
+}
+
+/**
+ * The quota day is the vendor's calendar day in `tz`, and the wall resets at
+ * its next midnight — 16:00 UTC for Beijing — so one vendor day never gets
+ * two UTC days' worth of calls.
+ */
+async function quotaDay(env: AppEnv, tz: string): Promise<{ day: string; resetsAt: Date }> {
+  const { rows } = await env.db.query(
+    `SELECT ($1::timestamptz AT TIME ZONE $2)::date::text AS day,
+            (date_trunc('day', $1::timestamptz AT TIME ZONE $2) + interval '1 day') AT TIME ZONE $2 AS resets_at`,
+    [env.now(), tz],
+  )
+  return { day: rows[0].day, resetsAt: new Date(rows[0].resets_at) }
+}
+
+async function reserveQuota(env: AppEnv, source: string, quota: number, tz: string) {
+  const { day, resetsAt } = await quotaDay(env, tz)
+  if (quota <= 0) return { ok: false, day, resetsAt }
   await env.db.query(
     `INSERT INTO ingest_source_usage (source, day, calls) VALUES ($1,$2,0)
      ON CONFLICT (source, day) DO NOTHING`,
@@ -449,11 +475,11 @@ async function reserveQuota(env: AppEnv, source: string, quota: number) {
      WHERE source = $1 AND day = $2 AND calls < $3 RETURNING calls`,
     [source, day, quota],
   )
-  return Boolean(result.rowCount)
+  return { ok: Boolean(result.rowCount), day, resetsAt }
 }
 
-async function releaseQuota(env: AppEnv, source: string) {
-  const day = env.now().toISOString().slice(0, 10)
+/** Gives a call back to the day it was taken from, even if midnight passed in between. */
+async function releaseQuota(env: AppEnv, source: string, day: string) {
   await env.db.query(
     `UPDATE ingest_source_usage SET calls = GREATEST(0, calls - 1) WHERE source = $1 AND day = $2`,
     [source, day],
@@ -481,14 +507,6 @@ function parseQuery(value: unknown, source: SourceId): SourceQuery {
     source,
     window: (input as Partial<SourceQuery> | null)?.window === 90 ? 90 : 30,
   }
-}
-
-function nextUtcMidnight(now: Date) {
-  return new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + 1,
-  ))
 }
 
 async function readJob(env: AppEnv, id: string) {

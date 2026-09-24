@@ -160,7 +160,7 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | 3 pages → ok, cursors null/2/3, quotaUsed 3, usage +3, 6 creators written | 04 §速率与配额「每页计 1」 | poll + vendor call log |
 | `maxPages=2` on a 5-page source stops at 2 and keeps cursor `3` | 04 §任务状态 ok「到 max_pages」 | poll |
 | vendor Bearer token is forwarded (stand-in answers 401 without it) | 03 适配器 | vendor call log |
-| quota wall → `partial`, cursor kept, `QUOTA_EXHAUSTED`, `nextRunAt` = next UTC 00:00; when due, worker resumes from page 3 to ok on its own | 04 §任务状态 partial「自动续跑」 | poll (+ SQL: quota, `next_run_at = now()`) |
+| quota wall → `partial`, cursor kept, `QUOTA_EXHAUSTED`, `nextRunAt` = next 00:00 in the source's `quota_tz` (Beijing → 16:00 UTC); when due, worker resumes from page 3 to ok on its own | 04 §任务状态 partial「自动续跑」 | poll (+ SQL: quota, `next_run_at = now()`) |
 | partial + manual retry → queued, attempts 0, resumes from cursor `2` | 04 §任务状态 partial「可立刻重试」 | `POST /api/ingest/jobs/:id/retry` |
 | quota 0 = paused source: immediate partial, no vendor call | 04 §速率与配额 | poll + vendor call log |
 | same source runs one job at a time, FIFO (no overlap of startedAt/endedAt) | 04 §速率与配额「并发」 | poll |

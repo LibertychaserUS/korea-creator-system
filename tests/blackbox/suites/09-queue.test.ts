@@ -102,10 +102,10 @@ const params = (label: string, extra: Record<string, unknown> = {}) => ({
 const ms = (iso: string | null) => (iso ? new Date(iso).getTime() : Number.NaN)
 
 async function todayUsage(): Promise<number> {
-  const day = new Date().toISOString().slice(0, 10)
   const rows = await sqlRead<{ calls: number }>(
-    'SELECT calls FROM ingest_source_usage WHERE source = $1 AND day = $2',
-    [SOURCE, day],
+    `SELECT u.calls FROM ingest_source_usage u JOIN ingest_sources s ON s.id = u.source
+      WHERE u.source = $1 AND u.day = (now() AT TIME ZONE s.quota_tz)::date`,
+    [SOURCE],
   )
   return Number(rows[0]?.calls ?? 0)
 }
@@ -340,7 +340,7 @@ describe('队列 — 多页翻页、配额与限速（需要替身供应商）',
     expect(calls.every((c) => c.status === 200)).toBe(true)
   })
 
-  it('日配额用完 → partial：保留游标、记录 QUOTA_EXHAUSTED、续跑时间落在次日 00:00（UTC）', async (ctx) => {
+  it('日配额用完 → partial：保留游标、记录 QUOTA_EXHAUSTED、续跑时间落在来源时区（北京）的次日 00:00', async (ctx) => {
     if (!live) return ctx.skip(skipReason)
     const kw = keyword('bb-pages-4-quota')
     const used = await todayUsage()
@@ -356,7 +356,8 @@ describe('队列 — 多页翻页、配额与限速（需要替身供应商）',
       expect(stopped.errorCode).toBe('QUOTA_EXHAUSTED')
       expect(stopped.endedAt).not.toBeNull()
       const next = new Date(stopped.nextRunAt!)
-      expect(next.getUTCHours()).toBe(0)
+      // Beijing midnight = 16:00 UTC.
+      expect(next.getUTCHours()).toBe(16)
       expect(next.getUTCMinutes()).toBe(0)
       expect(next.getTime()).toBeGreaterThan(Date.now())
       expect(next.getTime() - Date.now()).toBeLessThanOrEqual(24 * 3_600_000)
