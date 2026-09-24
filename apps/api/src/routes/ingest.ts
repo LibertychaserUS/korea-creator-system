@@ -13,6 +13,7 @@ import {
   listDataStatus,
   type DataStatusKind,
 } from '../ingest/data-status'
+import { creatorTrends } from '../ingest/trends'
 import { randomUUID } from 'node:crypto'
 import { audit } from '../http/audit'
 import { camelJobs } from '../http/creators'
@@ -151,6 +152,14 @@ export function registerIngestRoutes(app: KcsApp, env: AppEnv, helpers: RouteHel
     if (!outcome.found) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     if (!outcome.flagged) return jsonError(context, 409, 'STATE', 'not_flagged_missing')
     return context.json(outcome.status)
+  })
+
+  app.get('/api/ingest/trends/:creatorId', async (context) => {
+    const { denied } = await helpers.requireAuth(context, 'ingest.read')
+    if (denied) return denied
+    const trends = await creatorTrends(env, context.req.param('creatorId'), context.req.query())
+    if (!trends) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    return context.json(trends)
   })
 
   app.get('/api/ingest/adapters', async (context) => {

@@ -156,8 +156,9 @@ export type CreatorSourceLink = {
 }
 
 /**
- * Every ingest writes an immutable snapshot; `creators.metrics` is just the
- * latest one. Trends (涨粉、CPE 变化) are read from snapshots, never recomputed.
+ * One snapshot per creator, source, window and Beijing day (a later fetch the
+ * same day overwrites it); `creators.metrics` is just the latest one. Trends
+ * (涨粉、CPE 变化) are read from snapshots, never recomputed.
  */
 export type MetricSnapshot = {
   id: string
@@ -167,6 +168,46 @@ export type MetricSnapshot = {
   fetchedAt: string
   jobId: string | null
   metrics: CreatorMetrics
+}
+
+/**
+ * Least-squares line through ln(followers) over days: `perDay` is the slope,
+ * `growth30d` = e^(30·perDay) − 1 (the steady rate, "about +4% a month"), `r2`
+ * how well a straight line fits. Needs ≥ 3 points over ≥ 7 days.
+ */
+export type FollowerSlope = {
+  perDay: number
+  growth30d: number
+  r2: number | null
+  points: number
+  spanDays: number
+}
+
+export type TrendHintKind = 'follower_jump' | 'follower_drop' | 'engagement_outlier' | 'followers_up_engagement_down'
+export type TrendLocale = 'zh-CN' | 'en' | 'ko'
+
+/** A plain-language heads-up about the numbers. Never used for ranking. */
+export type TrendHint = {
+  kind: TrendHintKind
+  source: SourceId
+  params: Record<string, number | string>
+  messages: Record<TrendLocale, string>
+}
+
+/** Sources are never mixed on one line: each keeps its own series. */
+export type TrendSeries = {
+  source: SourceId
+  snapshots: MetricSnapshot[]
+  followerSlope: FollowerSlope | null
+}
+
+export type CreatorTrends = {
+  creatorId: string
+  window: CreatorMetrics['window']
+  /** The source with the most points (then the most recent) — the default line. */
+  primarySource: SourceId | null
+  series: TrendSeries[]
+  hints: TrendHint[]
 }
 
 /**
