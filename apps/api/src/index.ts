@@ -1,4 +1,3 @@
-import { hostname } from 'node:os'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { connectDb } from './db'
@@ -9,7 +8,6 @@ import { MemoryObjectStore } from './store'
 import { startIngestWorker } from './ingest/worker'
 import { ensurePublishedSnapshots } from './http/pool'
 import { refreshPublished } from './http/published'
-import { startCapacityDaily } from './ops/capacity/daily'
 import { errorMessage, logEvent } from './log'
 import { createShutdown, SHUTDOWN_TIMEOUT_MS } from './shutdown'
 
@@ -21,8 +19,6 @@ async function main() {
   }
   const url = process.env.DATABASE_URL
   if (!url) throw new Error('DATABASE_URL is required (Postgres)')
-  // One name per process, so pg_locks can tell which process holds the queue lock.
-  process.env.PGAPPNAME = `${process.env.PGAPPNAME || 'kcs-api'}:${hostname()}:${process.pid}`.slice(0, 63)
   const db = await connectDb(url)
   await migrate(db)
   // Demo creators / projects / jobs are opt-in: a real install must never get them.
@@ -54,7 +50,6 @@ async function main() {
   const env = { db, store, now: () => new Date(), lifecycle }
   const app = createApp(env)
   const stopIngest = startIngestWorker(env)
-  const stopCapacity = startCapacityDaily(env)
   // Snapshots age past the 60-day cut-off with the clock, so groups are re-ranked on a timer too.
   const refreshMs = Number(process.env.KCS_PUBLISHED_REFRESH_MS) || 6 * 60 * 60 * 1000
   const refreshTimer = setInterval(() => {
@@ -65,7 +60,6 @@ async function main() {
   refreshTimer.unref()
   const stopWorker = async () => {
     clearInterval(refreshTimer)
-    stopCapacity()
     await stopIngest()
   }
   const server = serve({ fetch: app.fetch, port }, () => {

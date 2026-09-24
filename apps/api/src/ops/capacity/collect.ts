@@ -115,8 +115,12 @@ export async function collectReadings(
     `WITH bounds AS (
        SELECT ($1::date)::timestamp AT TIME ZONE $2 AS lo, ($1::date + 1)::timestamp AT TIME ZONE $2 AS hi
      ), raw AS (
-       SELECT r.source, count(*)::bigint AS records, avg(pg_column_size(r.payload))::float8 AS avg_bytes
-         FROM creator_raw r, bounds b WHERE r.fetched_at >= b.lo AND r.fetched_at < b.hi GROUP BY r.source
+       -- Bodies live once per content in raw_payloads (0045); a row keeps its own only from before that.
+       SELECT r.source, count(*)::bigint AS records,
+              avg(COALESCE(p.bytes, octet_length(r.payload::text)))::float8 AS avg_bytes
+         FROM creator_raw r CROSS JOIN bounds b
+         LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
+        WHERE r.fetched_at >= b.lo AND r.fetched_at < b.hi GROUP BY r.source
      )
      SELECT s.id, COALESCE(raw.records, 0)::bigint AS records, COALESCE(u.calls, 0)::bigint AS calls, raw.avg_bytes
        FROM ingest_sources s

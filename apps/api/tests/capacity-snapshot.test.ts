@@ -1,7 +1,6 @@
 import { tmpdir } from 'node:os'
-import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { API, INGEST_QUEUE_LOCK, type CapacityReport } from '@kcs/contract'
+import { API, type CapacityReport } from '@kcs/contract'
 import { createTestApp, type TestCtx } from './helpers'
 import {
   capacityDay,
@@ -10,7 +9,8 @@ import {
   runDailyCapacitySnapshot,
   type CapacityReadings,
 } from '../src/ops/capacity'
-import { holdsQueueLock, runCapacityIfDue } from '../src/ops/capacity/daily'
+import { dailyTaskNames } from '../src/ingest/daily'
+import '../src/ingest/daily-tasks'
 import { dayNumber, dayString } from '../src/ops/capacity/forecast'
 
 const GB = 1024 ** 3
@@ -104,6 +104,26 @@ describe('collectReadings (real database)', () => {
     const xinhong = r.sources.find((s) => s.id === 'xinhong')!
     expect(xinhong.records).toBeGreaterThanOrEqual(2)
     expect(xinhong.avgRawBytes).toBeGreaterThan(0)
+  })
+
+  it('average size reads the stored-once body (raw_payloads.bytes), and a row\'s own body from before dedup', async () => {
+    const creator = (await ctx.db.query('SELECT id FROM creators ORDER BY id LIMIT 1')).rows[0].id
+    await ctx.db.query(
+      `INSERT INTO raw_payloads (hash, payload, bytes) VALUES (sha256('cap-dedup'::bytea), '{"big": true}', 40000)
+       ON CONFLICT (hash) DO NOTHING`,
+    )
+    await ctx.db.query(
+      `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload, payload_hash) VALUES
+         ('cap_d1', $1, 'qiangua', 'd1', '2020-01-05 12:00+08', NULL, sha256('cap-dedup'::bytea)),
+         ('cap_d2', $1, 'qiangua', 'd2', '2020-01-05 13:00+08', NULL, sha256('cap-dedup'::bytea)),
+         ('cap_d3', $1, 'qiangua', 'd3', '2020-01-05 14:00+08', '{"a": 1}', NULL)
+       ON CONFLICT (id) DO NOTHING`,
+      [creator],
+    )
+    const r = await collectReadings(ctx.db, '2020-01-05', { dataPath: tmpdir(), declaredDiskBytes: null, backupDir: null })
+    const qiangua = r.sources.find((s) => s.id === 'qiangua')!
+    expect(qiangua.records).toBe(3)
+    expect(qiangua.avgRawBytes).toBeCloseTo((40000 * 2 + '{"a": 1}'.length) / 3, 6)
   })
 })
 
@@ -207,40 +227,13 @@ describe('GET /api/dev/capacity · POST /api/dev/capacity/snapshot', () => {
   })
 })
 
-describe('once a day, in the queue holder only', () => {
+describe('once a day, as one of the worker\'s daily tasks', () => {
   it('files readings under the Beijing calendar day', () => {
     expect(capacityDay(new Date('2026-09-23T16:30:00Z'))).toBe('2026-09-24')
     expect(capacityDay(new Date('2026-09-23T15:59:00Z'))).toBe('2026-09-23')
   })
 
-  it('runs when this process holds the ingest queue lock, and not again that day', async () => {
-    expect(await holdsQueueLock(ctx.db)).toBe(false)
-    expect(await runCapacityIfDue(ctx.env)).toBeNull()
-    const holder = await ctx.db.connect()
-    try {
-      await holder.query('SELECT pg_advisory_lock($1)', [INGEST_QUEUE_LOCK])
-      expect(await holdsQueueLock(ctx.db)).toBe(true)
-      const first = await runCapacityIfDue(ctx.env)
-      expect(first?.day).toBe(today())
-      expect(await runCapacityIfDue(ctx.env)).toBeNull()
-    } finally {
-      await holder.query('SELECT pg_advisory_unlock($1)', [INGEST_QUEUE_LOCK])
-      holder.release()
-    }
-  })
-
-  it('stays quiet when another process holds the lock', async () => {
-    const other = new pg.Client({
-      connectionString: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgres://kcs:kcs@127.0.0.1:5432/kcs_test',
-      application_name: 'kcs-api:other-host:1',
-    })
-    await other.connect()
-    try {
-      await other.query('SELECT pg_advisory_lock($1)', [INGEST_QUEUE_LOCK])
-      expect(await holdsQueueLock(ctx.db)).toBe(false)
-      expect(await runCapacityIfDue(ctx.env)).toBeNull()
-    } finally {
-      await other.end()
-    }
+  it('is registered with the queue holder\'s daily tasks (no timer of its own)', () => {
+    expect(dailyTaskNames()).toEqual(expect.arrayContaining(['capacity', 'data-status', 'scheduler', 'value-tiers']))
   })
 })
