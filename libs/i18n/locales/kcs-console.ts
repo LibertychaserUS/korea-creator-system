@@ -351,6 +351,14 @@ const zhCN = {
       emptyHint: "在博主池里挑中的人会先放在这里，再一起分到项目。",
       readOnly: "你的账号只能查看候选名单",
     },
+    a11y: {
+      skip: "跳到正文",
+      sidebar: "展开或收起侧边栏",
+      colorScheme: "界面配色",
+      pickSource: "选用{name}",
+      min: "{field}最少",
+      max: "{field}最多",
+    },
     health: {
       database: "数据库连接",
     },
@@ -765,6 +773,14 @@ const en = {
       emptyHint: "Creators you pick in the library wait here, then go to a project together.",
       readOnly: "Your account can only view the shortlist",
     },
+    a11y: {
+      skip: "Skip to content",
+      sidebar: "Show or hide the sidebar",
+      colorScheme: "Colour scheme",
+      pickSource: "Use {name}",
+      min: "{field}, minimum",
+      max: "{field}, maximum",
+    },
     health: {
       database: "Database link",
     },
@@ -1178,6 +1194,14 @@ const ko = {
       empty: "후보 명단이 비어 있습니다",
       emptyHint: "라이브러리에서 고른 크리에이터가 여기 모였다가 함께 프로젝트로 갑니다.",
       readOnly: "이 계정은 후보 명단을 보기만 할 수 있습니다",
+    },
+    a11y: {
+      skip: "본문으로 건너뛰기",
+      sidebar: "사이드바 열기/닫기",
+      colorScheme: "화면 색 구성",
+      pickSource: "{name} 사용",
+      min: "{field} 최소",
+      max: "{field} 최대",
     },
     health: {
       database: "데이터베이스 연결",

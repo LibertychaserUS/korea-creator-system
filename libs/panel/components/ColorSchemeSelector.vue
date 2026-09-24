@@ -1,8 +1,8 @@
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" size="sm" class="h-8 px-3">
-        <PaletteIcon class="mr-2 h-4 w-4" />
+      <Button variant="ghost" size="sm" class="h-8 px-3" :aria-label="t('kcs.console.a11y.colorScheme')">
+        <PaletteIcon class="mr-2 h-4 w-4" aria-hidden="true" />
         <span class="hidden sm:inline">
           <!-- Show current theme name only after hydration to prevent mismatch -->
           {{ isHydrated ? currentColorSchemeName : 'Theme' }}
@@ -35,6 +35,7 @@ import { computed } from 'vue'
 import type { ColorScheme } from '../composables/useTheme'
 import { THEME_CONFIG } from '@libs/ui/themes'
 
+const { t } = useI18n()
 const { colorScheme, setColorScheme, isHydrated } = useTheme()
 
 // Computed property for current color scheme display name - no translation needed

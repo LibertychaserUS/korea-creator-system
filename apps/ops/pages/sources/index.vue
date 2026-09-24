@@ -11,7 +11,13 @@
         class="gap-0 border-border/60 py-0 shadow-xs transition-colors"
         :class="form.source === a.id ? 'border-primary/50 ring-2 ring-primary/20' : 'cursor-pointer hover:border-primary/30'"
         :data-testid="`adapter-${a.id}`"
+        role="button"
+        tabindex="0"
+        :aria-pressed="form.source === a.id"
+        :aria-label="t('kcs.console.a11y.pickSource', { name: t(`kcs.source.${a.id}`) })"
         @click="form.source = a.id"
+        @keydown.enter.prevent="form.source = a.id"
+        @keydown.space.prevent="form.source = a.id"
       >
         <div class="flex items-start justify-between gap-3 px-5 pt-4">
           <div>
@@ -89,17 +95,17 @@
           <fieldset :class="disabled('followersMin')">
             <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.followersRange') }}</legend>
             <div class="flex items-center gap-2">
-              <Input v-model.number="form.followersMin" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('followersMin')" />
+              <Input v-model.number="form.followersMin" :aria-label="t('kcs.console.a11y.min', { field: t('kcs.ingest.followersRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('followersMin')" />
               <span class="text-muted-foreground/60">–</span>
-              <Input v-model.number="form.followersMax" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('followersMax')" />
+              <Input v-model.number="form.followersMax" :aria-label="t('kcs.console.a11y.max', { field: t('kcs.ingest.followersRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('followersMax')" />
             </div>
           </fieldset>
           <fieldset :class="disabled('priceMin')">
             <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.ingest.priceRange') }}</legend>
             <div class="flex items-center gap-2">
-              <Input v-model.number="form.priceMin" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('priceMin')" />
+              <Input v-model.number="form.priceMin" :aria-label="t('kcs.console.a11y.min', { field: t('kcs.ingest.priceRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.min')" :disabled="!supports('priceMin')" />
               <span class="text-muted-foreground/60">–</span>
-              <Input v-model.number="form.priceMax" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('priceMax')" />
+              <Input v-model.number="form.priceMax" :aria-label="t('kcs.console.a11y.max', { field: t('kcs.ingest.priceRange') })" type="number" min="0" class="h-9 tabular-nums" :placeholder="t('kcs.panel.max')" :disabled="!supports('priceMax')" />
             </div>
           </fieldset>
           <fieldset class="sm:col-span-2" :class="disabled('health')">
@@ -183,6 +189,7 @@
                     size="icon"
                     class="size-7"
                     :title="t('kcs.ingest.retry')"
+                    :aria-label="t('kcs.ingest.retry')"
                     :disabled="acting === job.id"
                     data-testid="job-retry"
                     @click="act(job, 'retry')"
@@ -195,6 +202,7 @@
                     size="icon"
                     class="size-7 text-destructive hover:text-destructive"
                     :title="t('kcs.ingest.cancel')"
+                    :aria-label="t('kcs.ingest.cancel')"
                     :disabled="acting === job.id"
                     data-testid="job-cancel"
                     @click="act(job, 'cancel')"
