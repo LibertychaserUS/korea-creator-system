@@ -26,7 +26,7 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
     if (denied) return denied
     const { rows } = await env.db.query(
       `SELECT * FROM saved_queries WHERE org_id IS NULL OR org_id = $1
-       ORDER BY updated_at DESC`,
+       ORDER BY updated_at DESC, id`,
       [user!.orgId],
     )
     return context.json({ items: rows.map(savedQueryFromRow) })

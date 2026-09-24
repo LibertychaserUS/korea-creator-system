@@ -8,7 +8,7 @@ import {
   metricsFromRow,
   publicPoolRow,
 } from '../http/creators'
-import { ensurePublishedSnapshots, withPercentiles } from '../http/pool'
+import { withPercentiles } from '../http/pool'
 import type { Context } from 'hono'
 import { assignmentsBody, kcsAssignmentBody, projectCreateBody, readJson, validationError } from '../http/body'
 import { jsonError } from '../http/responses'
@@ -21,7 +21,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
     if (denied) return denied
     const { rows } = await env.db.query(
       `SELECT p.*, (SELECT count(*) FROM assignments a WHERE a.project_id = p.id)::int AS member_count
-       FROM projects p WHERE p.org_id = $1 AND p.status = 'open' ORDER BY p.updated_at DESC`,
+       FROM projects p WHERE p.org_id = $1 AND p.status = 'open' ORDER BY p.updated_at DESC, p.id`,
       [user!.orgId],
     )
     return context.json({ items: rows.map(projectView) })
@@ -55,7 +55,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
               c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
               c.metrics, c.metrics_locked, c.metrics_locked_at, c.source, c.external_id, c.metrics_fetched_at
        FROM assignments a JOIN creators c ON c.id = a.creator_id
-       WHERE a.project_id = $1 ORDER BY a.assigned_at DESC`,
+       WHERE a.project_id = $1 ORDER BY a.assigned_at DESC, a.id`,
       [context.req.param('id')],
     )
     const meta = await attachCreatorMeta(
@@ -80,7 +80,6 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
       })),
       false,
     )
-    await ensurePublishedSnapshots(env.db)
     const enriched = await withPercentiles(env.db, meta.map(asPublished), {
       nullSourceCohort: false,
       keys: RANKED_METRIC_KEYS,
@@ -215,7 +214,7 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
               COALESCE(c.metrics_locked, c.metrics) AS metrics, a.pool_gone
        FROM assignments a JOIN creators c ON c.id = a.creator_id
        WHERE a.project_id = $1
-       ORDER BY a.assigned_at, c.display_name`,
+       ORDER BY a.assigned_at, c.display_name, a.id`,
       [projectId],
     )
     const sheet = projectSheet(

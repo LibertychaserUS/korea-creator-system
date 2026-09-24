@@ -148,6 +148,12 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
       "SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL",
     )).rows[0].n
     expect(missing).toBeGreaterThan(0)
+    await get(`/api/select/pool?region=${tag}`)
+    await get(`/api/select/shortlist`)
+    const afterRead = (await ctx.db.query(
+      "SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND metrics_locked IS NULL",
+    )).rows[0].n
+    expect(afterRead).toBe(missing)
     expect(await ensurePublishedSnapshots(ctx.db)).toBe(missing)
     expect(await ensurePublishedSnapshots(ctx.db, { full: true })).toBeGreaterThan(0)
     expect(await ensurePublishedSnapshots(ctx.db, { full: true })).toBe(0)

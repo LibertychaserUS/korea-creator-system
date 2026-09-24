@@ -86,9 +86,8 @@ function list(raw: string | undefined): string[] {
  * `metrics_locked` exactly as `asPublished` would. Publish and seed already
  * write one; this heals rows released before snapshots existed or written
  * straight to the table. `full` also re-checks every snapshot for missing keys
- * (it reads each jsonb, so it runs at startup and after seeding); the default
- * only looks for released rows with no snapshot at all, which is cheap enough
- * for every pool request.
+ * (it reads each jsonb). Runs only at startup and after seeding; migration
+ * 0020 covers the SQL-only case, so no read path ever writes.
  */
 export async function ensurePublishedSnapshots(db: Db, options: { full?: boolean } = {}): Promise<number> {
   const { rows } = await db.query(
@@ -283,7 +282,6 @@ const COLLAB_COUNT = '(SELECT count(*) FROM collaborations col WHERE col.creator
  * `dir` (alias `order`); `page` / `pageSize`.
  */
 export async function poolPage(db: Db, query: Record<string, string | undefined>): Promise<PageResult<Record<string, any>>> {
-  await ensurePublishedSnapshots(db)
   const params = new Params()
   const where: string[] = []
 
@@ -383,7 +381,6 @@ export async function savedQueryPage(
   spec: SavedQuery,
   query: Record<string, string | undefined>,
 ): Promise<PageResult<Record<string, any>>> {
-  await ensurePublishedSnapshots(db)
   const params = new Params()
   const where: string[] = []
 

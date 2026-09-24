@@ -6,7 +6,7 @@ import {
   loadCreator,
   publicPoolRow,
 } from '../http/creators'
-import { ensurePublishedSnapshots, poolPage, withPercentiles } from '../http/pool'
+import { poolPage, withPercentiles } from '../http/pool'
 import { readJson, shortlistBody } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
@@ -25,7 +25,6 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     if (!item || item.status !== 'released' || item.categories.includes('blacklist')) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
-    await ensurePublishedSnapshots(env.db)
     const published = asPublished(item)
     const [enriched] = await withPercentiles(env.db, [published], {
       nullSourceCohort: false,
@@ -61,7 +60,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
               c.status, c.regions, c.verticals, c.needs_review, c.followers_unknown, c.avatar_key,
               c.metrics, c.metrics_locked, c.metrics_locked_at, c.source, c.external_id, c.metrics_fetched_at
        FROM shortlist_items s JOIN creators c ON c.id = s.creator_id
-       WHERE s.org_id = $1 ORDER BY s.added_at DESC`,
+       WHERE s.org_id = $1 ORDER BY s.added_at DESC, s.creator_id`,
       [user!.orgId],
     )
     const meta = await attachCreatorMeta(
@@ -86,7 +85,6 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
       })),
       false,
     )
-    await ensurePublishedSnapshots(env.db)
     const enriched = await withPercentiles(env.db, meta.map(asPublished), {
       nullSourceCohort: false,
       keys: RANKED_METRIC_KEYS,
