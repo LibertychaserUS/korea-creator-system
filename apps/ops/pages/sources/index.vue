@@ -262,6 +262,10 @@ const error = ref('')
 const acting = ref<string | null>(null)
 const dictionary = ref<SourceDictionaries | null>(null)
 let pollTimer: ReturnType<typeof setTimeout> | null = null
+const POLL_MIN_MS = 3000
+const POLL_MAX_MS = 15000
+let pollDelay = POLL_MIN_MS
+let lastJobs = ''
 
 const form = reactive<SourceQuery & { health: HealthGrade[] }>({
   source: SOURCE_IDS[0],
@@ -362,18 +366,34 @@ async function loadJobs() {
     const params = new URLSearchParams({ source: SOURCE_IDS.join(','), pageSize: '20' })
     const res = await request<any>(apiPath(API.ingestJobs, {}, params))
     jobs.value = res.items ?? []
+    const snapshot = JSON.stringify(jobs.value)
+    pollDelay = snapshot === lastJobs ? Math.min(pollDelay * 2, POLL_MAX_MS) : POLL_MIN_MS
+    lastJobs = snapshot
   } finally {
     loadingJobs.value = false
     schedulePoll()
   }
 }
 
-/** worker 在后台跑，有活动任务时每 3 秒刷一次，没有就停。 */
+/**
+ * worker 在后台跑，有活动任务时每 3 秒刷一次，没有就停；连续没变化逐步放慢到 15 秒，
+ * 一有变化回到 3 秒。标签页切到后台时不刷，切回来马上刷一次。
+ */
 function schedulePoll() {
   if (pollTimer) clearTimeout(pollTimer)
   pollTimer = null
-  if (!hasActive.value) return
-  pollTimer = setTimeout(loadJobs, 3000)
+  if (!hasActive.value || document.visibilityState === 'hidden') return
+  pollTimer = setTimeout(loadJobs, pollDelay)
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'hidden') {
+    if (pollTimer) clearTimeout(pollTimer)
+    pollTimer = null
+  } else if (hasActive.value && !pollTimer) {
+    pollDelay = POLL_MIN_MS
+    loadJobs()
+  }
 }
 
 async function act(job: any, action: 'retry' | 'cancel') {
@@ -381,6 +401,7 @@ async function act(job: any, action: 'retry' | 'cancel') {
   error.value = ''
   try {
     await request(apiPath(action === 'retry' ? API.ingestJobRetry : API.ingestJobCancel, { id: job.id }), { method: 'POST' })
+    pollDelay = POLL_MIN_MS
     await loadJobs()
   } catch (e: any) {
     error.value = e?.data?.error ?? e?.message ?? String(e)
@@ -403,6 +424,7 @@ async function runFetch() {
     const res = await request<any>(API.ingestFetch.path, { method: 'POST', body: JSON.stringify(body) })
     // 202：任务已入队，worker 按配额执行；201（sync=1）：直接拿到结果
     result.value = res.job && res.writtenCount == null ? { queued: true, jobId: res.job.id ?? res.job } : res
+    pollDelay = POLL_MIN_MS
     await loadJobs()
   } catch (e: any) {
     error.value = e?.data?.error ?? e?.message ?? String(e)
@@ -415,8 +437,10 @@ onMounted(() => {
   loadAdapters()
   loadJobs()
   loadDictionary(form.source)
+  document.addEventListener('visibilitychange', onVisibility)
 })
 onBeforeUnmount(() => {
   if (pollTimer) clearTimeout(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibility)
 })
 </script>
