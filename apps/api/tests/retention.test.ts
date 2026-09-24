@@ -19,7 +19,7 @@ const NOW = new Date('2026-09-23T00:00:00.000Z')
 const DAY = 86_400_000
 const CREATOR = 'seed_qiangua_qg_002'
 /** What ops would have to set on purpose; nothing runs like this by default. */
-const OPTED_IN: RetentionConfig = { rawPerSource: 10, deadLetterDays: 90, auditDays: 365, intervalMs: DAY }
+const OPTED_IN: RetentionConfig = { rawPerSource: 10, deadLetterDays: 90, auditDays: 365, jobDays: 180, intervalMs: DAY }
 
 async function setup() {
   const context = await createTestApp()
@@ -67,10 +67,11 @@ const ids = async (context: TestCtx, sql: string, params: unknown[] = []) =>
 describe('retention config', () => {
   it('keeps everything by default: every kind is 0 and the sweep is off', () => {
     expect(retentionConfig({})).toEqual(RETENTION_DEFAULTS)
-    expect(RETENTION_DEFAULTS).toEqual({ rawPerSource: 0, deadLetterDays: 0, auditDays: 0, intervalMs: DAY })
+    expect(RETENTION_DEFAULTS).toEqual({ rawPerSource: 0, deadLetterDays: 0, auditDays: 0, jobDays: 0, intervalMs: DAY })
     expect(retentionEnabled(retentionConfig({}))).toBe(false)
     expect(retentionEnabled(retentionConfig({ RETENTION_AUDIT_DAYS: '365' }))).toBe(true)
     expect(retentionEnabled(retentionConfig({ RETENTION_AUDIT_DAYS: '365', RETENTION_INTERVAL_HOURS: '0' }))).toBe(false)
+    expect(retentionEnabled(retentionConfig({ RETENTION_JOB_DAYS: '180' }))).toBe(true)
   })
 
   it('reads the env knobs; 0 is kept, junk falls back to the default', () => {
@@ -79,9 +80,10 @@ describe('retention config', () => {
         RETENTION_RAW_PER_SOURCE: '3',
         RETENTION_DEAD_LETTER_DAYS: '0',
         RETENTION_AUDIT_DAYS: 'soon',
+        RETENTION_JOB_DAYS: '30',
         RETENTION_INTERVAL_HOURS: '6',
       }),
-    ).toEqual({ rawPerSource: 3, deadLetterDays: 0, auditDays: 0, intervalMs: 6 * 3_600_000 })
+    ).toEqual({ rawPerSource: 3, deadLetterDays: 0, auditDays: 0, jobDays: 30, intervalMs: 6 * 3_600_000 })
     expect(retentionConfig({ RETENTION_RAW_PER_SOURCE: '-1' }).rawPerSource).toBe(0)
   })
 })
@@ -93,7 +95,7 @@ describe('runRetention', () => {
     await addDeadLetter(context, 'dl-dismissed-old', 'dismissed', 500)
     await addAudit(context, 'audit-old', 2_000)
 
-    expect(await runRetention(context.db, retentionConfig({}), NOW)).toEqual({ raw: 0, deadLetters: 0, auditLogs: 0 })
+    expect(await runRetention(context.db, retentionConfig({}), NOW)).toEqual({ raw: 0, deadLetters: 0, auditLogs: 0, jobs: 0 })
     expect((await ids(context, 'SELECT id FROM creator_raw WHERE creator_id = $1', [CREATOR])).length).toBe(13)
     expect(await ids(context, 'SELECT id FROM ingest_dead_letters')).toEqual(['dl-dismissed-old'])
     expect(await ids(context, 'SELECT id FROM audit_logs')).toEqual(['audit-old'])
@@ -145,6 +147,37 @@ describe('runRetention', () => {
     expect(await ids(context, 'SELECT id FROM audit_logs')).toEqual(['audit-new'])
   })
 
+  it('finished runs past the window go; open dead letters, creators\' first / last runs and file imports stay', async () => {
+    const context = await setup()
+    await context.db.query('DELETE FROM ingest_jobs')
+    const job = async (id: string, status: string, endedDaysAgo: number | null, extra: Record<string, unknown> = {}) => {
+      await context.db.query(
+        `INSERT INTO ingest_jobs (id, source_id, schedule, status, attempt, sample_rate, ended_at, file_name)
+         VALUES ($1, 'qiangua', 'once', $2, 0, 1, $3, $4)`,
+        [id, status, endedDaysAgo == null ? null : new Date(NOW.getTime() - endedDaysAgo * DAY), extra.fileName ?? null],
+      )
+    }
+    await job('job-ok-old', 'ok', 181)
+    await job('job-failed-old', 'failed', 400)
+    await job('job-ok-new', 'ok', 179)
+    await job('job-partial-old', 'partial', 400)
+    await job('job-queued', 'queued', null)
+    await job('job-parked', 'failed', 400)
+    await job('job-first', 'ok', 400)
+    await job('job-last', 'ok', 400)
+    await job('job-file', 'ok', 400, { fileName: 'list.xlsx' })
+    await addDeadLetter(context, 'dl-parked', 'open', null)
+    await context.db.query("UPDATE ingest_dead_letters SET job_id = 'job-parked' WHERE id = 'dl-parked'")
+    await context.db.query(`UPDATE creators SET first_ingest_job_id = 'job-first' WHERE id = $1`, [CREATOR])
+    await context.db.query(`UPDATE creators SET last_ingest_job_id = 'job-last' WHERE id = 'seed_qiangua_qg_003'`)
+
+    expect(await runRetention(context.db, { ...OPTED_IN, jobDays: 0 }, NOW)).toMatchObject({ jobs: 0 })
+    expect((await runRetention(context.db, OPTED_IN, NOW)).jobs).toBe(2)
+    expect(await ids(context, 'SELECT id FROM ingest_jobs')).toEqual([
+      'job-file', 'job-first', 'job-last', 'job-ok-new', 'job-parked', 'job-partial-old', 'job-queued',
+    ])
+  })
+
   it('0 keeps everything of that kind', async () => {
     const context = await setup()
     await addRaw(context, 'qiangua', 12)
@@ -153,11 +186,11 @@ describe('runRetention', () => {
 
     const result = await runRetention(
       context.db,
-      { rawPerSource: 0, deadLetterDays: 0, auditDays: 0, intervalMs: DAY },
+      { rawPerSource: 0, deadLetterDays: 0, auditDays: 0, jobDays: 0, intervalMs: DAY },
       NOW,
     )
 
-    expect(result).toEqual({ raw: 0, deadLetters: 0, auditLogs: 0 })
+    expect(result).toEqual({ raw: 0, deadLetters: 0, auditLogs: 0, jobs: 0 })
     expect((await ids(context, 'SELECT id FROM creator_raw WHERE creator_id = $1', [CREATOR])).length).toBe(12)
   })
 
@@ -165,7 +198,7 @@ describe('runRetention', () => {
     const context = await setup()
     await addRaw(context, 'qiangua', 12)
     await runRetention(context.db, OPTED_IN, NOW)
-    expect(await runRetention(context.db, OPTED_IN, NOW)).toEqual({ raw: 0, deadLetters: 0, auditLogs: 0 })
+    expect(await runRetention(context.db, OPTED_IN, NOW)).toEqual({ raw: 0, deadLetters: 0, auditLogs: 0, jobs: 0 })
   })
 })
 
