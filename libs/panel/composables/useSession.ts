@@ -1,4 +1,4 @@
-import type { Role } from '@kcs/contract'
+import { API, type Role } from '@kcs/contract'
 
 export type SessionUser = {
   id: string
@@ -18,7 +18,7 @@ export function useSession() {
       return null
     }
     try {
-      const data = await request<{ user: SessionUser }>('/api/auth/me')
+      const data = await request<{ user: SessionUser }>(API.me.path)
       user.value = data.user
       return data.user
     } catch {

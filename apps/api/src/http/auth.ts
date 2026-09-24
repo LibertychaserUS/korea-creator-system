@@ -1,5 +1,6 @@
 import { can, roleFromIdentity, SEED_USERS } from '@kcs/contract'
 import { jsonError } from './responses'
+import { SessionCache } from './session-cache'
 import type { AppEnv, RouteHelpers, SessionUser, VerifiedIdentity } from './types'
 
 export function bearer(header: string | undefined, cookie: string | undefined): string | undefined {
@@ -8,33 +9,31 @@ export function bearer(header: string | undefined, cookie: string | undefined): 
   return match?.[1]
 }
 
-type CacheEntry = {
-  expiresAt: number
-  user: VerifiedIdentity
-}
-
 /**
  * Positive introspection results are cached briefly so a page full of
  * requests costs one round-trip to TinyShip. The TTL also bounds how long a
- * signed-out session keeps working here — keep it short.
+ * signed-out session keeps working here — keep it short. The entry cap keeps a
+ * flood of random tokens from growing the process without bound.
  */
 const SESSION_CACHE_MS = Number(process.env.SESSION_CACHE_MS || 10_000)
+const SESSION_CACHE_MAX = Math.max(1, Number(process.env.SESSION_CACHE_MAX) || 5_000)
 const MISS_CACHE_MS = 5_000
+const SWEEP_MS = 60_000
 
 export function introspectTinyShip(env: AppEnv) {
-  const cache = new Map<string, CacheEntry>()
+  const cache = new SessionCache<VerifiedIdentity>(SESSION_CACHE_MAX)
+  setInterval(() => cache.sweep(env.now().getTime()), SWEEP_MS).unref()
   const authBaseUrl = (process.env.AUTH_BASE_URL || 'http://localhost:7004').replace(/\/$/, '')
 
   return async (token: string): Promise<VerifiedIdentity> => {
     const now = env.now().getTime()
-    const cached = cache.get(token)
-    if (cached && cached.expiresAt > now) return cached.user
-    if (cached) cache.delete(token)
+    const cached = cache.get(token, now)
+    if (cached) return cached.value
 
     const devUser = developmentToken(token)
     if (devUser) {
       await mirrorProfile(env, devUser)
-      cache.set(token, { user: devUser, expiresAt: now + SESSION_CACHE_MS })
+      cache.set(token, devUser, now + SESSION_CACHE_MS)
       return devUser
     }
 
@@ -65,10 +64,7 @@ export function introspectTinyShip(env: AppEnv) {
       user = null
     }
 
-    cache.set(token, {
-      user,
-      expiresAt: now + (user ? SESSION_CACHE_MS : MISS_CACHE_MS),
-    })
+    cache.set(token, user, now + (user ? SESSION_CACHE_MS : MISS_CACHE_MS))
     return user
   }
 }

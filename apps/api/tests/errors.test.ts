@@ -35,7 +35,6 @@ describe('request errors', () => {
       [ops, 'PATCH', `/api/ops/creators/${creator}`],
       [ops, 'PATCH', '/api/ops/categories/intending'],
       [ops, 'POST', '/api/assets/presign'],
-      [ops, 'POST', '/api/ingest/jobs'],
       [ops, 'POST', '/api/ingest/fetch'],
       [selector, 'POST', '/api/select/projects'],
       [selector, 'POST', '/api/select/projects/any/assignments'],

@@ -168,7 +168,7 @@ describe('运营端博主列表', () => {
     const key = runId('stage')
     const created = await createCreator(ops, { creatorKey: key, displayName: `阶段-${key}`, followers: 9_000 })
     const id = String(created.id)
-    const list = await authed(ops, 'GET', PATHS.opsCreators)
+    const list = await authed(ops, 'GET', `${PATHS.opsCreators}?q=${encodeURIComponent(`阶段-${key}`)}`)
     expect(list.status).toBe(200)
     const mine = (list.json.items as Json[]).find((row) => row.id === id)
     expect(mine?.stage).toBe('review')

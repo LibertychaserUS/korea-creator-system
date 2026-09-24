@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs'
 import {
+  API,
   CREATOR_TIERS,
   METRIC_FIELDS,
   SOURCE_IDS,
@@ -6,8 +8,50 @@ import {
 } from '@kcs/contract'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
-export function registerPublicRoutes(app: KcsApp, _env: AppEnv, _helpers: RouteHelpers) {
-  app.get('/api/health', (context) => context.json({ ok: true, service: 'kcs-api' }))
+const HEALTH_DB_TIMEOUT_MS = 2_000
+
+function readVersion() {
+  if (process.env.KCS_VERSION) return process.env.KCS_VERSION
+  try {
+    return String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
+  } catch {
+    return 'unknown'
+  }
+}
+
+const VERSION = readVersion()
+
+async function pingDb(env: AppEnv) {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    await Promise.race([
+      env.db.query('select 1'),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('db ping timed out')), HEALTH_DB_TIMEOUT_MS)
+      }),
+    ])
+    return true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function registerPublicRoutes(app: KcsApp, env: AppEnv, _helpers: RouteHelpers) {
+  /** Readiness: can this process serve a real request right now? */
+  app.get(API.health.path, async (context) => {
+    const db = (await pingDb(env)) ? 'ok' : 'down'
+    const draining = Boolean(env.lifecycle?.draining)
+    const ok = db === 'ok' && !draining
+    return context.json(
+      { ok, service: 'kcs-api', db, version: VERSION, ...(draining ? { draining } : {}) },
+      ok ? 200 : 503,
+    )
+  })
+
+  /** Liveness: the event loop answers. Never touches the DB, so a DB outage does not restart pods. */
+  app.get(API.healthLive.path, (context) => context.json({ ok: true, version: VERSION }))
 
   app.get('/api/openapi.json', (context) =>
     context.json({
@@ -29,7 +73,7 @@ export function registerPublicRoutes(app: KcsApp, _env: AppEnv, _helpers: RouteH
         '/api/ingest/adapters': { get: {} },
         '/api/ingest/fetch': { post: {} },
         '/api/ingest/raw/{creatorId}': { get: {} },
-        '/api/ingest/jobs': { get: {}, post: {} },
+        '/api/ingest/jobs': { get: {}, post: { deprecated: true, summary: '410 GONE — use /api/ingest/fetch' } },
         '/api/ingest/jobs/{id}': { get: {} },
         '/api/ingest/jobs/{id}/retry': { post: {} },
         '/api/ingest/jobs/{id}/cancel': { post: {} },

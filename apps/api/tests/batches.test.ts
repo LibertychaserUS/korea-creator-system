@@ -107,16 +107,16 @@ describe('ops batch upload', () => {
     await ctx.close()
   })
 
-  it('opens a job against the seeded file-drop source', async () => {
+  it('needs a workbook: a batch without a file is 400 and opens no job', async () => {
     const ops = await ctx.loginJson('ops@kcs.local')
+    const jobsBefore = await ctx.db.query('SELECT count(*)::int AS n FROM ingest_jobs')
     const res = await ctx.app.request('/api/ops/batches', {
       method: 'POST',
       headers: { authorization: `Bearer ${ops.token}` },
     })
-    expect(res.status).toBe(201)
-    const body = await res.json()
-    expect(body.sourceId).toBe('file-drop')
-    expect(body.status).toBe('ok')
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatchObject({ code: 'VALIDATION', message: 'file_required' })
+    expect((await ctx.db.query('SELECT count(*)::int AS n FROM ingest_jobs')).rows[0].n).toBe(jobsBefore.rows[0].n)
   })
 
   it('accepts an xlsx drop and persists parsed creator rows', async () => {

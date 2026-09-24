@@ -25,6 +25,8 @@ spec:
         app: kcs-api
     spec:
       serviceAccountName: kcs-api
+      # SHUTDOWN_TIMEOUT_MS (25 s) must stay below this so the API exits on its own.
+      terminationGracePeriodSeconds: 30
       containers:
         - name: api
           image: kcs-api:local
@@ -38,6 +40,8 @@ spec:
                   key: database-url
             - name: AUTH_BASE_URL
               value: http://select:7004
+            - name: SHUTDOWN_TIMEOUT_MS
+              value: "25000"
             - name: S3_ENDPOINT
               value: http://minio:9000
             - name: S3_BUCKET
@@ -81,7 +85,20 @@ spec:
               value: https://api.newrank.cn
             - name: XINHONG_SEARCH_PATH
               value: /api/sync/xh/account/search
+          # Readiness runs `select 1` and turns 503 while shutting down; liveness never touches
+          # the DB, so a database outage takes pods out of rotation instead of restarting them.
           readinessProbe:
             httpGet:
               path: /api/health
               port: 7100
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 7100
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3

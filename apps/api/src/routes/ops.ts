@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { deriveMetrics, emptyMetrics, type Permission } from '@kcs/contract'
+import {
+  CREATOR_STAGES,
+  deriveMetrics,
+  emptyMetrics,
+  parsePaging,
+  type CreatorStage,
+  type Permission,
+} from '@kcs/contract'
 import type { Context, MiddlewareHandler } from 'hono'
-import { runIngest, runWorkbookIngest } from '../ingest/service'
+import { runWorkbookIngest } from '../ingest/workbook'
 import { audit } from '../http/audit'
 import {
   categoryPatchBody,
@@ -14,6 +21,7 @@ import {
 import {
   assetPublicUrl,
   attachCreatorMeta,
+  camelJobs,
   creatorHistory,
   hasCollabSql,
   loadCreator,
@@ -21,7 +29,9 @@ import {
   readUpload,
   saveRelations,
 } from '../http/creators'
+import { pageRows } from '../http/lists'
 import { jsonError } from '../http/responses'
+import { categoryView, overviewJobView, reviewView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import {
   IMAGE_MAX_BYTES,
@@ -32,6 +42,9 @@ import {
   sniffImage,
   uploadLimit,
 } from '../http/uploads'
+
+const STAGE_SQL = `(CASE WHEN c.status = 'released' THEN 'released'
+  WHEN c.metrics_locked_at IS NOT NULL THEN 'withdrawn' ELSE 'review' END)`
 
 export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelpers) {
   // Auth before the body limit, so strangers get 401/403 rather than a 413.
@@ -76,17 +89,60 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       `SELECT id, status, written_count, failed_count, batch_name, file_name, created_at
        FROM ingest_jobs ORDER BY created_at DESC LIMIT 5`,
     )
-    return context.json({ counts: counts.rows[0], recentJobs: jobs.rows })
+    return context.json({ counts: counts.rows[0], recentJobs: jobs.rows.map(overviewJobView) })
   })
 
+  /**
+   * `?stage=review|released|withdrawn&q=&source=<id>|manual&page=&pageSize=`.
+   * `counts` is per stage over the `q` / `source` match, so tab badges follow the search.
+   */
   const listCreators = async (context: Parameters<typeof helpers.requireAuth>[0]) => {
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
-    const { rows } = await env.db.query(
-      `SELECT c.*, ${hasCollabSql()}::int AS collab_count
-       FROM creators c ORDER BY c.updated_at DESC`,
+    const query = context.req.query()
+    const params: unknown[] = []
+    const where: string[] = []
+    const needle = (query.q ?? '').trim()
+    if (needle) {
+      params.push(needle)
+      where.push(`(strpos(lower(c.display_name), lower($${params.length})) > 0
+        OR strpos(lower(COALESCE(c.xhs_id, '')), lower($${params.length})) > 0)`)
+    }
+    if (query.source === 'manual') where.push("COALESCE(c.source, '') = ''")
+    else if (query.source) {
+      params.push(query.source)
+      where.push(`c.source = $${params.length}`)
+    }
+    const matched = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    const counts = await env.db.query(
+      `SELECT ${STAGE_SQL} AS stage, count(*)::int AS n FROM creators c ${matched} GROUP BY 1`,
+      params,
     )
-    return context.json({ items: await attachCreatorMeta(env.db, rows, true) })
+    const stages = Object.fromEntries(CREATOR_STAGES.map((stage) => [stage, 0])) as Record<CreatorStage, number>
+    for (const row of counts.rows) stages[row.stage as CreatorStage] = row.n
+    const stage = CREATOR_STAGES.includes(query.stage as CreatorStage) ? query.stage as CreatorStage : null
+    if (stage) {
+      params.push(stage)
+      where.push(`${STAGE_SQL} = $${params.length}`)
+    }
+    const paging = parsePaging(query)
+    const { rows, total } = await pageRows(
+      env.db,
+      {
+        columns: `c.*, ${hasCollabSql()}::int AS collab_count`,
+        from: `FROM creators c ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`,
+        order: 'c.updated_at DESC, c.id COLLATE "C"',
+      },
+      params,
+      paging,
+    )
+    return context.json({
+      items: await attachCreatorMeta(env.db, rows, true),
+      total,
+      page: paging.page,
+      pageSize: paging.pageSize,
+      counts: stages,
+    })
   }
   app.get('/api/ops/creators', listCreators)
   app.get('/api/kcs/creators', listCreators)
@@ -279,7 +335,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
     const { rows } = await env.db.query('SELECT * FROM categories ORDER BY builtin DESC, slug')
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(categoryView) })
   })
 
   app.patch('/api/ops/categories/:slug', async (context) => {
@@ -322,7 +378,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
       `SELECT r.*, c.display_name FROM reviews r JOIN creators c ON c.id = r.creator_id
        WHERE r.status = 'pending' ORDER BY r.created_at DESC`,
     )
-    return context.json({ items: rows })
+    return context.json({ items: rows.map(reviewView) })
   })
 
   app.post('/api/ops/review/:id/pass', async (context) => {
@@ -342,11 +398,19 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.get('/api/ops/batches', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
-    const { rows } = await env.db.query(
-      `SELECT j.*, s.name AS source_name FROM ingest_jobs j
-       JOIN ingest_sources s ON s.id = j.source_id ORDER BY j.created_at DESC`,
+    const paging = parsePaging(context.req.query())
+    const { rows, total } = await pageRows(
+      env.db,
+      {
+        columns: 'j.*, s.name AS source_name',
+        from: 'FROM ingest_jobs j JOIN ingest_sources s ON s.id = j.source_id',
+        order: 'j.created_at DESC, j.id COLLATE "C"',
+      },
+      [],
+      paging,
     )
-    return context.json({ items: rows })
+    const items = camelJobs(rows).map((job, index) => ({ ...job, sourceName: rows[index].source_name }))
+    return context.json({ items, total, page: paging.page, pageSize: paging.pageSize })
   })
 
   app.post('/api/ops/batches', gate('ops.write'), uploadLimit(WORKBOOK_MAX_BYTES), async (context) => {
@@ -366,7 +430,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
         )
       }
     }
-    return context.json(await runIngest(env, 'file-drop', 'once', 0.1, user!.id), 201)
+    return validationError(context, 'file_required', [{ path: 'file', message: 'an .xlsx workbook is required' }])
   })
 
   app.post('/api/assets/presign', async (context) => {

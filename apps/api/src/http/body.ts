@@ -131,13 +131,6 @@ export const shortlistBody = z.looseObject({
   creatorId: text.min(1, 'required'),
 })
 
-export const ingestJobBody = z.looseObject({
-  sourceId: text.min(1, 'required').optional(),
-  sourceUrl: z.unknown().optional(),
-  schedule: text.min(1).max(64).optional(),
-  sampleRate: z.number().min(0).max(1).optional(),
-})
-
 export const presignBody = z.looseObject({
   purpose: z.string().optional(),
   contentType: z.string().optional(),

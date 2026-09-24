@@ -68,6 +68,27 @@ describe('Metric filter AND + sort', () => {
     expect(rows.every((row) => typeof row.percentiles === 'object')).toBe(true)
   })
 
+  it('pages on the server: page / pageSize, total before paging, dir as an alias of order', async () => {
+    const first = await request('GET', PATHS.pool, {
+      token: selector.token,
+      query: { region: tag, sort: 'followers', dir: 'desc', page: 1, pageSize: 2 },
+    })
+    const second = await request('GET', PATHS.pool, {
+      token: selector.token,
+      query: { region: tag, sort: 'followers', dir: 'desc', page: 2, pageSize: 2 },
+    })
+    expect(first.json.total).toBe(3)
+    expect(first.json.pageSize).toBe(2)
+    expect([...itemsOf(first.json), ...itemsOf(second.json)].map((row) => row.displayName)).toEqual([
+      `${tag}-high`,
+      `${tag}-mid`,
+      `${tag}-low`,
+    ])
+    const capped = await request('GET', PATHS.pool, { token: selector.token, query: { pageSize: 9999 } })
+    expect(capped.json.pageSize).toBe(100)
+    expect(itemsOf(capped.json).length).toBeLessThanOrEqual(100)
+  })
+
   it('empty AND intersection is an empty list', async () => {
     expect(await pool({ health: 'abnormal', source: 'qiangua' })).toEqual([])
   })

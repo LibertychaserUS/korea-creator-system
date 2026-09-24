@@ -47,7 +47,7 @@ ops `/` and `/creators/new`; select `/`, `/projects`, and `/projects/:id`; dev `
 | `sort-followers` `sort-price` `sort-collab` | pool sort |
 | `row-pool` `row-pool-check` | pool row (`data-creator-key`) |
 | `btn-assign-confirm` `row-project-assignment` | confirm + board row |
-| `dev-job-count` `dev-sql-ok` | health integer = `COUNT(*) FROM ingest_job` |
+| `dev-job-count` `dev-sql-ok` | health integer = `COUNT(*) FROM ingest_jobs` |
 
 ## Extra testids (journeys 7–8)
 
@@ -64,6 +64,6 @@ The review chain needs a demo creator still waiting for review from `E2E_REVIEW_
 
 ## Persistence
 
-Postgres tables: `creator`, `assignment`, `ingest_job` (DOMAIN.md).  
+Postgres tables: `creators`, `assignments`, `ingest_jobs` (the singular DOMAIN.md views were dropped in migration 0011).  
 Assign body: `{ "creatorIds": ["…"] }` (same as blackbox).  
 S3: root compose MinIO `kcs-assets` (`E2E_S3_*`).

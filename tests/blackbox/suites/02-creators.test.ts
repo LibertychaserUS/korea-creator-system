@@ -155,7 +155,7 @@ describe('Creator CRUD + publish / unpublish visibility', () => {
       displayName: `仅后台-${key}`,
       followersUnknown: true,
     })
-    const opsList = await request('GET', PATHS.opsCreators, { token: ops.token })
+    const opsList = await request('GET', PATHS.opsCreators, { token: ops.token, query: { q: `仅后台-${key}` } })
     expect(opsList.status).toBe(200)
     expect(itemsOf(opsList.json).some((row) => row.id === draft.id)).toBe(true)
 

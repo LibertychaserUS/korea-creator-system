@@ -1,10 +1,12 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
+import { API } from '@kcs/contract'
 import { createRouteHelpers } from './http/auth'
 import { validationError } from './http/body'
 import { jsonError } from './http/responses'
 import type { AppEnv } from './http/types'
+import { errorMessage, logEvent } from './log'
 import { registerAuthRoutes } from './routes/auth'
 import { registerDevRoutes } from './routes/dev'
 import { registerIngestRoutes } from './routes/ingest'
@@ -41,6 +43,25 @@ export function createApp(env: AppEnv) {
     }),
   )
 
+  const logRequests = process.env.LOG_REQUESTS !== '0'
+  app.use('*', async (context, next) => {
+    const started = performance.now()
+    // Probes stay answerable while draining so readiness can report 503 itself.
+    if (env.lifecycle?.draining && !context.req.path.startsWith(API.health.path)) {
+      context.header('Connection', 'close')
+      return jsonError(context, 503, 'UNAVAILABLE', 'shutting_down')
+    }
+    await next()
+    const status = context.res.status
+    if (!logRequests || (status < 400 && context.req.path.startsWith(API.health.path))) return
+    logEvent(status >= 500 ? 'error' : 'info', 'http.request', {
+      method: context.req.method,
+      path: context.req.path,
+      status,
+      ms: Math.round((performance.now() - started) * 10) / 10,
+    })
+  })
+
   const helpers = createRouteHelpers(env)
   registerPublicRoutes(app, env, helpers)
   registerAuthRoutes(app, env, helpers)
@@ -60,7 +81,13 @@ export function createApp(env: AppEnv) {
     if (typeof pgCode === 'string' && PG_BAD_INPUT.has(pgCode)) {
       return validationError(context, 'invalid_value')
     }
-    console.error(error)
+    logEvent('error', 'http.unhandled', {
+      method: context.req.method,
+      path: context.req.path,
+      name: error instanceof Error ? error.name : typeof error,
+      message: errorMessage(error),
+      code: typeof pgCode === 'string' ? pgCode : undefined,
+    })
     return context.json(
       { error: { code: 'INTERNAL', message: 'internal_server_error' } },
       500,

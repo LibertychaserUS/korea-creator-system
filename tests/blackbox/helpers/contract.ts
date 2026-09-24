@@ -32,6 +32,7 @@ export const ERROR = {
   NOT_FOUND: 'NOT-FOUND',
   UPLOAD_TYPE: 'UPLOAD-TYPE',
   UPLOAD_TOO_LARGE: 'UPLOAD-TOO-LARGE',
+  GONE: 'GONE',
 } as const
 
 export const PATHS = {
@@ -63,6 +64,7 @@ export const PATHS = {
   ingestFetch: '/api/ingest/fetch',
   ingestRaw: (creatorId: string) => `/api/ingest/raw/${creatorId}`,
   ingestJobs: '/api/ingest/jobs',
+  opsBatches: '/api/ops/batches',
   ingestJob: (id: string) => `/api/ingest/jobs/${id}`,
   ingestJobCancel: (id: string) => `/api/ingest/jobs/${id}/cancel`,
   ingestSample: (id: string) => `/api/ingest/jobs/${id}/sample`,

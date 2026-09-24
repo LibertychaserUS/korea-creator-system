@@ -7,4 +7,5 @@ COPY apps/api ./apps/api
 RUN pnpm install --filter @kcs/api... --frozen-lockfile=false
 WORKDIR /app/apps/api
 EXPOSE 7100
-CMD ["pnpm", "start"]
+# node as PID 1 (not via pnpm) so SIGTERM reaches the graceful-shutdown handler.
+CMD ["node", "--import", "tsx", "src/index.ts"]

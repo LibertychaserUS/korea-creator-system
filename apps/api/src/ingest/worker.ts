@@ -13,7 +13,11 @@ import {
 import { getAdapter } from '../adapters'
 import { camelJobs } from '../http/creators'
 import type { AppEnv } from '../http/types'
-import { deadLetterJob, deadLetterRecord, failureOf } from './dead-letters'
+import { deadLetterJob, failureOf } from './dead-letters'
+import { ensureSource } from './jobs'
+import { persistPage } from './persist'
+import { retentionConfig, runRetention, type RetentionConfig } from './retention'
+import { errorMessage, logEvent } from '../log'
 
 /** Who holds a claim. Shows up in `ingest_jobs.locked_by` for triage. */
 const WORKER_ID = `${hostname()}:${process.pid}`
@@ -80,7 +84,12 @@ export async function enqueueIngestJob(
   return readJob(env, id)
 }
 
-export async function processJob(env: AppEnv, jobId: string) {
+export type ProcessOptions = {
+  /** Checked at every page boundary; true = hand the job back to the queue with its cursor. */
+  shouldStop?: () => boolean
+}
+
+export async function processJob(env: AppEnv, jobId: string, options: ProcessOptions = {}) {
   const initial = await env.db.query('SELECT * FROM ingest_jobs WHERE id = $1', [jobId])
   const job = initial.rows[0]
   if (!job || !['queued', 'running', 'partial'].includes(job.status)) {
@@ -145,7 +154,9 @@ export async function processJob(env: AppEnv, jobId: string) {
       if (current.rows[0]?.status !== 'running' || current.rows[0]?.locked_by !== lease) {
         return readJob(env, jobId)
       }
-      await takeRateToken(bucket, env)
+      if (options.shouldStop?.() || !(await takeRateToken(bucket, env, options.shouldStop))) {
+        return requeueJob(env, jobId, lease, source, cursor, pagesDone)
+      }
       const reserved = await reserveQuota(env, source, quota)
       if (!reserved) {
         await env.db.query(
@@ -156,6 +167,7 @@ export async function processJob(env: AppEnv, jobId: string) {
            WHERE id = $1`,
           [jobId, cursor, nextUtcMidnight(env.now())],
         )
+        logEvent('warn', 'ingest.job_partial', { jobId, source, code: 'QUOTA_EXHAUSTED', pages: pagesDone })
         return readJob(env, jobId)
       }
       const page = await adapter.fetch({ ...baseQuery, cursor })
@@ -190,10 +202,35 @@ export async function processJob(env: AppEnv, jobId: string) {
        ended_at = now(), updated_at = now() WHERE id = $1`,
       [jobId, cursor],
     )
+    logEvent('info', 'ingest.job_done', {
+      jobId, source, pages: pagesDone, written, skipped, failed, quotaUsed, sourceMode,
+    })
     return readJob(env, jobId)
   } catch (error) {
     return failJob(env, jobId, source, error)
   }
+}
+
+/**
+ * Shutdown between pages: the run goes back to `queued` with its cursor and
+ * without a lease, so whoever drains next continues from here right away.
+ */
+async function requeueJob(
+  env: AppEnv,
+  jobId: string,
+  lease: string,
+  source: string,
+  cursor: string | null,
+  pagesDone: number,
+) {
+  await env.db.query(
+    `UPDATE ingest_jobs SET status = 'queued', cursor = $3, next_run_at = NULL,
+       locked_by = NULL, lease_expires_at = NULL, updated_at = now()
+     WHERE id = $1 AND locked_by = $2`,
+    [jobId, lease, cursor],
+  )
+  logEvent('info', 'ingest.job_requeued', { jobId, source, cursor, pages: pagesDone })
+  return readJob(env, jobId)
 }
 
 /**
@@ -226,6 +263,15 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
        updated_at = now() WHERE id = $1 RETURNING *`,
     [jobId, attempts, exhausted, message, code],
   )
+  logEvent(exhausted ? 'error' : 'warn', 'ingest.job_failed', {
+    jobId,
+    source,
+    code,
+    attempt: attempts,
+    permanent,
+    willRetry: !exhausted,
+    message,
+  })
   if (exhausted) {
     await deadLetterJob(env, {
       jobId,
@@ -249,17 +295,36 @@ async function failJob(env: AppEnv, jobId: string, source: string, error: unknow
  * - it takes one due job per tick and finishes it before looking again. Vendor
  *   calls are billed per request and capped per minute, so concurrency would
  *   only raise the bill and the 429 rate;
+ * - the same holder runs the retention sweep once per `retention.intervalMs`
+ *   (first time right after it wins the lock), so exactly one process deletes;
  * - `INGEST_WORKER=0` opts a process out entirely (e.g. a replica that should
  *   only serve HTTP).
  */
-export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } = {}) {
+export function startIngestWorker(
+  env: AppEnv,
+  options: { intervalMs?: number; retention?: RetentionConfig } = {},
+) {
   const intervalMs = options.intervalMs ?? 2_000
+  const retention = options.retention ?? retentionConfig()
   if (process.env.INGEST_WORKER === '0') {
-    return () => undefined
+    return async () => undefined
   }
   let stopped = false
   let timer: NodeJS.Timeout | undefined
   let holder: PoolClient | null = null
+  let inflight: Promise<void> = Promise.resolve()
+  let sweptAt = 0
+
+  const sweep = async () => {
+    if (retention.intervalMs <= 0 || Date.now() - sweptAt < retention.intervalMs) return
+    sweptAt = Date.now()
+    try {
+      const deleted = await runRetention(env.db, retention, env.now())
+      logEvent('info', 'retention.sweep', { worker: WORKER_ID, ...deleted })
+    } catch (error) {
+      logEvent('error', 'retention.failed', { worker: WORKER_ID, message: errorMessage(error) })
+    }
+  }
 
   const acquire = async () => {
     if (holder) return true
@@ -270,10 +335,11 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
       ])
       if (rows[0]?.ok) {
         holder = client
+        logEvent('info', 'ingest.lock_acquired', { worker: WORKER_ID })
         return true
       }
-    } catch {
-      // fall through; try again next tick
+    } catch (error) {
+      logEvent('warn', 'ingest.lock_failed', { worker: WORKER_ID, message: errorMessage(error) })
     }
     client.release()
     return false
@@ -283,6 +349,8 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
     if (stopped) return
     try {
       if (!(await acquire())) return
+      await sweep()
+      if (stopped) return
       const { rows } = await env.db.query(
         `SELECT id FROM ingest_jobs
          WHERE (status = 'queued' AND (next_run_at IS NULL OR next_run_at <= now()))
@@ -293,29 +361,45 @@ export function startIngestWorker(env: AppEnv, options: { intervalMs?: number } 
          ORDER BY created_at
          LIMIT 1`,
       )
-      if (rows[0]) await processJob(env, rows[0].id)
-    } catch {
+      if (rows[0]) await processJob(env, rows[0].id, { shouldStop: () => stopped })
+    } catch (error) {
+      logEvent('error', 'ingest.tick_failed', { worker: WORKER_ID, message: errorMessage(error) })
       // A dropped connection releases the lock; the next tick re-acquires it.
       if (holder) {
-        holder.release()
+        holder.release(true)
         holder = null
       }
     } finally {
-      if (!stopped) timer = setTimeout(tick, intervalMs)
+      if (!stopped) schedule()
     }
   }
 
-  timer = setTimeout(tick, intervalMs)
-  return () => {
+  const schedule = () => {
+    timer = setTimeout(() => {
+      inflight = tick()
+    }, intervalMs)
+  }
+
+  schedule()
+  /**
+   * Stops taking new jobs, lets the current one reach its next page boundary
+   * (where it is requeued with its cursor), then gives the advisory lock back.
+   * Resolves once all of that is done; the caller caps how long it waits.
+   */
+  return async () => {
     stopped = true
     if (timer) clearTimeout(timer)
+    await inflight
     if (holder) {
       const client = holder
       holder = null
-      client
-        .query('SELECT pg_advisory_unlock($1)', [INGEST_QUEUE_LOCK])
-        .catch(() => undefined)
-        .finally(() => client.release())
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [INGEST_QUEUE_LOCK])
+        client.release()
+      } catch {
+        client.release(true)
+      }
+      logEvent('info', 'ingest.lock_released', { worker: WORKER_ID })
     }
   }
 }
@@ -345,145 +429,6 @@ export async function replayRecord(
   return persistPage(env, adapter, page, input.jobId, input.source)
 }
 
-async function persistPage(
-  env: AppEnv,
-  adapter: SourceAdapter,
-  page: SourcePage,
-  jobId: string | null,
-  source: SourceId,
-) {
-  let written = 0
-  let skipped = 0
-  let failed = 0
-  for (const raw of page.records) {
-    const normalized = adapter.normalize(raw)
-    if (!normalized.ok) {
-      // Unreadable payload: park it with the original JSON rather than counting
-      // it and moving on — this is usually a field map that needs one fix.
-      failed += 1
-      await deadLetterRecord(env, {
-        jobId,
-        source,
-        raw,
-        code: 'RECORD_INVALID',
-        message: normalized.errors.join('; ') || 'record could not be read',
-      })
-      continue
-    }
-    try {
-      const creator = normalized.creator
-      const linked = await env.db.query(
-        'SELECT creator_id FROM creator_sources WHERE source = $1 AND external_id = $2',
-        [source, creator.externalId],
-      )
-      const byXhs = !linked.rows[0] && creator.xhsId
-        ? await env.db.query(
-            'SELECT id FROM creators WHERE xhs_id = $1 ORDER BY updated_at DESC LIMIT 1',
-            [creator.xhsId],
-          )
-        : { rows: [] as Array<{ id: string }> }
-      const existingId = linked.rows[0]?.creator_id ?? byXhs.rows[0]?.id
-      const creatorId = existingId ?? randomUUID()
-      if (existingId) {
-        await env.db.query(
-          `UPDATE creators SET
-             display_name = $2, needs_review = true, followers = $3, followers_unknown = $4,
-             regions = $5, verticals = $6, xhs_id = COALESCE($7, xhs_id),
-             metrics = $8, metrics_window = $9, source = $10, external_id = $11,
-             metrics_fetched_at = $12, last_ingest_job_id = $13, updated_at = now()
-           WHERE id = $1`,
-          [
-            creatorId,
-            creator.displayName,
-            creator.metrics.followers,
-            creator.metrics.followers == null,
-            creator.regions,
-            creator.verticals,
-            creator.xhsId,
-            JSON.stringify(creator.metrics),
-            creator.metrics.window,
-            source,
-            creator.externalId,
-            raw.fetchedAt,
-            jobId,
-          ],
-        )
-      } else {
-        await env.db.query(
-          `INSERT INTO creators (
-             id, creator_key, display_name, status, needs_review, followers, followers_unknown,
-             regions, verticals, xhs_id, metrics, metrics_window, source, external_id,
-             metrics_fetched_at, last_ingest_job_id
-           ) VALUES ($1,$2,$3,'draft',true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [
-            creatorId,
-            creator.creatorKey,
-            creator.displayName,
-            creator.metrics.followers,
-            creator.metrics.followers == null,
-            creator.regions,
-            creator.verticals,
-            creator.xhsId,
-            JSON.stringify(creator.metrics),
-            creator.metrics.window,
-            source,
-            creator.externalId,
-            raw.fetchedAt,
-            jobId,
-          ],
-        )
-      }
-      await env.db.query(
-        `INSERT INTO creator_sources
-          (creator_id, source, external_id, first_seen_at, last_seen_at)
-         VALUES ($1,$2,$3,$4,$4)
-         ON CONFLICT (source, external_id) DO UPDATE SET
-           creator_id = EXCLUDED.creator_id,
-           last_seen_at = GREATEST(creator_sources.last_seen_at, EXCLUDED.last_seen_at)`,
-        [creatorId, source, creator.externalId, raw.fetchedAt],
-      )
-      await env.db.query(
-        `INSERT INTO creator_raw (id, creator_id, source, external_id, fetched_at, payload)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [
-          randomUUID(),
-          creatorId,
-          source,
-          raw.externalId,
-          raw.fetchedAt,
-          JSON.stringify(raw.payload),
-        ],
-      )
-      await env.db.query(
-        `INSERT INTO creator_metrics_history
-          (id, creator_id, source, "window", fetched_at, job_id, metrics)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [
-          randomUUID(),
-          creatorId,
-          source,
-          creator.metrics.window,
-          raw.fetchedAt,
-          jobId,
-          JSON.stringify(creator.metrics),
-        ],
-      )
-      if (existingId) skipped += 1
-      else written += 1
-    } catch (error) {
-      failed += 1
-      await deadLetterRecord(env, {
-        jobId,
-        source,
-        raw,
-        code: 'RECORD_WRITE_FAILED',
-        message: failureOf(error).message,
-      }).catch(() => undefined)
-    }
-  }
-  return { written, skipped, failed }
-}
-
 async function reserveQuota(env: AppEnv, source: string, quota: number) {
   if (quota <= 0) return false
   const day = env.now().toISOString().slice(0, 10)
@@ -508,21 +453,14 @@ async function releaseQuota(env: AppEnv, source: string) {
   )
 }
 
-async function takeRateToken(bucket: TokenBucket, env: AppEnv) {
+/** Waits for a rate token; false if asked to stop while waiting. */
+async function takeRateToken(bucket: TokenBucket, env: AppEnv, shouldStop?: () => boolean) {
   while (!bucket.tryTake(env.now().getTime())) {
-    await new Promise((resolve) => setTimeout(resolve, bucket.waitMs(env.now().getTime())))
+    if (shouldStop?.()) return false
+    const wait = Math.min(500, bucket.waitMs(env.now().getTime()))
+    await new Promise((resolve) => setTimeout(resolve, wait))
   }
-}
-
-async function ensureSource(env: AppEnv, source: SourceId) {
-  await env.db.query(
-    `INSERT INTO ingest_sources (id, name, adapter_type, enabled, rate_limit, quota, owner)
-     VALUES ($1,$2,$1,true,60,1000,'ops') ON CONFLICT (id) DO NOTHING`,
-    [
-      source,
-      source === 'pugongying' ? '蒲公英' : source === 'qiangua' ? '千瓜' : '新红',
-    ],
-  )
+  return true
 }
 
 function resolveAdapter(env: AppEnv, source: string): SourceAdapter | undefined {

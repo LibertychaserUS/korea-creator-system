@@ -48,8 +48,16 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `KCS_SEED` | `demo` 时启动写入演示数据（24 个样例博主、4 个项目、6 条样例任务、2 个方案，重启会覆盖同 id 的样例行）；缺省不写。生产不要设。数据源行、内置分类由迁移 `0008` 写入，与此无关 |
 | `KCS_DEV_TOKENS` | `1` 时接受 `Bearer dev:<email>`（仅非生产、仅本地临时 curl；黑盒与 E2E 都走真实登录，默认关） |
 | `SESSION_CACHE_MS` | API 侧会话正缓存，默认 10000；也是退出后旧 token 最长存活时间 |
+| `SESSION_CACHE_MAX` | 会话缓存条数上限，默认 5000；超出按最久未用淘汰，另每分钟清一次过期 |
+| `LOG_REQUESTS` | `0` 关闭请求日志；默认每个请求一行 JSON（`http.request`：method / path / status / ms），健康探针成功不记 |
+| `SHUTDOWN_TIMEOUT_MS` | 收到 SIGTERM / SIGINT 后最多等多久（默认 25000），要小于编排的宽限期（k8s `terminationGracePeriodSeconds: 30`） |
+| `KCS_VERSION` | `/api/health` 报的版本号，缺省读 `apps/api/package.json` |
 | `INGEST_WORKER` | `0` 时该进程不参与抽水，只服务 HTTP（多副本时给额外副本用；抽水本身已由顾问锁保证全局只有一条） |
 | `INGEST_LEASE_MS` | 抓取任务租约，默认 60000；超过这个时间没续约的任务会被别的进程接手续跑 |
+| `RETENTION_RAW_PER_SOURCE` | 每个（博主，来源）保留最新几条平台原始 JSON，默认 10；`0` 全留 |
+| `RETENTION_DEAD_LETTER_DAYS` | 已处理的搁置记录保留天数，默认 90；待处理的永远不删；`0` 全留 |
+| `RETENTION_AUDIT_DAYS` | 审计日志保留天数，默认 365；`0` 全留 |
+| `RETENTION_INTERVAL_HOURS` | 清理间隔，默认 24；`0` 关闭。只有抽水进程执行，历史快照永不删（见 `docs/04` §保留期限） |
 | `PGY_ACCESS_TOKEN` | 蒲公英；网关 token（TikHub / JustOneAPI）或官方 access token |
 | `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official` |
 | `PGY_BASE_URL` `PGY_BRAND_USER_ID` `PGY_ENRICH` | 可选：自定义网关地址、官方品牌账号、搜索结果是否逐个补全详情 |
@@ -73,7 +81,10 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 ## 当前状态
 
 - 契约：`CreatorMetrics` 33 字段 + 派生；`SavedQuery`；分位按 `source × tier`；`MetricSnapshot`、`CreatorSourceLink`、任务生命周期；`roleFromIdentity`。
-- API：路由按领域拆到 `routes/`；迁移版本化；身份走 TinyShip；ingest 队列 + worker + 速率 / 日配额 + 重试 / 取消；历史快照；身份归并。
+- API：路由按领域拆到 `routes/`；迁移版本化（执行时拿 `pg_advisory_lock`，多副本同时启动只有一个在迁）；身份走 TinyShip；ingest 队列 + worker + 速率 / 日配额 + 重试 / 取消；历史快照；身份归并；入库只有 `upsertCreatorFromNormalized` 一处。
+- 博主池：筛选、排序、同层分位、分页都在 SQL 里读发布快照（`apps/api/src/http/pool.ts`），与契约 `applySavedQuery` / `cohortPercentiles` 逐行对拍；运营博主、任务、批次列表同样分页（`{ items, total, page, pageSize }`）。
+- 运行：抽水进程每日清理旧原始 JSON / 已处理搁置记录 / 审计；SIGTERM 优雅停机；`/api/health` 真查库、`/api/health/live` 做存活；日志是单行 JSON。
+- 接口命名：响应一律 camelCase，手工拼的行在契约 `responses.ts` 有类型；前端路径全部用契约 `API` + `apiPath`。
 - 四端：池 + 方案编辑器、详情页（趋势、来源、cohort）、数据源页（队列状态、进度、重试 / 取消）、运维重试含 `partial`、退出走 `/__logout`。
 - 文案：三语按新架构重写，清单在 `11`。
 - 文档：`00`–`10` 只讲当前架构；旧文档在 `docs/archive/`。

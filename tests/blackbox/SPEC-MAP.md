@@ -2,7 +2,7 @@
 
 HTTP-only tests in `tests/blackbox/suites/`. Paths bind to `packages/kcs-contract/src/api.ts`. Specs are `docs/product/PRD.md`, `UX-FLOWS.md`, `SCREEN-INVENTORY.md`, `DOMAIN.md`.
 
-**203 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
+**206 cases** across 15 files (`it.each` expanded). Run: `pnpm test:blackbox`.
 
 The queue files (`09`, `10`) need the API pointed at the stand-in vendor from `global-setup.ts` (`QIANGUA_BASE_URL=http://127.0.0.1:7190 QIANGUA_TOKEN=blackbox-vendor-token`); without it 14 of `09`'s 32 cases and 13 of `10`'s 16 skip (one demo-data case in `09` runs instead).
 
@@ -21,7 +21,7 @@ Seed users (`packages/kcs-contract/src/users.ts`):
 | selector | selector@kcs.local | same |
 | selector_viewer | viewer@kcs.local | same |
 
-Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND` `JOB-STATE` `CONFLICT` `UPLOAD-TYPE` `UPLOAD-TOO-LARGE`. `VALIDATION` bodies add `error.fields: [{ path, message }]`.
+Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH-LOGIN` `AUTH-DENIED` `VALIDATION` `SOURCE-INVALID` `NOT-FOUND` `JOB-STATE` `CONFLICT` `UPLOAD-TYPE` `UPLOAD-TOO-LARGE` `GONE`. `VALIDATION` bodies add `error.fields: [{ path, message }]`.
 
 ---
 
@@ -57,7 +57,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | selector / viewer / devops POST create → 403 | UX 2 选人写录入; UX 3 运维写 Creator | `POST /api/ops/creators` |
 | selector / viewer / devops publish or unpublish → 403 | PRD §2; UX 3 运维调发布 | `POST /api/ops/creators/:id/publish` `/unpublish` |
 | selector / viewer GET `/dev` or `/ingest` → 403, no job stack | UX 1 / 3 / 4 | `GET /api/dev/jobs` `GET /api/ingest/jobs` |
-| selector POST ingest job or retry → 403 | PRD §8.3; UX 4 | `POST /api/ingest/jobs` `POST /api/dev/jobs/:id/retry` |
+| selector POST ingest job or retry → 403 | PRD §8.3; UX 4 | `POST /api/ingest/fetch` `POST /api/dev/jobs/:id/retry` |
 | ops retry → 403 (M1 重试仅运维) | UX 3 | `POST /api/dev/jobs/:id/retry` |
 | ops / devops / viewer assign or create project → 403 | PRD §2 §8.1 §8.2; UX 权限跳转 | `POST /api/select/projects` `POST .../assignments` |
 | viewer DELETE assignment → 403 | DOMAIN 移出 = 写 | `DELETE .../assignments/:creatorId` |
@@ -101,6 +101,7 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | sort followers desc / asc | PRD §6.1 | `?sort=followers&order=` |
 | sort collab_count desc | PRD §6.1 | `?sort=collab_count&order=desc` |
 | sort price by `amount_min`; missing price last | DOMAIN Price | `?sort=price&order=asc` |
+| server paging: `page` / `pageSize`, `total` counted before paging, `dir` = `order`, `pageSize` capped at 100 | 05 §分页 | `?page&pageSize&sort=followers&dir=desc` |
 | contradictory AND → empty list, not 5xx | DOMAIN 边界; UX 空态 | `?hasCollaborated=false&categories=collaborated` |
 
 ## 5. Project assign / remove — `05-projects.test.ts`
@@ -113,16 +114,18 @@ Error envelope: `{ error: { code, message } }`. Codes **do not** localize: `AUTH
 | viewer cannot assign | UX 1; user brief | POST → 403 `AUTH-DENIED` |
 | viewer cannot remove | DOMAIN 移出 | DELETE → 403 |
 | unpublish: existing `pool_gone`, new assign blocked | PRD §7; DOMAIN 边界 | GET project; POST new project |
-| optional SQL count ≥ 1 (fallback GET) | user brief persistence | `assignment` table or GET project |
+| optional SQL count ≥ 1 (fallback GET) | user brief persistence | `assignments` table or GET project |
 
 ## 6. Ingest — `06-ingest.test.ts`
 
 | case | spec | HTTP |
 |------|------|------|
-| job on enabled `file_drop` source | PRD §8.3 §12; UX 4 | `GET /api/ingest/sources` `POST /api/ingest/jobs` |
-| unknown `sourceId` → 400 `SOURCE-INVALID` | PRD §8.3 | `POST /api/ingest/jobs` |
-| ad-hoc `sourceUrl` → 400, no silent job | UX 4 硬限制 | `POST /api/ingest/jobs` `{ sourceUrl }` |
-| devops retry follows the lifecycle: live / finished job → 409 `JOB-STATE`; cancelled (failed) job → 200 and back to `queued` | 04 抓取流水线 §生命周期; SCREEN DEV-JOB-DETAIL | `POST /api/ingest/jobs/:id/cancel` `POST /api/dev/jobs/:id/retry` |
+| job on a registered source goes through the queue → 202 `{ job }` | PRD §8.3 §12; UX 4; 04 队列 | `POST /api/ingest/fetch` `GET /api/ingest/jobs/:id` |
+| old inline route → 410 `GONE`, no job, no made-up creator | 05 数据源与抓取 | `POST /api/ingest/jobs` |
+| batch without a workbook → 400 `VALIDATION`, no job | 05 运营端 | `POST /api/ops/batches` |
+| unknown `source` → 400 `SOURCE-INVALID` | PRD §8.3 | `POST /api/ingest/fetch` |
+| ad-hoc `sourceUrl` → 400 `SOURCE-INVALID`, no silent job | UX 4 硬限制 | `POST /api/ingest/fetch` `{ sourceUrl }` |
+| devops retry follows the lifecycle: live / finished job → 409 `JOB-STATE`; cancelled (failed) job → 200 and back to `queued` | 04 抓取流水线 §生命周期; SCREEN DEV-JOB-DETAIL | `POST /api/ingest/fetch` `POST /api/ingest/jobs/:id/cancel` `POST /api/dev/jobs/:id/retry` |
 | selector cannot retry | PRD §8.3; UX 4 | retry → 403 |
 | ops cannot retry (M1) | UX 3 | retry → 403 |
 | devops GET sees the same job | PRD §8.2 同套数据 | `GET /api/dev/jobs` |
@@ -146,7 +149,7 @@ Spec: `docs/04_抓取流水线与队列.md`（参数 / 任务状态 / 速率与�
 | case | spec | HTTP |
 |------|------|------|
 | queued → ok within a tick; startedAt / endedAt / pagesDone / dupes recorded | 04 队列图 | `GET /api/ingest/jobs/:id` (poll) |
-| sample lists this run's creators (needs_review), raw payload readable, one history snapshot per record | 04 队列图 creator_raw / creator_metrics_history | `GET /api/ingest/jobs/:id/sample` `GET /api/ingest/raw/:creatorId` (+ `SELECT count(*) creator_metrics_history`) |
+| sample lists this run's creators (`needsReview`, camelCase keys), raw payload readable, one history snapshot per record | 04 队列图 creator_raw / creator_metrics_history | `GET /api/ingest/jobs/:id/sample` `GET /api/ingest/raw/:creatorId` (+ `SELECT count(*) creator_metrics_history`) |
 | re-ingesting the same creators counts as dupes, history still grows | 04 §身份归并 | `POST /api/ingest/fetch?sync=1` ×2 |
 | demo data does not consume quota (`quotaUsed` 0, daily usage unchanged) — *demo mode only* | 04 §fixture 模式「不计配额」 | `POST /api/ingest/fetch?sync=1` |
 

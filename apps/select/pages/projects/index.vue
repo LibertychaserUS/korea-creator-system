@@ -54,7 +54,7 @@
             <TableCell class="hidden max-w-md truncate text-muted-foreground sm:table-cell">{{ row.note || '—' }}</TableCell>
             <TableCell class="text-right tabular-nums">
               <span class="inline-flex min-w-8 items-center justify-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-                {{ formatNumber(row.member_count) }}
+                {{ formatNumber(row.memberCount) }}
               </span>
             </TableCell>
             <TableCell class="text-muted-foreground">
@@ -73,6 +73,7 @@
 </template>
 
 <script setup lang="ts">
+import { API } from '@kcs/contract'
 import { ChevronRight, FolderKanban, Plus } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -84,7 +85,7 @@ const loading = ref(true)
 
 onMounted(async () => {
   try {
-    items.value = (await request<any>('/api/select/projects')).items
+    items.value = (await request<any>(API.projects.path)).items
   } finally {
     loading.value = false
   }

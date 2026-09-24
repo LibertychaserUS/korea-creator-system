@@ -48,15 +48,15 @@
                     <FileSpreadsheet class="size-4" />
                   </span>
                   <div class="min-w-0">
-                    <div class="truncate font-medium text-foreground">{{ job.batch_name || job.file_name || t('kcs.ingest.fetchTitle') }}</div>
+                    <div class="truncate font-medium text-foreground">{{ job.batchName || job.fileName || t('kcs.ingest.fetchTitle') }}</div>
                     <div class="truncate text-[11px] tabular-nums text-muted-foreground">
-                      <template v-if="job.created_at">{{ formatDate(job.created_at) }}</template>
-                      <span class="sm:hidden"> · {{ t('kcs.panel.ready') }} {{ formatNumber(job.written_count) }}</span>
+                      <template v-if="job.createdAt">{{ formatDate(job.createdAt) }}</template>
+                      <span class="sm:hidden"> · {{ t('kcs.panel.ready') }} {{ formatNumber(job.writtenCount) }}</span>
                     </div>
                   </div>
                 </div>
               </TableCell>
-              <TableCell class="hidden text-right tabular-nums sm:table-cell">{{ formatNumber(job.written_count) }}</TableCell>
+              <TableCell class="hidden text-right tabular-nums sm:table-cell">{{ formatNumber(job.writtenCount) }}</TableCell>
               <TableCell><StatusBadge :status="jobStatus(job)" /></TableCell>
             </TableRow>
           </TableBody>
@@ -123,6 +123,7 @@
 </template>
 
 <script setup lang="ts">
+import { API, type OpsOverview, type OverviewJob } from '@kcs/contract'
 import { Archive, ChevronRight, CheckCircle2, ClipboardCheck, ExternalLink, FileSpreadsheet, Search, UserPlus, Users } from 'lucide-vue-next'
 
 const { t, locale } = useI18n()
@@ -131,7 +132,7 @@ const config = useRuntimeConfig()
 const { request } = useApi()
 const { formatNumber } = useFormat()
 const counts = ref({ draft: 0, review: 0, ready: 0, released: 0, pending: 0, withdrawn: 0 })
-const jobs = ref<any[]>([])
+const jobs = ref<OverviewJob[]>([])
 const loading = ref(true)
 
 const creatorsTab = (tab: string) => localePath({ path: '/creators', query: { tab } })
@@ -152,8 +153,8 @@ const cleanRate = computed(() => {
 })
 
 /** 任务写成功但有失败行：API 里状态仍是 ok，界面上标成「部分完成」。 */
-function jobStatus(job: { status: string; failed_count?: number | string | null }) {
-  return job.status === 'ok' && Number(job.failed_count ?? 0) > 0 ? 'partial' : job.status
+function jobStatus(job: OverviewJob) {
+  return job.status === 'ok' && job.failedCount > 0 ? 'partial' : job.status
 }
 
 function formatDate(value: string) {
@@ -164,7 +165,7 @@ function formatDate(value: string) {
 
 onMounted(async () => {
   try {
-    const data = await request<any>('/api/ops/overview')
+    const data = await request<OpsOverview>(API.opsOverview.path)
     counts.value = data.counts
     jobs.value = data.recentJobs
   } finally {

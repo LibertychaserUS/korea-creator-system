@@ -71,9 +71,9 @@ describe('usable demo seed', () => {
       headers: { authorization: `Bearer ${sel.token}` },
     })
     expect(res.status).toBe(200)
-    const items = (await res.json()).items as Array<{ id: string; member_count: number }>
+    const items = (await res.json()).items as Array<{ id: string; memberCount: number }>
     expect(items.length).toBeGreaterThanOrEqual(4)
-    expect(items.filter((row) => Number(row.member_count) > 0).length).toBeGreaterThanOrEqual(4)
+    expect(items.filter((row) => row.memberCount > 0).length).toBeGreaterThanOrEqual(4)
   })
 
   it('seeds 6+ ingest jobs in varied statuses for the /dev monitor', async () => {

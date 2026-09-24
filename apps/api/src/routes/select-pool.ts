@@ -1,13 +1,12 @@
+import { RANKED_METRIC_KEYS } from '@kcs/contract'
 import {
   asPublished,
   attachCreatorMeta,
   creatorHistory,
-  enrichPoolItems,
   loadCreator,
-  parseMetrics,
   publicPoolRow,
-  queryPool,
 } from '../http/creators'
+import { ensurePublishedSnapshots, poolPage, withPercentiles } from '../http/pool'
 import { readJson, shortlistBody } from '../http/body'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
@@ -16,8 +15,7 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
   app.get('/api/select/pool', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'select.read')
     if (denied) return denied
-    const items = (await queryPool(env.db, context.req.query())).map(publicPoolRow)
-    return context.json({ items, total: items.length })
+    return context.json(await poolPage(env.db, context.req.query()))
   })
 
   app.get('/api/select/creators/:id', async (context) => {
@@ -27,9 +25,12 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
     if (!item || item.status !== 'released' || item.categories.includes('blacklist')) {
       return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     }
-    const pool = await queryPool(env.db, {})
+    await ensurePublishedSnapshots(env.db)
     const published = asPublished(item)
-    const enriched = enrichPoolItems([published], pool)[0]
+    const [enriched] = await withPercentiles(env.db, [published], {
+      nullSourceCohort: false,
+      keys: RANKED_METRIC_KEYS,
+    })
     const raw = await env.db.query(
       'SELECT 1 FROM creator_raw WHERE creator_id = $1 LIMIT 1',
       [item.id],
@@ -85,16 +86,15 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
       })),
       false,
     )
-    const pool = await queryPool(env.db, {})
-    const enriched = enrichPoolItems(meta.map(asPublished), pool)
+    await ensurePublishedSnapshots(env.db)
+    const enriched = await withPercentiles(env.db, meta.map(asPublished), {
+      nullSourceCohort: false,
+      keys: RANKED_METRIC_KEYS,
+    })
     return context.json({
       items: enriched.map((item, index) => ({
         ...publicPoolRow(item),
-        org_id: rows[index].org_id,
-        creator_id: item.id,
         creatorId: item.id,
-        display_name: item.displayName,
-        added_at: rows[index].added_at,
         addedAt: rows[index].added_at,
       })),
     })

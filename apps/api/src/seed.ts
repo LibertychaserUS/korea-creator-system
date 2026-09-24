@@ -1,4 +1,5 @@
 import {
+  SOURCE_DEFAULTS,
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
   SEED_USERS,
@@ -9,6 +10,7 @@ import { readFile } from 'node:fs/promises'
 import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
+import { ensurePublishedSnapshots } from './http/pool'
 
 const BASE_DATA_SQL = new URL('./migrations/0008_base_reference_data.sql', import.meta.url)
 
@@ -141,7 +143,7 @@ async function seedCreators(db: Db) {
           creator.externalId,
           raw.fetchedAt,
           released ? JSON.stringify(creator.metrics) : null,
-          `演示数据（${DEMO_SOURCE_NAME[adapter.id] ?? adapter.id}）`,
+          `演示数据（${SOURCE_DEFAULTS[adapter.id].shortName}）`,
           released ? raw.fetchedAt : null,
         ],
       )
@@ -218,8 +220,6 @@ async function seedCreators(db: Db) {
   return canonicalIds
 }
 
-const DEMO_SOURCE_NAME: Record<string, string> = { pugongying: '蒲公英', qiangua: '千瓜', xinhong: '新红' }
-
 async function seedProjects(db: Db, orgId: string, canonicalIds: Map<string, string>) {
   for (const [id, name, members] of PROJECTS) {
     await db.query(
@@ -281,6 +281,7 @@ export async function seed(db: Db, opts: { reset?: boolean } = {}): Promise<Seed
     )
   }
   const canonicalIds = await seedCreators(db)
+  await ensurePublishedSnapshots(db, { full: true })
   await seedProjects(db, orgId, canonicalIds)
   for (const spec of SAVED_QUERIES) {
     await db.query(

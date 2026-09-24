@@ -4,6 +4,7 @@
  */
 export const API = {
   health: { method: 'GET', path: '/api/health', auth: false },
+  healthLive: { method: 'GET', path: '/api/health/live', auth: false },
   openapi: { method: 'GET', path: '/api/openapi.json', auth: false },
   /**
    * Identity is TinyShip (better-auth) — sign-in / sign-out happen on the
@@ -31,6 +32,7 @@ export const API = {
   opsReview: { method: 'GET', path: '/api/ops/review', perm: 'ops.read' },
   opsReviewPass: { method: 'POST', path: '/api/ops/review/:id/pass', perm: 'ops.write' },
   opsBatches: { method: 'GET', path: '/api/ops/batches', perm: 'ops.read' },
+  /** multipart `file` (.xlsx) required; without one 400 `VALIDATION` / `file_required`. */
   opsBatchUpload: { method: 'POST', path: '/api/ops/batches', perm: 'ops.write' },
   pool: { method: 'GET', path: '/api/select/pool', perm: 'select.read' },
   queries: { method: 'GET', path: '/api/select/queries', perm: 'select.read' },
@@ -67,10 +69,43 @@ export const API = {
   ingestFetch: { method: 'POST', path: '/api/ingest/fetch', perm: 'ingest.write' },
   ingestRaw: { method: 'GET', path: '/api/ingest/raw/:creatorId', perm: 'ingest.read' },
   ingestJobs: { method: 'GET', path: '/api/ingest/jobs', perm: 'ingest.read' },
-  ingestJobCreate: { method: 'POST', path: '/api/ingest/jobs', perm: 'ingest.write' },
+  /** 410 `GONE`: jobs only start through the queue (`ingestFetch`) or a workbook (`opsBatchUpload`). */
+  ingestJobCreate: { method: 'POST', path: '/api/ingest/jobs', perm: 'ingest.write', gone: true },
   ingestJob: { method: 'GET', path: '/api/ingest/jobs/:id', perm: 'ingest.read' },
   ingestSample: { method: 'GET', path: '/api/ingest/jobs/:id/sample', perm: 'ingest.read' },
   ingestJobRetry: { method: 'POST', path: '/api/ingest/jobs/:id/retry', perm: 'ingest.retry' },
   ingestJobCancel: { method: 'POST', path: '/api/ingest/jobs/:id/cancel', perm: 'ingest.write' },
   presign: { method: 'POST', path: '/api/assets/presign', perm: 'ops.write' },
+  /** multipart `file` (image, ≤ 5 MB). */
+  assetUpload: { method: 'POST', path: '/api/assets', perm: 'ops.write' },
+  assetList: { method: 'GET', path: '/api/assets', perm: 'ops.read' },
+  assetGet: { method: 'GET', path: '/api/assets/:key', perm: 'ops.read' },
 } as const
+
+type QueryValue = string | number | boolean | null | undefined
+
+/**
+ * Fills `:param` segments (URI-encoded) and appends a query string, skipping
+ * empty values. A missing param throws instead of producing `/api/x/undefined`.
+ */
+export function apiPath(
+  entry: { path: string } | string,
+  params: Record<string, string | number> = {},
+  query?: Record<string, QueryValue> | URLSearchParams,
+): string {
+  const template = typeof entry === 'string' ? entry : entry.path
+  const path = template.replace(/:([A-Za-z]\w*)/g, (_, name: string) => {
+    const value = params[name]
+    if (value === undefined || value === '') throw new Error(`apiPath: missing :${name} for ${template}`)
+    return encodeURIComponent(String(value))
+  })
+  const search = query instanceof URLSearchParams ? new URLSearchParams(query) : new URLSearchParams()
+  if (query && !(query instanceof URLSearchParams)) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue
+      search.set(key, String(value))
+    }
+  }
+  const qs = search.toString()
+  return qs ? `${path}?${qs}` : path
+}

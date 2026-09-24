@@ -44,11 +44,12 @@ describe('AuthN / AuthZ — five roles', () => {
       followers: 1111,
     })
     await createProject(sessions.selector, `authz-${runId()}`)
-    const job = await request('POST', PATHS.ingestJobs, {
+    const job = await request('POST', PATHS.ingestFetch, {
       token: sessions.ops.token,
-      body: { sourceId: 'file-drop', schedule: 'once' },
+      body: { source: 'xinhong', window: 30, maxPages: 1 },
     })
-    if (typeof job.json.id === 'string') jobId = job.json.id
+    const queued = job.json.job as { id?: unknown } | undefined
+    if (typeof queued?.id === 'string') jobId = queued.id
   })
 
   afterAll(async () => {
@@ -182,8 +183,8 @@ describe('AuthN / AuthZ — five roles', () => {
       name: 'selector creates an ingest job',
       role: 'selector',
       method: 'POST',
-      path: PATHS.ingestJobs,
-      body: { sourceId: 'file-drop', schedule: 'once' },
+      path: PATHS.ingestFetch,
+      body: { source: 'xinhong', window: 30 },
       spec: 'UX 4 / PRD §8.3 选人不能开 Job',
     },
     {

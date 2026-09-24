@@ -272,6 +272,9 @@
 import { Archive, ArrowLeft, FileSearch, Loader2, Lock, RotateCcw, Save, Send, TriangleAlert, UserX } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import {
+  API,
+  apiPath,
+  type CategoryView,
   TESTID,
   can,
   emptyMetrics,
@@ -283,7 +286,6 @@ import {
 } from '@kcs/contract'
 
 type Action = 'publish' | 'unpublish' | 'republish'
-type Category = { slug: string; name_zh: string; name_en: string; name_ko: string; enabled: boolean; group_name: string | null }
 type RawRecord = { id: string; source: string; externalId: string; fetchedAt: string; payload: unknown }
 
 const CONFIRM_TESTID: Record<Action, string> = {
@@ -301,7 +303,7 @@ const { user } = useSession()
 
 const creator = ref<any>(null)
 const loading = ref(true)
-const categories = ref<Category[]>([])
+const categories = ref<CategoryView[]>([])
 const trendKeys: NumericMetricKey[] = ['followers', 'readMedian', 'engagementRate', 'cpe']
 const snapshots = ref<MetricSnapshot[]>([])
 const loadingHistory = ref(true)
@@ -355,21 +357,21 @@ function toggleCategory(slug: string) {
   if (COOP.includes(slug)) form.categories = form.categories.filter((s) => !COOP.includes(s))
   form.categories.push(slug)
 }
-function categoryName(c: Category) {
-  if (locale.value === 'en') return c.name_en
-  if (locale.value === 'ko') return c.name_ko
-  return c.name_zh
+function categoryName(c: CategoryView) {
+  if (locale.value === 'en') return c.nameEn
+  if (locale.value === 'ko') return c.nameKo
+  return c.nameZh
 }
 
 async function load() {
-  creator.value = await request<any>(`/api/ops/creators/${route.params.id}`)
+  creator.value = await request<any>(apiPath(API.opsCreatorGet, { id: String(route.params.id) }))
   fillForm()
 }
 
 async function loadHistory() {
   loadingHistory.value = true
   try {
-    const res = await request<{ snapshots: MetricSnapshot[] }>(`/api/ops/creators/${route.params.id}/history?window=${historyWindow.value}&limit=60`)
+    const res = await request<{ snapshots: MetricSnapshot[] }>(apiPath(API.opsCreatorHistory, { id: String(route.params.id) }, { window: historyWindow.value, limit: 60 }))
     snapshots.value = res.snapshots ?? []
   } catch {
     snapshots.value = []
@@ -389,10 +391,10 @@ async function confirm() {
   acting.value = true
   try {
     if (action === 'unpublish') {
-      await request(`/api/ops/creators/${route.params.id}/unpublish`, { method: 'POST' })
+      await request(apiPath(API.opsUnpublish, { id: String(route.params.id) }), { method: 'POST' })
       toast.success(t('kcs.opsCreator.toast.unpublished'))
     } else {
-      const res = await request<{ refreshed: boolean }>(`/api/ops/creators/${route.params.id}/publish`, { method: 'POST' })
+      const res = await request<{ refreshed: boolean }>(apiPath(API.opsPublish, { id: String(route.params.id) }), { method: 'POST' })
       toast.success(t(!res.refreshed ? 'kcs.opsCreator.toast.unchanged' : action === 'republish' ? 'kcs.opsCreator.toast.republished' : 'kcs.opsCreator.toast.published'))
     }
     pending.value = null
@@ -410,7 +412,7 @@ async function save() {
   if (!form.displayName.trim()) return
   saving.value = true
   try {
-    await request(`/api/ops/creators/${route.params.id}`, {
+    await request(apiPath(API.opsCreatorPatch, { id: String(route.params.id) }), {
       method: 'PATCH',
       body: JSON.stringify({
         displayName: form.displayName.trim(),
@@ -436,7 +438,7 @@ async function openRaw() {
   if (rawLoaded) return
   rawLoading.value = true
   try {
-    const res = await request<{ items?: RawRecord[] } & RawRecord>(`/api/ingest/raw/${route.params.id}`)
+    const res = await request<{ items?: RawRecord[] } & RawRecord>(apiPath(API.ingestRaw, { creatorId: String(route.params.id) }))
     rawItems.value = res.items ?? [res]
     rawLoaded = true
   } catch (e: any) {
@@ -484,7 +486,7 @@ onMounted(async () => {
     return
   }
   loadHistory()
-  request<{ items: Category[] }>('/api/ops/categories')
+  request<{ items: CategoryView[] }>(API.opsCategories.path)
     .then((res) => {
       categories.value = (res.items ?? []).filter((c) => c.enabled)
     })

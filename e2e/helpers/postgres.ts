@@ -45,10 +45,10 @@ export async function requireTable(name: string): Promise<void> {
 }
 
 export async function findCreatorByDisplayName(displayName: string) {
-  await requireTable('creator');
+  await requireTable('creators');
   const res = await sql(
     `SELECT id, creator_key, display_name, status, followers
-     FROM creator
+     FROM creators
      WHERE display_name = $1
      ORDER BY id DESC
      LIMIT 1`,
@@ -63,11 +63,11 @@ export async function findAssignment(opts: {
   creatorKey?: string;
   displayName?: string;
 }) {
-  await requireTable('assignment');
+  await requireTable('assignments');
   if (opts.projectId && opts.creatorId) {
     const res = await sql(
       `SELECT id, project_id, creator_id, status, assigned_by
-       FROM assignment
+       FROM assignments
        WHERE project_id = $1 AND creator_id = $2
        LIMIT 1`,
       [opts.projectId, opts.creatorId],
@@ -75,11 +75,11 @@ export async function findAssignment(opts: {
     return res.rows[0] ?? null;
   }
   if (opts.creatorKey) {
-    await requireTable('creator');
+    await requireTable('creators');
     const res = await sql(
       `SELECT a.id, a.project_id, a.creator_id, a.status, a.assigned_by
-       FROM assignment a
-       JOIN creator c ON c.id = a.creator_id
+       FROM assignments a
+       JOIN creators c ON c.id = a.creator_id
        WHERE c.creator_key = $1
        ORDER BY a.assigned_at DESC NULLS LAST
        LIMIT 1`,
@@ -88,11 +88,11 @@ export async function findAssignment(opts: {
     return res.rows[0] ?? null;
   }
   if (opts.displayName) {
-    await requireTable('creator');
+    await requireTable('creators');
     const res = await sql(
       `SELECT a.id, a.project_id, a.creator_id, a.status, a.assigned_by
-       FROM assignment a
-       JOIN creator c ON c.id = a.creator_id
+       FROM assignments a
+       JOIN creators c ON c.id = a.creator_id
        WHERE c.display_name = $1
        ORDER BY a.assigned_at DESC NULLS LAST
        LIMIT 1`,
@@ -104,17 +104,9 @@ export async function findAssignment(opts: {
 }
 
 export async function countIngestJobs(): Promise<number> {
-  await requireTable('ingest_job');
-  const res = await sql<{ n: string }>(`SELECT COUNT(*)::text AS n FROM ingest_job`);
+  await requireTable('ingest_jobs');
+  const res = await sql<{ n: string }>(`SELECT COUNT(*)::text AS n FROM ingest_jobs`);
   return Number(res.rows[0]?.n ?? 0);
-}
-
-export async function findUserRole(email: string): Promise<string | null> {
-  const res = await sql<{ role: string }>(
-    `SELECT role FROM "user" WHERE email = $1 LIMIT 1`,
-    [email],
-  );
-  return res.rows[0]?.role ?? null;
 }
 
 export async function closePool(): Promise<void> {

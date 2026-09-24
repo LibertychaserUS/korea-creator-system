@@ -147,7 +147,7 @@
 <script setup lang="ts">
 import { ArrowLeft, Coins, Download, Gauge, Loader2, Radio, UserMinus, UserPlus, Users } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { TESTID, can } from '@kcs/contract'
+import { API, apiPath, TESTID, can } from '@kcs/contract'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -176,14 +176,14 @@ const removing = ref<any>(null)
 const removeBusy = ref(false)
 
 async function load() {
-  project.value = await request(`/api/select/projects/${id.value}`)
+  project.value = await request(apiPath(API.projectGet, { id: id.value }))
 }
 
 async function exportSheet() {
   exporting.value = true
   try {
     const name = (project.value.name || 'project').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'project'
-    await download(`/api/select/projects/${id.value}/export?locale=${locale.value}`, `${name}.csv`)
+    await download(apiPath(API.exportProject, { id: id.value }, { locale: locale.value }), `${name}.csv`)
     toast.success(t('kcs.projectBoard.exported'))
   } catch {
     toast.error(t('kcs.projectBoard.failed'))
@@ -197,7 +197,7 @@ async function removeAssignment() {
   if (!row) return
   removeBusy.value = true
   try {
-    await request(`/api/select/projects/${id.value}/assignments/${row.creatorId}`, { method: 'DELETE' })
+    await request(apiPath(API.unassign, { id: id.value, creatorId: row.creatorId }), { method: 'DELETE' })
     toast.success(t('kcs.projectBoard.removed'))
     removing.value = null
     await load()

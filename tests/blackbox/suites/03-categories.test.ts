@@ -100,11 +100,7 @@ describe('Categories — coop_history mutex and blacklist', () => {
     expect(detail.json.hasCollaborated).toBe(true)
     expect(detail.json.collabCount).toBeGreaterThanOrEqual(1)
 
-    const pool = await request('GET', PATHS.pool, {
-      token: selector.token,
-      query: { hasCollaborated: true },
-    })
-    expect(pool.status).toBe(200)
-    expect(itemsOf(pool.json).some((row) => row.id === created.id)).toBe(true)
+    const pool = await poolItems(selector, { hasCollaborated: true })
+    expect(pool.some((row) => row.id === created.id)).toBe(true)
   })
 })

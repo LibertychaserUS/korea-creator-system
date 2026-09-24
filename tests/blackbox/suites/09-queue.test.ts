@@ -212,7 +212,7 @@ describe('队列 — 入队与任务记录', () => {
   })
 
   it('参数不合法不入队：未知来源 / 非 30·90 天窗口 / 空请求体 → 400 SOURCE-INVALID', async () => {
-    const before = (await authed(ops, 'GET', PATHS.ingestJobs)).json.items as Job[]
+    const before = Number((await authed(ops, 'GET', PATHS.ingestJobs)).json.total)
     const bad = [
       { source: 'weibo', window: 30 },
       { source: SOURCE, window: 60 },
@@ -224,8 +224,8 @@ describe('队列 — 入队与任务记录', () => {
       expect(res.status, JSON.stringify(body)).toBe(400)
       expect(errorCode(res.json)).toBe(ERROR.SOURCE_INVALID)
     }
-    const after = (await authed(ops, 'GET', PATHS.ingestJobs)).json.items as Job[]
-    expect(after.length).toBe(before.length)
+    const after = Number((await authed(ops, 'GET', PATHS.ingestJobs)).json.total)
+    expect(after).toBe(before)
   })
 
   it('同步模式 ?sync=1 当场跑完并返回 201 与结果，不留在队列里等 worker', async () => {
@@ -257,11 +257,14 @@ describe('队列 — worker 自动处理', () => {
 
   it('跑完的任务能在「样例」里看到本次写入的博主，原始返回原样可查', async () => {
     const { job } = await fetchJob(ops, params('sample', { maxPages: 1 }), true)
-    const sample = await authed(ops, 'GET', `${PATHS.ingestJob(job.id)}/sample`)
+    const sample = await authed(ops, 'GET', PATHS.ingestSample(job.id))
     expect(sample.status).toBe(200)
-    const items = sample.json.items as Array<{ id: string; display_name: string; needs_review: boolean }>
+    const items = sample.json.items as Array<{ id: string; displayName: string; needsReview: boolean }>
     expect(items.length).toBe(job.writtenCount + job.skippedDupes)
-    for (const item of items) expect(item.needs_review).toBe(true)
+    for (const item of items) {
+      expect(item.needsReview).toBe(true)
+      expect(typeof item.displayName).toBe('string')
+    }
 
     const raw = await authed(ops, 'GET', PATHS.ingestRaw(items[0].id))
     expect(raw.status).toBe(200)
@@ -641,13 +644,13 @@ describe('队列 — 生命周期约束（不依赖供应商）', () => {
 
 describe('队列 — 谁能做什么', () => {
   it('提交抓取只有运营/管理员可以；运维、选人、只读都是 403 AUTH-DENIED，且不会入队', async () => {
-    const before = ((await authed(ops, 'GET', PATHS.ingestJobs)).json.items as Job[]).length
+    const before = Number((await authed(ops, 'GET', PATHS.ingestJobs)).json.total)
     for (const session of [devops, selector, viewer]) {
       const res = await authed(session, 'POST', PATHS.ingestFetch, params('perm', { maxPages: 1 }))
       expect(res.status, session.role).toBe(403)
       expect(errorCode(res.json)).toBe(ERROR.DENIED)
     }
-    const after = ((await authed(ops, 'GET', PATHS.ingestJobs)).json.items as Job[]).length
+    const after = Number((await authed(ops, 'GET', PATHS.ingestJobs)).json.total)
     expect(after).toBe(before)
     const asAdmin = await fetchJob(admin, params('perm-admin', { maxPages: 1 }))
     expect(asAdmin.status).toBe(202)
@@ -691,7 +694,7 @@ describe('队列 — 谁能做什么', () => {
     expect(retry.status).toBe(200)
     const audit = await authed(devops, 'GET', PATHS.devAudit)
     expect(audit.status).toBe(200)
-    const rows = (audit.json.items as Array<Record<string, unknown>>).filter((r) => r.entity_id === job.id)
+    const rows = (audit.json.items as Array<Record<string, unknown>>).filter((r) => r.entityId === job.id)
     const actions = rows.map((r) => String(r.action))
     expect(actions).toContain('ingest.cancel')
     expect(actions).toContain('ingest.retry')

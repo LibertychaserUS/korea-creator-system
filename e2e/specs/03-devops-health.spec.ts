@@ -19,7 +19,7 @@ test.describe('Devops health journey', () => {
     const uiCount = Number(
       (await page.getByTestId(tid.jobCount).innerText()).replace(/[^\d-]/g, ''),
     );
-    expect(uiCount, 'dev-job-count must equal COUNT(*) FROM ingest_job').toBe(sqlCount);
+    expect(uiCount, 'dev-job-count must equal COUNT(*) FROM ingest_jobs').toBe(sqlCount);
 
     await page.goto(PAGES.select, { timeout: TIMEOUTS.navigation });
     const assign = page.getByTestId(tid.btnAssign);

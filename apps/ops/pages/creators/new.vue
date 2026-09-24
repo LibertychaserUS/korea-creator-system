@@ -274,12 +274,12 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-vue-next'
+import { API } from '@kcs/contract'
 import { coopPressed, selectCoop, type CoopSlug } from '@libs/panel/utils/coop-category'
 
 const { t } = useI18n()
 const { request } = useApi()
 const localePath = useLocalePath()
-const config = useRuntimeConfig()
 const { formatNumber } = useFormat()
 const { formatPrice } = useCurrency()
 
@@ -320,26 +320,16 @@ async function onFile(ev: Event) {
     const body = new FormData()
     body.append('file', file)
     body.append('purpose', 'avatar')
-    const token = useCookie<string | null>('kcs_session')
-    const res = await fetch(`${config.public.apiBase}/api/assets`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: token.value ? { authorization: `Bearer ${token.value}` } : {},
-      body,
-    })
-    if (!res.ok) {
-      uploadError.value = res.status === 413
-        ? 'kcs.panel.uploadTooLarge'
-        : res.status === 415
-          ? 'kcs.panel.uploadWrongType'
-          : 'kcs.panel.uploadFailed'
-      return
-    }
-    const data = await res.json()
+    const data = await request<{ url: string; key: string }>(API.assetUpload.path, { method: 'POST', body })
     avatarUrl.value = data.url
     avatarKey.value = data.key
-  } catch {
-    uploadError.value = 'kcs.panel.uploadFailed'
+  } catch (e) {
+    const status = (e as { status?: number }).status
+    uploadError.value = status === 413
+      ? 'kcs.panel.uploadTooLarge'
+      : status === 415
+        ? 'kcs.panel.uploadWrongType'
+        : 'kcs.panel.uploadFailed'
   } finally {
     uploading.value = false
     input.value = ''
@@ -351,7 +341,7 @@ async function save() {
   saving.value = true
   error.value = false
   try {
-    const created = await request<any>('/api/ops/creators', {
+    const created = await request<any>(API.opsCreatorCreate.path, {
       method: 'POST',
       body: JSON.stringify({
         displayName: form.displayName.trim(),

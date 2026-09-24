@@ -50,8 +50,8 @@ describe('select shortlist prices', () => {
     })
     expect(list.status).toBe(200)
     const body = await list.json()
-    const row = body.items.find((item: { creatorId?: string; creator_id?: string }) => {
-      return item.creatorId === id || item.creator_id === id
+    const row = body.items.find((item: { creatorId?: string }) => {
+      return item.creatorId === id
     })
     expect(row).toBeTruthy()
     expect(row.price?.amountMin).toBe(8000)
