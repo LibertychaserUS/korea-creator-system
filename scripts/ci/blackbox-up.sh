@@ -18,7 +18,7 @@
 #   BLACKBOX_APPS               apps to start          (default "select"; e.g. "select marketing")
 #   BLACKBOX_BUILD              auto | 1 | 0           (auto = build only when .output is missing)
 #   BLACKBOX_RESET_DB           1 = drop + recreate both databases first
-#   BLACKBOX_APP_NODE_ENV       runtime NODE_ENV of the apps (default development, see below)
+#   BLACKBOX_APP_NODE_ENV       runtime NODE_ENV of the apps (default production, see below)
 #   BLACKBOX_RUN_DIR            logs + pid files       (default $RUNNER_TEMP or /tmp, /kcs-blackbox)
 #   BETTER_AUTH_SECRET          shared by all apps     (default: a fixed test-only value)
 set -euo pipefail
@@ -139,12 +139,12 @@ for app in $BLACKBOX_APPS; do
   fi
   [[ -f "$output" ]] || { log "missing $output (BLACKBOX_BUILD=0?)"; exit 1; }
   url="$(app_url "$app")"
-  # Production build, but NODE_ENV=development at runtime: with no proxy in front
-  # there is no X-Forwarded-For, and better-auth only falls back to a loopback IP
-  # for its sign-in throttle under development/test ("test" would also disable
-  # its Origin check, so not that).
+  # Same NODE_ENV as a real deployment. With no proxy in front there is no
+  # X-Forwarded-For; libs/panel/server/middleware/client-ip.ts fills it from the
+  # socket so better-auth's sign-in throttle still holds. Never "test": that
+  # disables better-auth's Origin check.
   start_bg "$app" env \
-    NODE_ENV="${BLACKBOX_APP_NODE_ENV:-development}" \
+    NODE_ENV="${BLACKBOX_APP_NODE_ENV:-production}" \
     PORT="$(port_of "$url")" \
     DB_DIALECT=pg \
     DATABASE_URL="$BLACKBOX_AUTH_DATABASE_URL" \
