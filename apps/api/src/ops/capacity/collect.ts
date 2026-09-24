@@ -56,7 +56,12 @@ async function diskAt(path: string): Promise<CapacityDiskReading | null> {
   }
 }
 
-/** Total bytes of regular files under `root`, stopping after `limit` entries. */
+/**
+ * Total bytes of regular files under `root`, stopping after `limit` entries.
+ * Only an unreadable `root` gives null: a subdirectory this process may not
+ * read, or a file rotated away between listing and stat, is left out rather
+ * than losing the whole reading.
+ */
 async function directoryBytes(root: string, limit = 200_000): Promise<number | null> {
   let total = 0
   let seen = 0
@@ -65,8 +70,8 @@ async function directoryBytes(root: string, limit = 200_000): Promise<number | n
     for (const entry of entries) {
       if (++seen > limit) return
       const path = join(dir, entry.name)
-      if (entry.isDirectory()) await walk(path)
-      else if (entry.isFile()) total += (await stat(path)).size
+      if (entry.isDirectory()) await walk(path).catch(() => undefined)
+      else if (entry.isFile()) total += (await optional(async () => (await stat(path)).size)) ?? 0
     }
   }
   try {

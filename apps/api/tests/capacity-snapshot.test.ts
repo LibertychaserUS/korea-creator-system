@@ -1,4 +1,6 @@
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { API, type CapacityReport } from '@kcs/contract'
 import { createTestApp, type TestCtx } from './helpers'
@@ -69,15 +71,36 @@ async function history(days: number, used: (i: number) => number) {
 
 describe('collectReadings (real database)', () => {
   it('measures the database, every table with its indexes and TOAST, and today’s raw volume per source', async () => {
-    const r = await collectReadings(ctx.db, today(), { dataPath: tmpdir(), declaredDiskBytes: null, backupDir: tmpdir() })
+    const backupDir = await mkdtemp(join(tmpdir(), 'kcs-backup-'))
+    await writeFile(join(backupDir, 'kcs-1.dump'), Buffer.alloc(1000))
+    await mkdir(join(backupDir, 'wal'))
+    await writeFile(join(backupDir, 'wal', '000001'), Buffer.alloc(500))
+    const r = await collectReadings(ctx.db, today(), { dataPath: tmpdir(), declaredDiskBytes: null, backupDir })
+    await rm(backupDir, { recursive: true, force: true })
     expect(r.databaseBytes).toBeGreaterThan(0)
     const raw = r.tables.find((t) => t.name === 'creator_raw')!
     expect(raw.totalBytes).toBeGreaterThanOrEqual(raw.tableBytes + raw.indexBytes)
     expect(r.tables.map((t) => t.name)).toContain('ops_capacity_daily')
     expect(r.disk).toMatchObject({ name: tmpdir(), declared: false })
     expect(r.disk!.size).toBeGreaterThan(r.disk!.used)
-    expect(r.backup?.bytes).toBeGreaterThanOrEqual(0)
+    expect(r.backup).toMatchObject({ name: backupDir, bytes: 1500 })
     expect(r.sources.map((s) => s.id)).toEqual(expect.arrayContaining(['pugongying', 'qiangua', 'xinhong']))
+  })
+
+  it('a backup subdirectory this process cannot read is left out, not the whole backup reading', async () => {
+    const backupDir = await mkdtemp(join(tmpdir(), 'kcs-backup-'))
+    await writeFile(join(backupDir, 'kcs-1.dump'), Buffer.alloc(1000))
+    await mkdir(join(backupDir, 'locked'))
+    await writeFile(join(backupDir, 'locked', 'kcs-0.dump'), Buffer.alloc(300))
+    await chmod(join(backupDir, 'locked'), 0o000)
+    try {
+      const r = await collectReadings(ctx.db, today(), { dataPath: null, declaredDiskBytes: null, backupDir })
+      // root reads through mode 000, so it also counts the locked file.
+      expect(r.backup?.bytes).toBe(process.getuid?.() === 0 ? 1300 : 1000)
+    } finally {
+      await chmod(join(backupDir, 'locked'), 0o700)
+      await rm(backupDir, { recursive: true, force: true })
+    }
   })
 
   it('a disk that cannot be read locally falls back to the declared size, used = database + WAL', async () => {
