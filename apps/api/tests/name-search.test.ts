@@ -145,9 +145,31 @@ describe('fuzzy nickname search', () => {
   })
 
   it('the migration can run again', async () => {
-    const sql = await readFile(new URL('../src/migrations/0051_name_search.sql', import.meta.url), 'utf8')
-    await ctx.db.query(sql)
+    for (const file of ['0051_name_search.sql', '0090_restorable_name_grams.sql']) {
+      await ctx.db.query(await readFile(new URL(`../src/migrations/${file}`, import.meta.url), 'utf8'))
+    }
     expect(keys(await search('청담'))).toEqual(['cheongdam', 'cheongdamLatin'])
+  })
+
+  it('grams compute with an empty search_path, as pg_restore runs', async () => {
+    const client = await ctx.db.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query("SET LOCAL search_path = ''")
+      const { rows } = await client.query(
+        'SELECT public.kcs_name_grams($1) AS grams, name_grams FROM public.creators WHERE id = $2',
+        [NAMES.cheongdam, ids.cheongdam],
+      )
+      expect(rows[0].grams).toEqual(rows[0].name_grams)
+      await client.query(
+        'CREATE TEMP TABLE restore_probe (display_name text, name_grams text[] GENERATED ALWAYS AS (public.kcs_name_grams(display_name)) STORED)',
+      )
+      await client.query('INSERT INTO pg_temp.restore_probe (display_name) VALUES ($1)', [NAMES.jisoo])
+      expect((await client.query('SELECT cardinality(name_grams) AS n FROM pg_temp.restore_probe')).rows[0].n).toBeGreaterThan(0)
+    } finally {
+      await client.query('ROLLBACK')
+      client.release()
+    }
   })
 
   it('route: ingest rights, capped query', async () => {
