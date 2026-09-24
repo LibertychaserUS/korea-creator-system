@@ -45,7 +45,7 @@ export type FieldMap = Partial<Record<
 >>
 
 /** Vendor fields that land in `SourceSignals`, not in the shared metrics. */
-export type SignalFieldMap = Partial<Record<'vendorEngagedFanRatio' | 'videoCompletionRate' | 'picture3sReadRate', FieldSpec>>
+export type SignalFieldMap = Partial<Record<'fanInteractionRatio' | 'completionRate' | 'read3sRate', FieldSpec>>
 
 export type AdapterPage = SourcePage & { sourceMode: 'live' | 'fixture' }
 
@@ -158,7 +158,7 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap, signalMap: Signal
   const signals = emptySignals()
   signals.healthLevel = toHealthLevel(first(raw.payload, map.health))
   metrics.health = healthFromLevel(signals.healthLevel)
-  for (const key of ['vendorEngagedFanRatio', 'videoCompletionRate', 'picture3sReadRate'] as const) {
+  for (const key of ['fanInteractionRatio', 'completionRate', 'read3sRate'] as const) {
     const spec = signalMap[key]
     const value = spec ? first(raw.payload, spec) : undefined
     if (value === undefined) continue

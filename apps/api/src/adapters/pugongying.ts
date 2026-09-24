@@ -355,7 +355,7 @@ function positiveCount(payload: Json, paths: readonly string[]): number | null {
  * as fractions. Unusable values leave a `<key>.<issue>` warning.
  */
 function ratioMetric(
-  key: NumericMetricKey | 'videoCompletionRate' | 'picture3sReadRate',
+  key: NumericMetricKey | 'completionRate' | 'read3sRate',
   payload: Json,
   paths: readonly string[],
   unit: RatioUnit,
@@ -363,7 +363,7 @@ function ratioMetric(
 ): number | null {
   const value = pick(payload, paths)
   if (value === undefined) return null
-  const share = key === 'videoCompletionRate' || key === 'picture3sReadRate' || SHARE_METRIC_KEYS.includes(key)
+  const share = key === 'completionRate' || key === 'read3sRate' || SHARE_METRIC_KEYS.includes(key)
   const parsed = parseRatio(value, unit, { share })
   if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
   return parsed.value
@@ -385,7 +385,7 @@ const RANK_PATHS: Record<PlatformRankKey, readonly string[]> = {
   activeFanRatio: ['fansSummary.activeFansBeyondRate'],
   engagedFanRatio: ['fansSummary.engageFansBeyondRate'],
   readFanRatio: ['fansSummary.readFansBeyondRate'],
-  videoCompletionRate: ['notesRate.videoFullViewBeyondRate'],
+  completionRate: ['notesRate.videoFullViewBeyondRate'],
 }
 
 /**
@@ -397,25 +397,25 @@ function signalsOf(p: Json, warnings: string[]): SourceSignals {
   const signals = emptySignals()
   signals.lowActive = flag(p.lowActive)
   signals.recentlyActive = flag(pickPath(p, 'dataSummary.isActive'))
-  signals.videoCompletionRate = ratioMetric('videoCompletionRate', p, ['notesRate.videoFullViewRate', 'videoFinishRate'], 'percent', warnings)
-  signals.picture3sReadRate = ratioMetric('picture3sReadRate', p, ['notesRate.picture3sViewRate'], 'percent', warnings)
+  signals.completionRate = ratioMetric('completionRate', p, ['notesRate.videoFullViewRate', 'videoFinishRate'], 'percent', warnings)
+  signals.read3sRate = ratioMetric('read3sRate', p, ['notesRate.picture3sViewRate'], 'percent', warnings)
   signals.coopNoteCountTotal = positiveCount(p, ['businessNoteCount'])
   // 外溢进店: field names from relayed responses, not yet seen on a live account (待实测).
   signals.storeVisitUvMedian = positiveCount(p, ['notesRate.mCpuvNum', 'dataSummary.mCpuvNum', 'mCpuvNum'])
-  signals.storeVisitUnitCost = positive(p, ['notesRate.estimateCpuv', 'dataSummary.estimateCpuv30d', 'estimateCpuv30d', 'estimateCpuv'])
+  signals.storeVisitUnitPrice = positive(p, ['notesRate.estimateCpuv', 'dataSummary.estimateCpuv30d', 'estimateCpuv30d', 'estimateCpuv'])
   for (const key of PLATFORM_RANK_KEYS) {
     const value = pick(p, RANK_PATHS[key])
     if (value === undefined) continue
     const parsed = parseRatio(value, 'percent', { share: true })
-    if (parsed.issue) warnings.push(`platformRank.${key}.${parsed.issue}`)
-    else if (parsed.value != null) signals.platformRank[key] = parsed.value
+    if (parsed.issue) warnings.push(`platformRanks.${key}.${parsed.issue}`)
+    else if (parsed.value != null) signals.platformRanks[key] = parsed.value
   }
   // Field names carry the window: activeFansL28 / engageFansL30 / readFansIn30.
   if (pickPath(p, 'fansSummary.activeFansRate') != null) signals.windowDays.activeFanRatio = 28
   if (pickPath(p, 'fansSummary.engageFansRate') != null) signals.windowDays.engagedFanRatio = 30
   if (pickPath(p, 'fansSummary.readFansRate') != null) signals.windowDays.readFanRatio = 30
   signals.windowDays.coopNoteCount = 30
-  if (signals.storeVisitUvMedian != null || signals.storeVisitUnitCost != null) signals.windowDays.storeVisit = 30
+  if (signals.storeVisitUvMedian != null || signals.storeVisitUnitPrice != null) signals.windowDays.storeVisit = 30
   return signals
 }
 

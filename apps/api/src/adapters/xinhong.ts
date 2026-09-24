@@ -57,7 +57,7 @@ export const FIELD_MAP: FieldMap = fieldMapFromEnv('XINHONG_FIELD_MAP', DEFAULT_
 
 /** 新红「互动粉丝比」has no published definition, so it is not 蒲公英's 互动粉丝占比. */
 const SIGNAL_MAP: SignalFieldMap = {
-  vendorEngagedFanRatio: { paths: ['互动粉丝比', 'engaged_fan_ratio'], unit: 'percent' },
+  fanInteractionRatio: { paths: ['互动粉丝比', 'engaged_fan_ratio'], unit: 'percent' },
 }
 
 export const xinhongAdapter: SourceAdapter = {

@@ -92,8 +92,8 @@ describe('蒲公英 normalize (solar field names)', () => {
     if (!result.ok) throw new Error(result.errors.join())
     const { metrics, signals } = result.creator
     expect(metrics.retentionRate).toBeCloseTo(0.412, 10)
-    expect(signals?.videoCompletionRate).toBeCloseTo(0.412, 10)
-    expect(signals?.picture3sReadRate).toBeCloseTo(0.7, 10)
+    expect(signals?.completionRate).toBeCloseTo(0.412, 10)
+    expect(signals?.read3sRate).toBeCloseTo(0.7, 10)
     expect(metrics.coopNoteCount).toBe(6)
     expect(signals?.coopNoteCountTotal).toBe(241)
     expect(signals?.windowDays).toMatchObject({ activeFanRatio: 28, engagedFanRatio: 30, coopNoteCount: 30 })
@@ -102,16 +102,16 @@ describe('蒲公英 normalize (solar field names)', () => {
   it('reads the platform\'s own 「超过 X% 同类博主」ranks', () => {
     const result = normalizePugongying(record(0))
     if (!result.ok) throw new Error(result.errors.join())
-    expect(result.creator.signals?.platformRank).toMatchObject({
+    expect(result.creator.signals?.platformRanks).toMatchObject({
       readMedian: 0.9, impressionMedian: 0.9, interactionRate: 0.85, followerGrowth: 0.8,
-      activeFanRatio: 0.6, engagedFanRatio: 0.7, readFanRatio: 0.65, videoCompletionRate: 0.5,
+      activeFanRatio: 0.6, engagedFanRatio: 0.7, readFanRatio: 0.65, completionRate: 0.5,
     })
   })
 
   it('reads 外溢进店 UV and 单价 when the response carries them (field names 待实测)', () => {
     const result = normalizePugongying({ ...record(1), payload: { userId: 'x', name: 'y', notesRate: { mCpuvNum: '1,200', estimateCpuv: '3.5' } } })
     if (!result.ok) throw new Error(result.errors.join())
-    expect(result.creator.signals).toMatchObject({ storeVisitUvMedian: 1200, storeVisitUnitCost: 3.5 })
+    expect(result.creator.signals).toMatchObject({ storeVisitUvMedian: 1200, storeVisitUnitPrice: 3.5 })
   })
 })
 

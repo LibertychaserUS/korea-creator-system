@@ -93,7 +93,7 @@ export type HealthLevel = 'healthy' | 'abnormal'
 /** 蒲公英「超过 X% 同类博主」per metric, as a 0–1 share. */
 export const PLATFORM_RANK_KEYS = [
   'impressionMedian', 'readMedian', 'interactionMedian', 'interactionRate', 'followerGrowth',
-  'activeFanRatio', 'engagedFanRatio', 'readFanRatio', 'videoCompletionRate',
+  'activeFanRatio', 'engagedFanRatio', 'readFanRatio', 'completionRate',
 ] as const
 export type PlatformRankKey = (typeof PLATFORM_RANK_KEYS)[number]
 
@@ -109,18 +109,18 @@ export type SourceSignals = {
   /** 蒲公英 dataSummary.isActive. */
   recentlyActive: boolean | null
   /** 视频完播率 (0–1). */
-  videoCompletionRate: number | null
+  completionRate: number | null
   /** 图文 3 秒阅读率 (0–1). */
-  picture3sReadRate: number | null
+  read3sRate: number | null
   /** 合作笔记总数 (all time); `metrics.coopNoteCount` is the recent window. */
   coopNoteCountTotal: number | null
   /** 新红「互动粉丝比」: no published definition, so kept apart from 蒲公英's 互动粉丝占比. */
-  vendorEngagedFanRatio: number | null
+  fanInteractionRatio: number | null
   /** 外溢进店 UV 中位数: 近 30 日跨域合作笔记的进店 UV 中位数. */
   storeVisitUvMedian: number | null
   /** 外溢进店单价 (元 / UV). */
-  storeVisitUnitCost: number | null
-  platformRank: Partial<Record<PlatformRankKey, number>>
+  storeVisitUnitPrice: number | null
+  platformRanks: Partial<Record<PlatformRankKey, number>>
   /** How many days a field covers when that is not `metrics.window` (蒲公英 活跃粉丝 = 28). */
   windowDays: Partial<Record<string, number>>
 }
@@ -130,13 +130,13 @@ export function emptySignals(): SourceSignals {
     healthLevel: null,
     lowActive: null,
     recentlyActive: null,
-    videoCompletionRate: null,
-    picture3sReadRate: null,
+    completionRate: null,
+    read3sRate: null,
     coopNoteCountTotal: null,
-    vendorEngagedFanRatio: null,
+    fanInteractionRatio: null,
     storeVisitUvMedian: null,
-    storeVisitUnitCost: null,
-    platformRank: {},
+    storeVisitUnitPrice: null,
+    platformRanks: {},
     windowDays: {},
   }
 }

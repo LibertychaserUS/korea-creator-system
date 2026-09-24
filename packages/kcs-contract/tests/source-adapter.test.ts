@@ -171,6 +171,6 @@ describe('health level', () => {
   })
 
   it('empty signals say nothing', () => {
-    expect(emptySignals()).toMatchObject({ healthLevel: null, lowActive: null, platformRank: {}, windowDays: {} })
+    expect(emptySignals()).toMatchObject({ healthLevel: null, lowActive: null, platformRanks: {}, windowDays: {} })
   })
 })

@@ -125,7 +125,7 @@ describe('source signals are stored beside the metrics', () => {
     await persistPage(ctx.env, xinhongAdapter, { records: [raw('xinhong', { 达人ID: id, 昵称: '信号', 互动粉丝比: '4.5', 健康等级: '异常', 小红书号: `${RUN}_sig` })], nextCursor: null }, null, 'xinhong')
     const creator = await linksOf(ctx, 'xinhong', id)
     const row = (await ctx.db.query('SELECT source_signals, metrics FROM creators WHERE id = $1', [creator.id])).rows[0]
-    expect(row.source_signals).toMatchObject({ healthLevel: 'abnormal', vendorEngagedFanRatio: 0.045 })
+    expect(row.source_signals).toMatchObject({ healthLevel: 'abnormal', fanInteractionRatio: 0.045 })
     expect(row.metrics.health).toBe('abnormal')
     const history = await ctx.db.query('SELECT signals FROM creator_metrics_history WHERE creator_id = $1', [creator.id])
     expect(history.rows[0].signals).toMatchObject({ healthLevel: 'abnormal' })

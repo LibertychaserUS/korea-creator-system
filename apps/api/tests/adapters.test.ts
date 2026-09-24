@@ -139,7 +139,7 @@ describe('health and vendor-specific fields', () => {
     const result = xinhongAdapter.normalize({ source: 'xinhong', platform: 'xhs', externalId: 'x', fetchedAt: '', payload: { 达人ID: 'x', 昵称: 'n', 互动粉丝比: '4.5', 健康等级: '优秀' } })
     if (!result.ok) throw new Error(result.errors.join())
     expect(result.creator.metrics.engagedFanRatio).toBeNull()
-    expect(result.creator.signals?.vendorEngagedFanRatio).toBeCloseTo(0.045, 10)
+    expect(result.creator.signals?.fanInteractionRatio).toBeCloseTo(0.045, 10)
     expect(result.creator.metrics.health).toBe('normal')
     expect(result.creator.signals?.healthLevel).toBe('healthy')
   })
