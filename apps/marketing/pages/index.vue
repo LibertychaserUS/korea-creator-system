@@ -212,9 +212,9 @@
             <h3 class="text-sm font-semibold">{{ t('kcs.landing.gateTitle') }}</h3>
             <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('kcs.landing.gateBody') }}</p>
             <div class="mt-4 flex flex-wrap gap-2">
-              <HealthBadge health="excellent" />
-              <HealthBadge health="normal" />
+              <HealthBadge health="healthy" />
               <HealthBadge health="abnormal" />
+              <HealthBadge health="healthy" low-active />
             </div>
           </div>
           <div class="tide-rule-card relative overflow-hidden rounded-xl p-6 text-white">

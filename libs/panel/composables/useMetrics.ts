@@ -6,6 +6,10 @@ import {
   type PercentileBand,
 } from '@kcs/contract'
 
+/** 还没有来源提供：数据里保留这一项，界面先不显示。 */
+const HIDDEN_METRICS: ReadonlySet<NumericMetricKey> = new Set(['purchaseIntentCommentRatio'])
+const SHOWN_FIELDS = METRIC_FIELDS.filter((f) => !HIDDEN_METRICS.has(f.key))
+
 /** 指标的标签、口径与按单位格式化；分位色带统一在这里定色。 */
 export function useMetrics() {
   const { t, te, locale } = useI18n()
@@ -70,8 +74,20 @@ export function useMetrics() {
   const groups: MetricGroup[] = ['scale', 'reach', 'cost', 'conversion', 'potential', 'trust']
 
   function fieldsIn(group: MetricGroup) {
-    return METRIC_FIELDS.filter((f) => f.group === group)
+    return SHOWN_FIELDS.filter((f) => f.group === group)
   }
 
-  return { label, help, groupLabel, format, bandClass, bandDot, bandLabel, groups, fieldsIn, fields: METRIC_FIELDS }
+  return {
+    label,
+    help,
+    groupLabel,
+    format,
+    bandClass,
+    bandDot,
+    bandLabel,
+    groups,
+    fieldsIn,
+    fields: SHOWN_FIELDS,
+    shownKeys: SHOWN_FIELDS.map((f) => f.key),
+  }
 }
