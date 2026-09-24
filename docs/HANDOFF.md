@@ -107,6 +107,26 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 - 文案：三语按新架构重写，清单在 `11`。
 - 文档：`00`–`10` 只讲当前架构；旧文档在 `docs/archive/`。
 
+## TikHub 真实实测清单（有 key 之后，按顺序跑）
+
+目前所有 TikHub / JustOneAPI 行为只按公开文档与替身供应商验证过，**没有发过一次真实调用**。按下面顺序跑，每步后对照 TikHub 控制台账单与 `ingest_source_usage`（`calls` / `cost_micros` / `requests` / `unbilled` / `empty_results`），单价按 $0.02 / 次。先把蒲公英日预算设成 $1（`PGY_DAILY_BUDGET_USD=1`），防止意外超支。
+
+| # | 做什么 | 预计计费调用 | 预计花费 | 核对 |
+|---|---|---|---|---|
+| 1 | 运维端「调用与额度」→「立即查询」余额（`POST /api/dev/vendor-balance/check`） | 0（免费接口） | $0 | `get_user_info` 字段名（`user_data.balance` / `free_credit`）、`request_id` 位置 |
+| 2 | 搜索一页：`keyword=护肤`，`maxPages=1` | 1 | $0.02 | 两层回话、`kols` 每页 20 条、`total`、`request_id`；用量 +1 次 / +$0.02 |
+| 3 | 手动刷新 1 位博主（`externalIds=[上一步某个 userId]`，30 天） | 5 | $0.10 | 五个接口字段：健康 / `lowActive`、`read3sRate`、`platformRanks`（÷100）、`contentForm`、外溢进店、`cpeVideo`、`viralCount`、`businessNoteCount` 窗口 |
+| 4 | 同一博主 90 天刷新 | 5 | $0.10 | `dateType=2` 是否真是 90 天（对比第 3 步的 `noteNumber`）；90 天记录里没有 30 天值兜底 |
+| 5 | `PGY_TRAFFIC_SCOPE=organic` + `PGY_BUSINESS_SCOPE=coop` 后再刷新同一博主 | 5 | $0.10 | `advertise_switch=0` / `business=1` 的数确实变了；`basis.trafficScope` / `businessScope` |
+| 6 | 搜一个不存在的关键词 | 1 | $0.02 | 空结果是否扣费（账单）；任务 `emptyCount` = 1 |
+| 7 | 刷新一个不存在的 userId | 1 | $0.02 | 内层失败的真实形状（`success=false` / `code`）、是否扣费 |
+| 8 | 换一个错的 key 搜一页 | 0 | $0 | 401 形状、确实不扣费；任务 `CREDENTIAL_INVALID` 一次就停 |
+| 9 | （可选）`PGY_DATE_TYPES={"30":3}` 刷新 1 人 | ≤ 4 | ≤ $0.08 | 文档说 `3` → 422：确认是 4xx 不扣费、任务 `VENDOR_REJECTED` |
+| 10 | 日预算设为「今天已花 + $0.06」（`PGY_DAILY_BUDGET_USD`，今天已花看调用与额度页），刷新 2 人 | 3 | $0.06 | 停在第 3 次，任务 `partial BUDGET_EXHAUSTED`，账单也是 3 次 |
+| 11 | `TIKHUB_BASE_URL=https://api.tikhub.dev` 重复第 1、2 步 | 1 | $0.02 | 国内地址可用、数据一致 |
+
+合计约 26 次、约 $0.52（上限按 $1 预留）。402（余额不足）只能在余额真用完时看到，不专门去触发；JustOneAPI 另有 token 时，同一博主按第 2–4 步各跑一次（约 11 次，计费规则待确认），核对字符串枚举与 body `code`。
+
 ## 环境坑
 
 - Tailwind v4 只扫 Vite root，共享 layer 的类要在 `libs/panel` 的 css 里 `@source` 注册。

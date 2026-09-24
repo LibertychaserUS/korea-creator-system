@@ -344,3 +344,23 @@ These routes live on the workspace origin (`BLACKBOX_AUTH_URL`), next to sign-in
 | admin creates an ops account → it signs in with the starting password, API role `ops`, ops list 200 / pool 403, form sign-in hands off to the ops origin, list shows last sign-in | 05 账号管理 · 00 登录分流 | `POST /api/kcs-admin/users` `POST /api/auth/sign-in/email` `POST /__login` `GET /api/auth/me` |
 | role → selector: API reports `selector` within the cache window, pool 200, ops list 403 | 05 账号管理（10 秒生效） | `PATCH …/:id {role}` `GET /api/auth/me` |
 | disable: old session gone at once on the workspace origin, API 401 within the cache window, sign-in 403; restore → signs in again as selector | 05 账号管理（停用） | `PATCH …/:id {disabled}` `GET /api/auth/get-session` `POST /api/auth/sign-in/email` |
+
+## 15. 蒲公英 via TikHub：计费与失败分类 — `15-tikhub.test.ts`
+
+Specs: `docs/04_抓取流水线与队列.md` §按次计费、§失败、§TikHub 余额; `docs/05_接口说明.md` 运维端（`/api/dev/pipeline`、`/api/dev/health` `pausedSources`、`/api/dev/sources/:id/resume`、`/api/dev/vendor-balance/check`）.
+Needs the API on the TikHub stand-in (`TIKHUB_API_KEY` + `TIKHUB_BASE_URL=http://127.0.0.1:7190`, `PGY_TIMEOUT_MS=1500`); otherwise every case skips with the reason. Quota, budget and rate are set over SQL; usage is compared before / after, nothing is deleted.
+
+| case | spec | HTTP |
+|------|------|------|
+| a search page = 1 billed call, $0.02; ops console shows calls and money | 04 §按次计费 | `POST /api/ingest/fetch` `GET /api/dev/pipeline` |
+| quota with 7 calls left, refresh of 2 creators (5 calls each) stops at exactly 7 → partial `QUOTA_EXHAUSTED` | 04 §按次计费「逐次预留」 | `POST /api/ingest/fetch {externalIds}` |
+| $0.10 of budget left → stops at call 5 → partial `BUDGET_EXHAUSTED`, nothing more sent | 04 §按次计费「日预算」 | same |
+| 200 with no data: billed and counted (`emptyCount`, `emptyToday`) | 04 §读回话 | same |
+| 402: job parked, source paused (health `pausedSources`, pipeline `pausedCode`, audit `source.paused`), nothing else sent while paused; resume → waiting job runs; replay → ok | 04 §失败 402 | `GET /api/dev/health` `POST /api/dev/sources/:id/resume` `POST /api/dev/dead-letters/:id/replay` |
+| 401: `CREDENTIAL_INVALID` on the first attempt, one call, source not paused | 04 §失败 401 | `GET /api/ingest/jobs/:id` |
+| 400: sent once more in the same call; still 400 → `VENDOR_REJECTED`; a second try that works stores the page | 04 §失败 400 | same |
+| inner `success=false`: billed, not retried, `VENDOR_INNER_ERROR`, error carries `(request_id …)` | 04 §失败 内层 | same |
+| 429 with `Retry-After: 1`: free, the next call waits ≥ 1 s, then ok | 04 §失败 429 | same |
+| 5xx: retried with backoff up to 3 attempts, `SOURCE_UNAVAILABLE`, nothing billed | 04 §失败 5xx | same |
+| timeout: `VENDOR_TIMEOUT`, error says it may have been billed, `maybeBilledToday` +1 | 04 §失败 超时 | same |
+| balance check via the free account endpoint: pipeline shows the balance, no call counted | 04 §TikHub 余额 | `POST /api/dev/vendor-balance/check` `GET /api/dev/pipeline` |

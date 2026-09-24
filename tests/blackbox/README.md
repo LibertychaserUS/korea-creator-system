@@ -43,6 +43,20 @@ queue cases skip with a message naming the missing setup, everything else runs.
 The suite tunes the source's per-minute rate, daily quota and a job's resume time
 over SQL (no console has those knobs); all assertions stay on HTTP.
 
+The same stand-in answers TikHub-shaped routes under `/api/v1/` (`helpers/mock-tikhub.ts`:
+蒲公英 relay with the two-layer `{code, request_id, data: {code, success, data}}` body,
+plus the free `get_user_info` balance endpoint). `suites/15-tikhub.test.ts` drives 蒲公英
+through billing (per-call quota, daily money budget, empty answers) and every failure class
+(402 pause + resume + replay, 401, 400 retried once, inner `success=false`, 429 with
+`Retry-After`, 5xx, timeout). Point the API at it — `scripts/ci/blackbox-up.sh` does:
+
+```bash
+TIKHUB_API_KEY=blackbox-vendor-token TIKHUB_BASE_URL=http://127.0.0.1:7190 PGY_TIMEOUT_MS=1500 \
+  pnpm --filter @kcs/api start
+```
+
+No real TikHub / JustOneAPI / 千瓜 / 新红 call is ever made by the black-box suites.
+
 Compose wrapper (starts Postgres, then runs Vitest — **red is OK** until the API implements the contract):
 
 ```bash
