@@ -1,9 +1,9 @@
 <template>
   <div class="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-1.5" :data-testid="testid">
-    <select v-model="filter.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.filters')">
+    <select v-model="filter.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.metricPick')">
       <option v-for="key in VISIBLE_METRIC_KEYS" :key="key" :value="key">{{ label(key) }}</option>
     </select>
-    <select v-model="filter.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" @change="onOpChange">
+    <select v-model="filter.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.opPick')" @change="onOpChange">
       <option value="gte">{{ t('kcs.query.op.gte') }}</option>
       <option value="lte">{{ t('kcs.query.op.lte') }}</option>
       <option value="between">{{ t('kcs.query.op.between') }}</option>
@@ -23,7 +23,7 @@
       :aria-label="t('kcs.query.value')"
       :placeholder="filter.op === 'percentileGte' ? '75' : unitHint(filter.key)"
     />
-    <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" :aria-label="t('kcs.query.removeFilter')" @click="emit('remove')">
+    <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" :aria-label="`${t('kcs.query.removeFilter')} · ${label(filter.key)}`" @click="emit('remove')">
       <X class="size-3.5" />
     </Button>
     <ReferenceChips v-if="filter.op === 'gte' || filter.op === 'lte'" class="col-span-full" :line="reference" :metric-key="filter.key" @pick="(v) => (filter.value = v)" />

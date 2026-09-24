@@ -189,10 +189,11 @@
               class="size-9"
               data-testid="sort-dir"
               :title="spec.sort.dir === 'asc' ? t('kcs.query.asc') : t('kcs.query.desc')"
+              :aria-label="sortDirLabel"
               @click="spec.sort.dir = spec.sort.dir === 'asc' ? 'desc' : 'asc'"
             >
-              <ArrowUpNarrowWide v-if="spec.sort.dir === 'asc'" class="size-4" />
-              <ArrowDownWideNarrow v-else class="size-4" />
+              <ArrowUpNarrowWide v-if="spec.sort.dir === 'asc'" class="size-4" aria-hidden="true" />
+              <ArrowDownWideNarrow v-else class="size-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -382,17 +383,17 @@
               </Button>
             </div>
             <div v-else class="grid grid-cols-[1fr_auto_1fr_auto_auto] items-center gap-1.5" :data-testid="`query-highlight-${i}`">
-              <select v-model="h.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
+              <select v-model="h.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.metricPick')">
                 <option v-for="key in metricKeys" :key="key" :value="key">{{ label(key) }}</option>
               </select>
-              <select v-model="h.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" @change="onHighlightOpChange(h)">
+              <select v-model="h.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.opPick')" @change="onHighlightOpChange(h)">
                 <option value="gte">{{ t('kcs.query.op.gte') }}</option>
                 <option value="lte">{{ t('kcs.query.op.lte') }}</option>
                 <option value="percentileGte">{{ t('kcs.query.op.percentileGte') }}</option>
                 <option value="percentileLte">{{ t('kcs.query.op.percentileLte') }}</option>
               </select>
               <Input v-model.number="h.value" type="number" step="any" class="h-8 min-w-0 px-2 text-xs tabular-nums" :aria-label="t('kcs.query.value')" />
-              <select v-model="h.tone" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none">
+              <select v-model="h.tone" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.tonePick')">
                 <option value="good">{{ t('kcs.query.tone.good') }}</option>
                 <option value="warn">{{ t('kcs.query.tone.warn') }}</option>
                 <option value="bad">{{ t('kcs.query.tone.bad') }}</option>
@@ -526,12 +527,12 @@
           v-for="row in visible"
           :key="`m-${row.id}`"
           class="flex items-start gap-3 px-4 py-3 transition-colors data-[state=selected]:bg-primary/5"
-          :class="canAssign ? 'cursor-pointer active:bg-muted/60' : ''"
+          :class="canPick ? 'cursor-pointer active:bg-muted/60' : ''"
           :data-state="picked.includes(row.id) ? 'selected' : undefined"
-          @click="canAssign && toggle(row.id)"
+          @click="canPick && toggle(row.id)"
         >
           <input
-            v-if="canAssign"
+            v-if="canPick"
             v-model="picked"
             type="checkbox"
             :value="row.id"
@@ -568,7 +569,7 @@
         <Table data-testid="table-pool">
           <TableHeader>
             <TableRow class="hover:bg-transparent">
-              <TableHead v-if="canAssign" class="w-10"><span class="sr-only">{{ t('kcs.panel.assign') }}</span></TableHead>
+              <TableHead v-if="canPick" class="w-10"><span class="sr-only">{{ t('kcs.panel.assign') }}</span></TableHead>
               <TableHead class="min-w-48">{{ t('kcs.creators.cols.creator') }}</TableHead>
               <TableHead class="w-20">{{ t('kcs.tier.label') }}</TableHead>
               <TableHead class="w-20">{{ t('kcs.health.label') }}</TableHead>
@@ -578,11 +579,12 @@
                 class="text-right"
                 :class="spec.sort.key === key ? 'text-foreground' : ''"
                 :title="help(key)"
+                :aria-sort="spec.sort.key === key ? (spec.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined"
               >
-                <button type="button" class="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" @click="sortBy(key)">
+                <button type="button" class="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" :aria-label="t('kcs.query.sortBy', { metric: label(key) })" @click="sortBy(key)">
                   {{ label(key) }}
-                  <ArrowUpNarrowWide v-if="spec.sort.key === key && spec.sort.dir === 'asc'" class="size-3" />
-                  <ArrowDownWideNarrow v-else-if="spec.sort.key === key" class="size-3" />
+                  <ArrowUpNarrowWide v-if="spec.sort.key === key && spec.sort.dir === 'asc'" class="size-3" aria-hidden="true" />
+                  <ArrowDownWideNarrow v-else-if="spec.sort.key === key" class="size-3" aria-hidden="true" />
                 </button>
               </TableHead>
             </TableRow>
@@ -590,7 +592,7 @@
           <TableBody>
             <template v-if="loading && !visible.length">
               <TableRow v-for="i in 6" :key="`sk-${i}`" class="hover:bg-transparent">
-                <TableCell v-if="canAssign"><Skeleton class="size-4" /></TableCell>
+                <TableCell v-if="canPick"><Skeleton class="size-4" /></TableCell>
                 <TableCell><Skeleton class="h-4 w-40" /></TableCell>
                 <TableCell><Skeleton class="h-5 w-12" /></TableCell>
                 <TableCell><Skeleton class="h-5 w-12" /></TableCell>
@@ -604,10 +606,10 @@
               :data-creator-key="row.creatorKey"
               :data-state="picked.includes(row.id) ? 'selected' : undefined"
               class="group"
-              :class="canAssign ? 'cursor-pointer' : ''"
-              @click="canAssign && toggle(row.id)"
+              :class="canPick ? 'cursor-pointer' : ''"
+              @click="canPick && toggle(row.id)"
             >
-              <TableCell v-if="canAssign" @click.stop>
+              <TableCell v-if="canPick" @click.stop>
                 <input v-model="picked" data-testid="row-pool-check" type="checkbox" :value="row.id" :aria-label="row.displayName" class="size-4 rounded border-input accent-primary" />
               </TableCell>
               <TableCell>
@@ -663,9 +665,9 @@
         />
       </div>
 
-      <template v-if="canAssign" #footer>
+      <template v-if="canAssign || canWrite" #footer>
         <div class="flex flex-wrap items-center gap-3">
-          <template v-if="projectId">
+          <template v-if="projectId && canAssign">
             <Button data-testid="btn-assign" type="button" :disabled="!picked.length" @click="confirming = true">
               <UserPlus class="size-4" />
               {{ t('kcs.panel.assign') }}
@@ -674,9 +676,27 @@
               <Check class="size-4" />
               {{ t('kcs.panel.confirmAssign') }}
             </Button>
-            <span class="text-sm tabular-nums text-muted-foreground">{{ t('kcs.panel.picked', { n: picked.length }) }}</span>
           </template>
-          <p v-else class="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+          <Button
+            v-if="canWrite"
+            data-testid="btn-shortlist-add"
+            type="button"
+            :variant="projectId ? 'outline' : 'default'"
+            :disabled="!picked.length || shortlisting"
+            @click="addToShortlist"
+          >
+            <ListPlus class="size-4" />
+            {{ shortlisting ? t('kcs.console.shortlist.adding') : t('kcs.console.shortlist.add') }}
+          </Button>
+          <span class="text-sm tabular-nums text-muted-foreground">{{ t('kcs.panel.picked', { n: picked.length }) }}</span>
+          <p v-if="shortlistNotice" class="flex flex-wrap items-center gap-2 text-sm text-foreground" role="status" data-testid="shortlist-notice">
+            <Check class="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            {{ shortlistNotice }}
+            <NuxtLink :to="localePath('/shortlist')" class="font-medium underline-offset-4 hover:underline">
+              {{ t('kcs.console.shortlist.view') }} →
+            </NuxtLink>
+          </p>
+          <p v-if="!projectId && canAssign" class="flex w-full flex-wrap items-center gap-1 text-sm text-muted-foreground">
             <Info class="size-4" />
             {{ t('kcs.panel.assignHint') }}
             <NuxtLink :to="localePath('/projects')" class="ml-1 font-medium text-foreground underline-offset-4 hover:underline">
@@ -700,6 +720,7 @@ import {
   ChevronDown,
   FolderKanban,
   Info,
+  ListPlus,
   Lock,
   Plus,
   Save,
@@ -799,6 +820,13 @@ const projectName = ref('')
 const projectId = computed(() => String(route.query.project || ''))
 const canAssign = computed(() => Boolean(user.value && can(user.value.role, 'select.assign')))
 const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'select.write')))
+const canPick = computed(() => canAssign.value || canWrite.value)
+const shortlisting = ref(false)
+const shortlistNotice = ref('')
+const sortDirLabel = computed(() => {
+  const [dir, next] = spec.sort.dir === 'asc' ? [t('kcs.query.asc'), t('kcs.query.desc')] : [t('kcs.query.desc'), t('kcs.query.asc')]
+  return t('kcs.query.sortDirToggle', { dir, next })
+})
 const specJson = computed(() => JSON.stringify(spec))
 const activeRecord = computed(() => savedQueries.value.find((q) => q.id === activeId.value) ?? null)
 const activeVersion = computed(() => activeRecord.value?.version ?? 1)
@@ -1063,6 +1091,26 @@ async function loadProject() {
 
 function toggle(id: string) {
   picked.value = picked.value.includes(id) ? picked.value.filter((x) => x !== id) : [...picked.value, id]
+}
+
+/** One POST per creator; someone taken down since the list loaded is skipped (404), not an error. */
+async function addToShortlist() {
+  if (!picked.value.length) return
+  shortlisting.value = true
+  shortlistNotice.value = ''
+  try {
+    const results = await Promise.allSettled(picked.value.map((creatorId) =>
+      request(API.shortlistAdd.path, { method: 'POST', body: JSON.stringify({ creatorId }) })))
+    const added = results.filter((r) => r.status === 'fulfilled').length
+    const gone = results.filter((r) => r.status === 'rejected' && (r.reason as { status?: number })?.status === 404).length
+    const failed = results.length - added - gone
+    const parts = [added ? t('kcs.console.shortlist.added', { n: added }) : '', gone ? t('kcs.console.shortlist.addSkipped', { n: gone }) : '']
+    if (failed) parts.push(t('kcs.console.shortlist.failed'))
+    shortlistNotice.value = parts.filter(Boolean).join(' · ')
+    if (added && !failed) picked.value = []
+  } finally {
+    shortlisting.value = false
+  }
 }
 
 async function assign() {

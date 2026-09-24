@@ -12,7 +12,21 @@
           {{ t('kcs.panel.pool') }}
         </NuxtLink>
       </Button>
+      <template v-if="creator && canWrite">
+        <Button v-if="inShortlist" as-child variant="secondary" size="sm" data-testid="btn-shortlist-in">
+          <NuxtLink :to="localePath('/shortlist')" :aria-label="`${t('kcs.console.shortlist.inList')} · ${t('kcs.console.shortlist.view')}`">
+            <Check class="size-4" aria-hidden="true" />
+            {{ t('kcs.console.shortlist.inList') }}
+          </NuxtLink>
+        </Button>
+        <Button v-else size="sm" data-testid="btn-shortlist-add" :disabled="shortlisting" @click="addToShortlist">
+          <ListPlus class="size-4" aria-hidden="true" />
+          {{ shortlisting ? t('kcs.console.shortlist.adding') : t('kcs.console.shortlist.add') }}
+        </Button>
+      </template>
     </template>
+
+    <p v-if="shortlistError" class="text-sm text-destructive" role="alert" data-testid="shortlist-error">{{ shortlistError }}</p>
 
     <div v-if="loading" class="grid gap-4 lg:grid-cols-3">
       <Skeleton v-for="i in 6" :key="i" class="h-40 rounded-xl" />
@@ -231,10 +245,11 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Lock, Users } from 'lucide-vue-next'
+import { ArrowLeft, Check, ListPlus, Lock, Users } from 'lucide-vue-next'
 import {
   API,
   apiPath,
+  can,
   TESTID,
   emptyMetrics,
   type CreatorMetrics,
@@ -248,7 +263,12 @@ import {
 const { t, locale } = useI18n()
 const route = useRoute()
 const localePath = useLocalePath()
-const { request } = useApi()
+const { request, errorText } = useApi()
+const { user } = useSession()
+const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'select.write')))
+const inShortlist = ref(false)
+const shortlisting = ref(false)
+const shortlistError = ref('')
 const { label, help, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
 
 const creator = ref<any>(null)
@@ -305,6 +325,32 @@ function formatDate(iso: string) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium' }).format(new Date(iso))
 }
 
+async function loadShortlisted() {
+  if (!canWrite.value) return
+  try {
+    const res = await request<{ items: { creatorId: string }[] }>(API.shortlist.path)
+    inShortlist.value = res.items.some((item) => item.creatorId === creator.value?.id)
+  } catch {
+    inShortlist.value = false
+  }
+}
+
+async function addToShortlist() {
+  if (!creator.value) return
+  shortlisting.value = true
+  shortlistError.value = ''
+  try {
+    await request(API.shortlistAdd.path, { method: 'POST', body: JSON.stringify({ creatorId: creator.value.id }) })
+    inShortlist.value = true
+  } catch (error) {
+    shortlistError.value = (error as { status?: number })?.status === 404
+      ? t('kcs.console.shortlist.addSkipped', { n: 1 })
+      : errorText(error) || t('kcs.console.shortlist.failed')
+  } finally {
+    shortlisting.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     creator.value = await request(apiPath(API.poolCreator, { id: String(route.params.id) }))
@@ -313,7 +359,7 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  if (creator.value) await loadHistory()
+  if (creator.value) await Promise.all([loadHistory(), loadShortlisted()])
   else loadingHistory.value = false
 })
 </script>
