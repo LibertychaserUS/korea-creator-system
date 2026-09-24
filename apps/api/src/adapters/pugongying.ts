@@ -438,6 +438,26 @@ function signalsOf(p: Json, warnings: string[]): SourceSignals {
   return signals
 }
 
+/** Platform ranks keyed by the metric they rank (蒲公英's 互动率 rank is our `engagementRate`). */
+function metricRanks(ranks: SourceSignals['platformRanks']): CreatorMetrics['platformRanks'] {
+  const out: Record<string, number> = {}
+  for (const [key, value] of Object.entries(ranks)) {
+    if (value != null) out[key === 'interactionRate' ? 'engagementRate' : key] = value
+  }
+  return Object.keys(out).length ? out : null
+}
+
+/**
+ * 主要内容形式 from the note mix: video notes ≥ half of all notes → video,
+ * otherwise image. 待实测: `videoNoteNumber` is seen in relayed samples only.
+ */
+function contentFormOf(payload: Json): CreatorMetrics['contentForm'] {
+  const notes = positiveCount(payload, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
+  const video = toCount(pick(payload, ['notesRate.videoNoteNumber', 'dataSummary.videoNoteNumber'])).value
+  if (!notes || video == null || video > notes) return null
+  return video / notes >= 0.5 ? 'video' : 'image'
+}
+
 function verticalsOf(payload: Json): string[] {
   const out = new Set<string>()
   const contentTags = payload.contentTags
@@ -513,15 +533,13 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.coopReadMedian = positiveCount(p, ['readMidCoop30'])
   m.coopInteractionMedian = positiveCount(p, ['interMidCoop30'])
   m.engagementRate = percent('engagementRate', ['notesRate.interactionRate'])
-  // Still the video completion rate; the 3-second read rate is kept apart in signals.
-  m.retentionRate = percent('retentionRate', ['notesRate.videoFullViewRate', 'videoFinishRate'])
   m.noteCount = positiveCount(p, ['notesRate.noteNumber', 'dataSummary.noteNumber'])
   // 千赞笔记比例 is the platform's own "爆文" ratio; no absolute count is exposed.
   m.viralRate = percent('viralRate', ['notesRate.thousandLikePercent', 'thousandLikePercent30'])
 
   m.priceImage = positive(p, ['picturePrice'])
   m.priceVideo = positive(p, ['videoPrice'])
-  m.cpv = positive(p, ['pictureReadCost', 'dataSummary.picReadCost'])
+  m.cpr = positive(p, ['pictureReadCost', 'dataSummary.picReadCost'])
   m.cpe = positive(p, ['estimatePictureEngageCost', 'dataSummary.estimatePictureEngageCost'])
   m.cpm = positive(p, ['estimatePictureCpm', 'dataSummary.estimatePictureCpm'])
 
@@ -530,7 +548,15 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
   m.trafficFollowRatio = fraction('trafficFollowRatio', ['notesRate.pagePercentVo.readFollowPercent'])
 
   const signals = signalsOf(p, issues)
+  // No confirmed 健康等级 field yet: unknown stays unknown; 低活跃 is its own flag.
   m.health = healthFromLevel(signals.healthLevel)
+  m.lowActive = signals.lowActive
+  m.completionRate = signals.completionRate
+  m.read3sRate = signals.read3sRate
+  m.storeVisitUvMedian = signals.storeVisitUvMedian
+  m.storeVisitUnitPrice = signals.storeVisitUnitPrice
+  m.platformRanks = metricRanks(signals.platformRanks)
+  m.contentForm = contentFormOf(p)
   // Recent window only; the all-time count (businessNoteCount) is signals.coopNoteCountTotal.
   m.coopNoteCount = positiveCount(p, ['coopNoteNum30d'])
   m.audience = audienceOf(p)
@@ -569,9 +595,10 @@ export const pugongyingAdapter: SourceAdapter = {
   provides: [
     'followers', 'followerGrowth', 'followerGrowthRate', 'readFanRatio', 'activeFanRatio', 'engagedFanRatio',
     'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
-    'coopReadMedian', 'coopInteractionMedian', 'engagementRate', 'retentionRate', 'noteCount', 'viralRate',
-    'priceImage', 'priceVideo', 'cpv', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio',
-    'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'coopNoteCount', 'audience',
+    'coopReadMedian', 'coopInteractionMedian', 'engagementRate', 'completionRate', 'read3sRate', 'noteCount', 'viralRate',
+    'priceImage', 'priceVideo', 'cpr', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio',
+    'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'storeVisitUvMedian', 'storeVisitUnitPrice',
+    'coopNoteCount', 'audience', 'lowActive', 'contentForm', 'platformRanks',
   ],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const resolved = resolveGateway()

@@ -46,6 +46,11 @@ BEGIN
   LOOP
     FOREACH dup IN ARRAY grp.ids[2:] LOOP
       leftovers := '[]'::jsonb;
+      -- The pool row is derived: never move it onto the survivor. Deleting it
+      -- marks the group dirty; startup `refreshPublished` rebuilds and re-ranks.
+      IF to_regclass('creator_published') IS NOT NULL THEN
+        DELETE FROM creator_published WHERE creator_id = dup;
+      END IF;
       FOR fk IN
         SELECT cl.relname AS tbl, att.attname AS col
           FROM pg_constraint con

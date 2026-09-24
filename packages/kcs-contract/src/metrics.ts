@@ -34,12 +34,11 @@ export function tierOf(followers: number | null | undefined): CreatorTier {
  */
 export const HEALTH_GRADES = ['healthy', 'abnormal'] as const
 /**
- * Values written before the two-grade rule. Adapters may still emit them until
- * they are updated; `normalizeMetrics` maps them on read and migration 0021 on disk.
- * @deprecated
+ * Two grades only. Values from before the rule (`excellent` / `normal`) were
+ * rewritten on disk by migration 0021; `normalizeHealth` still reads them from
+ * old query strings and hand-typed input.
  */
-export type LegacyHealthGrade = 'excellent' | 'normal'
-export type HealthGrade = (typeof HEALTH_GRADES)[number] | LegacyHealthGrade
+export type HealthGrade = (typeof HEALTH_GRADES)[number]
 
 export type MetricWindow = 30 | 90
 
@@ -133,10 +132,6 @@ export type CreatorMetrics = {
   basis: Record<string, string>
   /** When the image price came from a manual quote: its original currency and the rate used. */
   priceQuote: { amount: number; currency: string; fxToCny: number | null } | null
-  /** @deprecated read as `cpr` */
-  cpv?: number | null
-  /** @deprecated held 视频完播率 under a 3S 阅读率 label; read as `completionRate` */
-  retentionRate?: number | null
 }
 
 export type NumericMetricKey = Exclude<{
@@ -220,11 +215,8 @@ export const METRIC_KEYS = METRIC_FIELDS.map((f) => f.key) as readonly NumericMe
 /** Fields a person can see and pick (hidden ones wait for a source). */
 export const VISIBLE_METRIC_KEYS = METRIC_FIELDS.filter((f) => !f.hidden).map((f) => f.key) as readonly NumericMetricKey[]
 
-/** Old snapshot keys → current keys (migration 0021 rewrites stored jsonb the same way). */
-export const RENAMED_METRIC_KEYS: Readonly<Record<string, NumericMetricKey>> = {
-  cpv: 'cpr',
-  retentionRate: 'completionRate',
-}
+/** Keys no reader takes any more (now `cpr` / `completionRate`); dropped rather than passed through. */
+const RETIRED_METRIC_KEYS = ['cpv', 'retentionRate'] as const
 
 export function metricField(key: NumericMetricKey): MetricField {
   return METRIC_FIELDS.find((f) => f.key === key)!
@@ -458,19 +450,18 @@ function sameNumber(a: number, b: number | null): boolean {
 }
 
 /**
- * One record in today's shape, whatever wrote it: fills missing keys, moves
- * renamed ones, maps the old three-grade health, keeps only finite numbers and
- * re-derives. `source` matters for two legacy meanings:
+ * One record in today's shape, whatever wrote it: fills missing keys, maps the
+ * old three-grade health, keeps only finite numbers and re-derives. Renamed
+ * keys (`cpv`, `retentionRate`) are dropped, not moved: adapters write `cpr` /
+ * `completionRate`, and migrations 0021 / 0026 rewrote what was stored.
+ * `source` matters for two legacy meanings:
  * - 「CPM」 from 千瓜 / 新红 is per read → `cpmRead` (新红 待核定);
  * - 蒲公英's old `health` was really the 低活跃 flag.
  */
 export function normalizeMetrics(input: unknown, source?: string | null): CreatorMetrics {
   const raw: Record<string, any> = input && typeof input === 'object' ? { ...(input as Record<string, any>) } : {}
+  for (const key of RETIRED_METRIC_KEYS) delete raw[key]
   if (Array.isArray(raw.derived)) raw.derived = [...raw.derived]
-  for (const [from, to] of Object.entries(RENAMED_METRIC_KEYS)) {
-    if (raw[from] != null) takeSourceValue(raw, to, raw[from])
-    delete raw[from]
-  }
   if (source && source !== 'pugongying' && raw.cpm != null && !isMarkedDerived(raw, 'cpm')) {
     if (!sameNumber(raw.cpm, LEGACY_CPM(raw))) takeSourceValue(raw, 'cpmRead', raw.cpm)
     raw.cpm = null

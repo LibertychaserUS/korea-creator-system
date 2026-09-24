@@ -9,7 +9,6 @@ import {
   deriveMetrics,
   withServiceFee,
   normalizeHealth,
-  RENAMED_METRIC_KEYS,
   SERVICE_FEE_RATES,
   tierOf,
   type ServiceFeeRate,
@@ -247,29 +246,17 @@ export function defaultSavedQuery(overrides: Partial<SavedQuery> = {}): SavedQue
   }
 }
 
-function renamedKey<T>(key: T): T {
-  return (typeof key === 'string' && RENAMED_METRIC_KEYS[key] ? RENAMED_METRIC_KEYS[key] : key) as T
-}
-
 /**
- * A stored or posted spec in today's vocabulary: renamed metric keys
- * (`cpv` → `cpr` …) and the old three health grades (优秀 / 正常 → 健康).
- * Unknown values are left for `validateSavedQuery` to reject.
+ * A stored or posted spec, tidied: columns without repeats, a trimmed search,
+ * and the old three health grades (优秀 / 正常 → 健康). Metric keys are taken
+ * as they are (migration 0026 rewrote stored `cpv` / `retentionRate`); unknown
+ * values are left for `validateSavedQuery` to reject.
  */
 export function normalizeSavedQuery(value: unknown): Partial<SavedQuery> {
   if (!value || typeof value !== 'object') return {}
   const q = { ...(value as Record<string, any>) }
-  if (Array.isArray(q.columns)) q.columns = [...new Set(q.columns.map(renamedKey))]
-  const renameFilters = (list: unknown[]) => list.map((f: any) => (f && typeof f === 'object' ? { ...f, key: renamedKey(f.key) } : f))
-  if (Array.isArray(q.filters)) q.filters = renameFilters(q.filters)
-  if (Array.isArray(q.groups)) {
-    q.groups = q.groups.map((g: any) => (g && typeof g === 'object' && Array.isArray(g.filters) ? { ...g, filters: renameFilters(g.filters) } : g))
-  }
+  if (Array.isArray(q.columns)) q.columns = [...new Set(q.columns)]
   if (typeof q.search === 'string') q.search = q.search.trim()
-  if (Array.isArray(q.highlights)) {
-    q.highlights = q.highlights.map((h: any) => (h && typeof h === 'object' && h.key !== 'health' ? { ...h, key: renamedKey(h.key) } : h))
-  }
-  if (q.sort && typeof q.sort === 'object') q.sort = { ...q.sort, key: renamedKey(q.sort.key) }
   if (Array.isArray(q.health)) {
     q.health = [...new Set(q.health.map((h: unknown) => normalizeHealth(h, null, null).health ?? h))]
   }

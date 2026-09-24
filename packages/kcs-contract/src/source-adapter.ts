@@ -539,12 +539,13 @@ export function fieldUnit(spec: FieldSpec | undefined): RatioUnit | undefined {
  */
 export const ZERO_MEANS_HIDDEN_KEYS: readonly NumericMetricKey[] = [
   'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian',
-  'coopReadMedian', 'coopInteractionMedian', 'priceImage', 'priceVideo', 'cpv', 'cpe', 'cpm',
+  'coopReadMedian', 'coopInteractionMedian', 'priceImage', 'priceVideo', 'cpr', 'cpe', 'cpeVideo', 'cpm', 'cpmRead',
+  'storeVisitUvMedian', 'storeVisitUnitPrice',
 ]
 
 /** Ratio metrics that are a share of a whole: outside 0–1 they cannot be right. */
 export const SHARE_METRIC_KEYS: readonly NumericMetricKey[] = [
-  'readFanRatio', 'activeFanRatio', 'engagedFanRatio', 'retentionRate', 'viralRate',
+  'readFanRatio', 'activeFanRatio', 'engagedFanRatio', 'completionRate', 'read3sRate', 'viralRate',
   'purchaseIntentCommentRatio', 'trafficSearchRatio', 'trafficRecommendRatio', 'trafficFollowRatio', 'authenticity',
 ]
 
@@ -584,9 +585,9 @@ export function toHealthLevel(value: unknown): HealthLevel | null {
   return null
 }
 
-/** The metric grade for a level: 健康 → `normal`. `excellent` is no longer produced. */
+/** The metric grade for a level (the same two words). No level → unknown (`null`), never 健康. */
 export function healthFromLevel(level: HealthLevel | null): HealthGrade | null {
-  return level === 'healthy' ? 'normal' : level === 'abnormal' ? 'abnormal' : null
+  return level === 'healthy' || level === 'abnormal' ? level : null
 }
 
 export function toHealth(value: unknown): HealthGrade | null {

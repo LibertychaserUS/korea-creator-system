@@ -350,4 +350,40 @@ describe('migration 0042 merges creators whose 小红书号 differ only in spell
     await ctx.db.query(await sql)
     expect((await ctx.db.query('SELECT count(*)::int AS n FROM creator_merges WHERE merged_id = $1', [dup])).rows[0].n).toBe(1)
   })
+
+  it('drops the duplicate\'s pool row instead of moving it, and marks its group for re-ranking', async () => {
+    const [keep, dup] = [`${RUN}-pkeep`, `${RUN}-pdup`]
+    const group = `${RUN}-group`
+    const client = await ctx.db.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query('DROP INDEX creators_xhs_id_key')
+      await client.query('ALTER TABLE creators DISABLE TRIGGER creators_normalize_xhs')
+      await client.query(
+        `INSERT INTO creators (id, creator_key, display_name, status, xhs_id, created_at) VALUES
+           ($1, $1, '后上架', 'released', $3, '2026-03-01'), ($2, $2, '先上架', 'released', $4, '2026-02-01')`,
+        [dup, keep, `${RUN}_Pool_Twin`, `${RUN}_pool_twin`],
+      )
+      await client.query(
+        `INSERT INTO creator_published (creator_id, group_key, "window", tier, display_name, creator_key, metrics, published_at)
+         VALUES ($1, $3, 30, 'mid', '后上架', $1, '{}', now()), ($2, $3, 30, 'mid', '先上架', $2, '{}', now())`,
+        [dup, keep, group],
+      )
+      await client.query('DELETE FROM cohort_dirty_groups WHERE group_key = $1', [group])
+      await client.query(await sql)
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+
+    const pool = await ctx.db.query('SELECT creator_id, display_name FROM creator_published WHERE group_key = $1', [group])
+    expect(pool.rows).toEqual([{ creator_id: keep, display_name: '先上架' }])
+    const archived = (await ctx.db.query('SELECT conflicts FROM creator_merges WHERE merged_id = $1', [dup])).rows
+    expect(archived).toEqual([{ conflicts: [] }])
+    expect((await ctx.db.query('SELECT 1 FROM cohort_dirty_groups WHERE group_key = $1', [group])).rowCount).toBe(1)
+    await ctx.db.query('DELETE FROM cohort_dirty_groups WHERE group_key = $1', [group])
+  })
 })

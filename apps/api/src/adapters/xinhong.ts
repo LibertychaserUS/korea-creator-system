@@ -46,7 +46,8 @@ const DEFAULT_FIELD_MAP: FieldMap = {
   priceImage: ['图文报价', '预估报价', 'price_image', 'picturePrice'],
   priceVideo: ['视频报价', 'price_video', 'videoPrice'],
   cpe: ['CPE', 'cpe'],
-  cpm: ['CPM', 'cpm'],
+  // 新红「CPM」: per read like 千瓜 until the console docs say otherwise (待核定).
+  cpmRead: ['CPM', 'cpm', 'cpm_read'],
   authenticity: { paths: ['粉丝真实度', 'real_fan_ratio', 'authenticity'], unit: 'percent' },
   vendorIndex: ['新红指数', 'index', 'xinhongIndex'],
   coopBrands: ['合作品牌', 'brands', 'coopBrands'],
@@ -63,7 +64,7 @@ const SIGNAL_MAP: SignalFieldMap = {
 export const xinhongAdapter: SourceAdapter = {
   id: 'xinhong',
   supports: ['window', 'keyword', 'category', 'region', 'followersMin', 'followersMax', 'priceMin', 'priceMax', 'externalIds', 'cursor', 'limit'],
-  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
+  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'impressionMedian', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'cpmRead', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health', 'fanInteractionRatio'],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const token = process.env.XINHONG_TOKEN
     if (!token) {

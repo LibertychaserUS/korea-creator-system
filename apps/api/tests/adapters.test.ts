@@ -20,7 +20,7 @@ describe.each([pugongyingAdapter, qianguaAdapter, xinhongAdapter])('$id adapter'
       expect(result.creator.metrics.engagementRate).not.toBeNull()
       // Two official levels only; 蒲公英 has no documented 健康等级 field, 低活跃 is a separate flag.
       if (adapter.id === 'pugongying') expect(result.creator.metrics.health).toBeNull()
-      else expect(['normal', 'abnormal']).toContain(result.creator.metrics.health)
+      else expect(['healthy', 'abnormal']).toContain(result.creator.metrics.health)
     }
   })
 })
@@ -117,8 +117,8 @@ describe('ratio units are declared per field, never guessed from size', () => {
     if (!result.ok) throw new Error(result.errors.join())
     expect(result.creator.metrics.engagementRate).toBeCloseTo(0.042, 10)
     expect(result.creator.metrics.trafficSearchRatio).toBe(0.35)
-    expect(result.creator.metrics.retentionRate).toBeNull()
-    expect(result.creator.warnings).toContain('retentionRate.outOfRange')
+    expect(result.creator.metrics.completionRate).toBeNull()
+    expect(result.creator.warnings).toContain('completionRate.outOfRange')
   })
 
   it('an env field map can declare the unit, and a bare path list keeps the default unit', () => {
@@ -140,16 +140,17 @@ describe('health and vendor-specific fields', () => {
     if (!result.ok) throw new Error(result.errors.join())
     expect(result.creator.metrics.engagedFanRatio).toBeNull()
     expect(result.creator.signals?.fanInteractionRatio).toBeCloseTo(0.045, 10)
-    expect(result.creator.metrics.health).toBe('normal')
+    expect(result.creator.metrics.fanInteractionRatio).toBeCloseTo(0.045, 10)
+    expect(result.creator.metrics.health).toBe('healthy')
     expect(result.creator.signals?.healthLevel).toBe('healthy')
   })
 
   it('a health filter treats 异常 and 低活跃 alike and all other grades as 健康', () => {
-    expect(matchesHealth(['excellent'], 'normal', null)).toBe(true)
-    expect(matchesHealth(['excellent'], null, false)).toBe(true)
-    expect(matchesHealth(['excellent', 'normal'], null, true)).toBe(false)
-    expect(matchesHealth(['normal'], 'abnormal', null)).toBe(false)
+    expect(matchesHealth(['healthy'], 'healthy', null)).toBe(true)
+    expect(matchesHealth(['healthy'], null, false)).toBe(true)
+    expect(matchesHealth(['healthy'], null, true)).toBe(false)
+    expect(matchesHealth(['healthy'], 'abnormal', null)).toBe(false)
     expect(matchesHealth(['abnormal'], null, true)).toBe(true)
-    expect(matchesHealth(['abnormal'], 'normal', false)).toBe(false)
+    expect(matchesHealth(['abnormal'], 'healthy', false)).toBe(false)
   })
 })

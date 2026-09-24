@@ -37,19 +37,21 @@ describe('蒲公英 normalize (solar field names)', () => {
     expect(m.coopReadMedian).toBe(84000)
     expect(m.coopInteractionMedian).toBe(5100)
     expect(m.engagementRate).toBeCloseTo(0.061, 3)
-    expect(m.retentionRate).toBeCloseTo(0.412, 3)
+    expect(m.completionRate).toBeCloseTo(0.412, 3)
+    expect(m.read3sRate).toBeCloseTo(0.7, 3)
     expect(m.noteCount).toBe(33)
     expect(m.viralRate).toBeCloseTo(0.212, 3)
     expect(m.viralCount).toBeNull()
     expect(m.priceImage).toBe(16800)
     expect(m.priceVideo).toBe(26000)
-    expect(m.cpv).toBe(0.18)
+    expect(m.cpr).toBe(0.18)
     expect(m.cpe).toBe(3)
     expect(m.cpm).toBe(91.3)
     expect(m.trafficSearchRatio).toBe(0.18)
     expect(m.trafficRecommendRatio).toBe(0.75)
     expect(m.trafficFollowRatio).toBe(0.03)
     expect(m.health).toBeNull()
+    expect(m.lowActive).toBe(false)
     expect(m.authenticity).toBeNull()
     expect(m.coopNoteCount).toBe(6)
     expect(m.audience?.femaleRatio).toBe(0.86)
@@ -80,6 +82,7 @@ describe('蒲公英 normalize (solar field names)', () => {
     const active = normalizePugongying(record(0))
     expect(low.ok && low.creator.metrics.health).toBeNull()
     expect(low.ok && low.creator.signals?.lowActive).toBe(true)
+    expect(low.ok && low.creator.metrics.lowActive).toBe(true)
     expect(active.ok && active.creator.signals).toMatchObject({ lowActive: false, recentlyActive: true, healthLevel: null })
     const bare = normalizePugongying({ ...record(1), payload: { userId: 'x', name: 'y' } })
     expect(bare.ok && bare.creator.metrics.health).toBeNull()
@@ -91,7 +94,8 @@ describe('蒲公英 normalize (solar field names)', () => {
     const result = normalizePugongying(record(0))
     if (!result.ok) throw new Error(result.errors.join())
     const { metrics, signals } = result.creator
-    expect(metrics.retentionRate).toBeCloseTo(0.412, 10)
+    expect(metrics.completionRate).toBeCloseTo(0.412, 10)
+    expect(metrics.read3sRate).toBeCloseTo(0.7, 10)
     expect(signals?.completionRate).toBeCloseTo(0.412, 10)
     expect(signals?.read3sRate).toBeCloseTo(0.7, 10)
     expect(metrics.coopNoteCount).toBe(6)
@@ -145,7 +149,7 @@ describe('蒲公英 gateways', () => {
     stubFetch(() => ({ code: 200, data: { code: 0, success: true, data: { kols: [kol], total: 5000 } } }))
     const page = await pugongyingAdapter.fetch({
       source: 'pugongying', window: 30, keyword: '空瓶', category: '美妆', region: '上海',
-      followersMin: 10000, followersMax: 500000, priceMin: 2000, health: ['excellent', 'normal'], cursor: '3',
+      followersMin: 10000, followersMax: 500000, priceMin: 2000, health: ['healthy'], cursor: '3',
     })
     expect((page as { sourceMode?: string }).sourceMode).toBe('live')
     expect(page.records).toHaveLength(1)
@@ -213,7 +217,7 @@ describe('蒲公英 gateways', () => {
   it('justoneapi: GET with token query and one-layer data', async () => {
     process.env.PGY_GATEWAY = 'justoneapi'
     stubFetch(() => ({ code: 0, data: { kols: [record(3).payload], total: 1 }, message: null }))
-    const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, followersMin: 50000, priceMax: 5000, health: ['excellent'] })
+    const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 30, followersMin: 50000, priceMax: 5000, health: ['healthy'] })
     expect(page.records[0]!.externalId).toBe('pgy_004')
     const url = new URL(calls[0]!.url)
     expect(url.origin + url.pathname).toBe('https://api.justoneapi.com/api/xiaohongshu-pgy/api/solar/cooperator/blogger/v2/v1')

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import {
   METRIC_FIELDS,
+  METRIC_KEYS,
   SHARE_METRIC_KEYS,
   ZERO_MEANS_HIDDEN_KEYS,
   creatorKeyFor,
@@ -171,11 +172,8 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap, signalMap: Signal
   if (!externalId || !displayName) return { ok: false, errors: [!externalId ? 'externalId.missing' : 'displayName.missing'] }
 
   const metrics = emptyMetrics((toNumber(first(raw.payload, map.window)) === 90 ? 90 : 30))
-  const numericKeys = Object.keys(metrics).filter((key) =>
-    !['window', 'health', 'coopBrands', 'audience', 'vendorIndex'].includes(key),
-  ) as NumericMetricKey[]
   const warnings: string[] = []
-  for (const key of numericKeys) {
+  for (const key of METRIC_KEYS) {
     const spec = map[key]
     if (!spec) continue
     // A 0 under one alias must not hide a shown value under the next.
@@ -194,6 +192,7 @@ export function normalizeRecord(raw: RawRecord, map: FieldMap, signalMap: Signal
     const parsed = parseRatio(value, fieldUnit(spec) ?? 'ratio', { share: true })
     if (parsed.issue) warnings.push(`${key}.${parsed.issue}`)
     signals[key] = parsed.value
+    metrics[key] = parsed.value
   }
   metrics.coopBrands = toStringArray(first(raw.payload, map.coopBrands))
   const indexValue = toNumber(first(raw.payload, map.vendorIndex))

@@ -5,8 +5,10 @@ ALTER TABLE creators ADD COLUMN IF NOT EXISTS source_signals jsonb;
 ALTER TABLE creator_metrics_history ADD COLUMN IF NOT EXISTS signals jsonb;
 
 -- 健康等级 has two levels (健康 / 异常); 「优秀」 was never one. Live numbers and
--- history are relabelled; publish snapshots stay exactly as they were published.
-UPDATE creators SET metrics = jsonb_set(metrics, '{health}', '"normal"')
- WHERE metrics->>'health' = 'excellent';
-UPDATE creator_metrics_history SET metrics = jsonb_set(metrics, '{health}', '"normal"')
- WHERE metrics->>'health' = 'excellent';
+-- history are relabelled to the contract's `healthy` (0021 already did this on
+-- a fresh database; this catches rows written in between). Publish snapshots
+-- stay exactly as they were published.
+UPDATE creators SET metrics = jsonb_set(metrics, '{health}', '"healthy"')
+ WHERE metrics->>'health' IN ('excellent', 'normal');
+UPDATE creator_metrics_history SET metrics = jsonb_set(metrics, '{health}', '"healthy"')
+ WHERE metrics->>'health' IN ('excellent', 'normal');

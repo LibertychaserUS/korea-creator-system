@@ -164,10 +164,10 @@ describe('health level', () => {
   })
 
   it('never produces 「优秀」 as a metric grade', () => {
-    expect(healthFromLevel('healthy')).toBe('normal')
+    expect(healthFromLevel('healthy')).toBe('healthy')
     expect(healthFromLevel('abnormal')).toBe('abnormal')
     expect(healthFromLevel(null)).toBeNull()
-    expect(toHealth('优秀')).toBe('normal')
+    expect(toHealth('优秀')).toBe('healthy')
   })
 
   it('empty signals say nothing', () => {

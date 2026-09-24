@@ -44,7 +44,8 @@ const DEFAULT_FIELD_MAP: FieldMap = {
   priceImage: ['预估报价', '图文报价', 'estimated_price', 'price_image'],
   priceVideo: ['视频报价', 'price_video'],
   cpe: ['CPE', 'cpe'],
-  cpm: ['CPM', 'cpm'],
+  // 千瓜「CPM」is per 1,000 reads, not impressions.
+  cpmRead: ['CPM', 'cpm', 'cpm_read'],
   authenticity: { paths: ['粉丝真实度', 'authenticity', 'real_fans_ratio'], unit: 'percent' },
   vendorIndex: ['千瓜指数', 'index', 'qiangua_index'],
   coopBrands: ['合作品牌', 'brands', 'coop_brands'],
@@ -56,7 +57,7 @@ export const FIELD_MAP: FieldMap = fieldMapFromEnv('QIANGUA_FIELD_MAP', DEFAULT_
 export const qianguaAdapter: SourceAdapter = {
   id: 'qiangua',
   supports: ['window', 'keyword', 'category', 'region', 'followersMin', 'followersMax', 'priceMin', 'priceMax', 'externalIds', 'cursor', 'limit'],
-  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpm', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
+  provides: ['followers', 'followerGrowth', 'followerGrowthRate', 'readMedian', 'interactionMedian', 'likeMedian', 'collectMedian', 'commentMedian', 'engagementRate', 'noteCount', 'viralCount', 'viralRate', 'priceImage', 'priceVideo', 'cpe', 'cpmRead', 'collectLikeRatio', 'readToFollowerRatio', 'authenticity', 'vendorIndex', 'coopBrands', 'health'],
   async fetch(query: SourceQuery): Promise<AdapterPage> {
     const token = process.env.QIANGUA_TOKEN
     if (!token) {

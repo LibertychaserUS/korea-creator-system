@@ -133,12 +133,12 @@ describe('workbook import', () => {
         `<row r="6">${inline('A6', '浮点单元格')}${inline('B6', x('float'))}${num('C6', '12000.000000000002')}${num('D6', '1500')}</row>`,
         `<row r="7">${inline('A7', '负号')}${inline('B7', x('neg'))}${inline('C7', '-300')}${num('D7', '0')}</row>`,
         `<row r="8">${inline('A8', '空单元格')}<c r="B8" s="1"/>${num('C8', '777')}${num('D8', '999')}</row>`,
-        // prices.amount_min is still an integer column: a decimal quote cannot be stored yet, so it parks.
+        // Prices are stored in minor units (fen), so a decimal quote is kept exactly.
         `<row r="9">${inline('A9', '小数报价')}${inline('B9', x('decimal'))}${num('C9', '5000')}${num('D9', '1500.5')}</row>`,
       ]),
     })
 
-    expect(job).toMatchObject({ writtenCount: 5, failedCount: 3 })
+    expect(job).toMatchObject({ writtenCount: 6, failedCount: 2 })
     expect(await creatorByXhs(x('wan'))).toMatchObject({ followers: 12_000 })
     const unknown = await creatorByXhs(x('zanwu'))
     expect(unknown).toMatchObject({ followers: null, followers_unknown: true })
@@ -156,8 +156,10 @@ describe('workbook import', () => {
     expect(parked.map((row) => [row.code, row.message, row.payload.displayName])).toEqual([
       ['RECORD_INVALID', 'price.range', '区间报价'],
       ['RECORD_INVALID', 'followers.outOfRange', '负号'],
-      ['RECORD_WRITE_FAILED', 'invalid input syntax for type integer: "1500.5"', '小数报价'],
     ])
+    const decimal = await creatorByXhs(x('decimal'))
+    const quote = await ctx.db.query('SELECT amount_min_minor, currency FROM prices WHERE creator_id = $1', [decimal.id])
+    expect(quote.rows).toEqual([{ amount_min_minor: '150050', currency: 'CNY' }])
     expect(parked[0].external_id).toBe(`${job.id}#4`)
     expect(parked[0].payload.__file).toBe('probe.xlsx')
 

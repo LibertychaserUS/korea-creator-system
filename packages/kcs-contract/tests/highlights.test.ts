@@ -77,8 +77,8 @@ describe('highlights', () => {
     }
   })
 
-  it('normalizing an old spec keeps the health gate and renames metric keys', () => {
-    const q = normalizeSavedQuery({ highlights: [{ key: 'health', op: 'eq', value: 'abnormal', tone: 'bad' }, { key: 'cpv', op: 'lte', value: 1, tone: 'good' }] })
+  it('normalizing a spec keeps the health gate and the metric highlights as they are', () => {
+    const q = normalizeSavedQuery({ highlights: [{ key: 'health', op: 'eq', value: 'abnormal', tone: 'bad' }, { key: 'cpr', op: 'lte', value: 1, tone: 'good' }] })
     expect(q.highlights).toEqual([
       { key: 'health', op: 'eq', value: 'abnormal', tone: 'bad' },
       { key: 'cpr', op: 'lte', value: 1, tone: 'good' },

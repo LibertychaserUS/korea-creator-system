@@ -88,7 +88,7 @@ describe('transform helpers', () => {
     expect(toRatio('3.2%')).toBeCloseTo(0.032)
     expect(toRatio(3.2, true)).toBeCloseTo(0.032)
     expect(toRatio(0.032)).toBe(0.032)
-    expect(toHealth('优秀')).toBe('normal')
+    expect(toHealth('优秀')).toBe('healthy')
     expect(toHealth('异常')).toBe('abnormal')
     expect(toHealth('x')).toBeNull()
   })

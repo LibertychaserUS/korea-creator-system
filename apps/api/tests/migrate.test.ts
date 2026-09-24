@@ -83,6 +83,41 @@ describe('migrate', () => {
     expect(fn.rowCount).toBe(0)
   })
 
+  it('0026 moves the old metric keys left in stored records and saved queries', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const sql = await readFile(new URL('../src/migrations/0026_legacy_metric_keys.sql', import.meta.url), 'utf8')
+    const id = `mig0026${Date.now().toString(36)}`
+    await db.query(
+      `INSERT INTO creators (id, creator_key, display_name, status, metrics, metrics_locked) VALUES
+         ($1, $1, 'x', 'draft', '{"cpv": 0.2, "retentionRate": 0.4}', '{"cpv": 0.3, "cpr": 0.5}')`,
+      [id],
+    )
+    await db.query(
+      `INSERT INTO saved_queries (id, name, spec) VALUES
+         ($1, 'q', '{"columns": ["followers", "cpv"], "sort": {"key": "retentionRate", "dir": "asc"}, "search": "cpv", "groups": [{"mode": "any", "filters": [{"key": "cpv", "op": "lte", "value": 1}]}], "highlights": [{"key": "health", "op": "eq", "value": "abnormal"}]}')`,
+      [id],
+    )
+    try {
+      await db.query(sql)
+      await db.query(sql)
+      const { rows: [creator] } = await db.query('SELECT metrics, metrics_locked FROM creators WHERE id = $1', [id])
+      expect(creator.metrics).toEqual({ cpr: 0.2, completionRate: 0.4 })
+      // A current value is never overwritten by an old one.
+      expect(creator.metrics_locked).toEqual({ cpr: 0.5 })
+      const { rows: [query] } = await db.query('SELECT spec FROM saved_queries WHERE id = $1', [id])
+      expect(query.spec).toEqual({
+        columns: ['followers', 'cpr'],
+        sort: { key: 'completionRate', dir: 'asc' },
+        search: 'cpv',
+        groups: [{ mode: 'any', filters: [{ key: 'cpr', op: 'lte', value: 1 }] }],
+        highlights: [{ key: 'health', op: 'eq', value: 'abnormal' }],
+      })
+    } finally {
+      await db.query('DELETE FROM saved_queries WHERE id = $1', [id])
+      await db.query('DELETE FROM creators WHERE id = $1', [id])
+    }
+  })
+
   it('the cleanup migration is idempotent on an already-clean database', async () => {
     const { readFile } = await import('node:fs/promises')
     const sql = await readFile(new URL('../src/migrations/0011_drop_unused_legacy.sql', import.meta.url), 'utf8')

@@ -31,7 +31,8 @@ const props = defineProps<{ health?: HealthGrade | null; lowActive?: boolean | n
 const { t } = useI18n()
 
 const grade = computed(() => {
-  switch (props.health) {
+  // Frozen publish snapshots can still hold the old words.
+  switch (props.health as string | null | undefined) {
     case 'healthy':
     case 'excellent':
     case 'normal':

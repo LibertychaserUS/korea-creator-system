@@ -52,7 +52,7 @@ describe('metric definitions (口径)', () => {
     expect(deriveMetrics({ ...emptyMetrics(30), followers: 1_100, followerGrowth: 100 }).followerGrowthRate).toBe(0.1)
   })
 
-  it('old stored records: renamed keys move, old rounded derivations go back to full precision', () => {
+  it('old stored records: old rounded derivations go back to full precision; renamed keys are not read', () => {
     const legacy = {
       window: 30,
       readMedian: 3_000,
@@ -60,7 +60,6 @@ describe('metric definitions (口径)', () => {
       priceImage: 1_000,
       engagementRate: 0.0333,
       cpe: 10,
-      cpv: 0.33,
       cpm: 333.33,
       retentionRate: 0.41,
       health: 'excellent',
@@ -68,11 +67,11 @@ describe('metric definitions (口径)', () => {
     const m = normalizeMetrics(legacy, 'qiangua')
     expect(m.engagementRate).toBe(100 / 3_000)
     expect(m.cpr).toBe(1_000 / 3_000)
-    expect(m.completionRate).toBe(0.41)
+    // Migrations 0021 / 0026 moved stored `retentionRate`; a stray one is dropped, not guessed.
+    expect(m.completionRate).toBeNull()
     expect(m.cpm).toBeNull()
     expect(m.cpmRead).toBeCloseTo(1_000_000 / 3_000, 9)
     expect(m.health).toBe('healthy')
-    expect((m as any).cpv).toBeUndefined()
     expect((m as any).retentionRate).toBeUndefined()
   })
 
@@ -146,21 +145,20 @@ describe('money', () => {
 })
 
 describe('saved queries in the new vocabulary', () => {
-  it('old keys and health values are read into the new ones', () => {
+  it('old health values are read into the two grades; metric keys are taken as stored', () => {
     const old = {
       ...defaultSavedQuery({ name: 'old' }),
-      columns: ['followers', 'cpv', 'retentionRate'],
-      filters: [{ key: 'cpv', op: 'lte', value: 0.5 }],
-      sort: { key: 'cpv', dir: 'asc' },
+      columns: ['followers', 'cpr', 'completionRate', 'cpr'],
+      filters: [{ key: 'cpr', op: 'lte', value: 0.5 }],
+      sort: { key: 'cpr', dir: 'asc' },
       health: ['excellent', 'normal'],
     }
     const q = normalizeSavedQuery(old)
     expect(q.columns).toEqual(['followers', 'cpr', 'completionRate'])
-    expect(q.filters[0]!.key).toBe('cpr')
-    expect(q.sort.key).toBe('cpr')
     expect(q.health).toEqual(['healthy'])
     expect(q.serviceFee).toBe(0)
     expect(validateSavedQuery(q)).toEqual([])
     expect(validateSavedQuery({ ...q, serviceFee: 0.15 as any }).length).toBeGreaterThan(0)
+    expect(validateSavedQuery({ ...q, columns: ['cpv'] as any }).length).toBeGreaterThan(0)
   })
 })

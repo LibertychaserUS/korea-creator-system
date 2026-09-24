@@ -151,12 +151,12 @@ describe('one upsert for every way a creator comes in', () => {
     const [row, cats, price, reviews] = await Promise.all([
       ctx.db.query('SELECT * FROM creators WHERE id = $1', [outcome.creatorId]),
       ctx.db.query('SELECT category_slug FROM creator_categories WHERE creator_id = $1', [outcome.creatorId]),
-      ctx.db.query('SELECT amount_min FROM prices WHERE creator_id = $1', [outcome.creatorId]),
+      ctx.db.query('SELECT amount_min_minor, currency FROM prices WHERE creator_id = $1', [outcome.creatorId]),
       ctx.db.query("SELECT status FROM reviews WHERE creator_id = $1", [outcome.creatorId]),
     ])
     expect(row.rows[0]).toMatchObject({ status: 'draft', needs_review: true, followers: 12_000, note: '护肤', source: null })
     expect(cats.rows.map((r) => r.category_slug)).toEqual(['never_collaborated'])
-    expect(price.rows[0].amount_min).toBe(3_000)
+    expect(price.rows[0]).toEqual({ amount_min_minor: '300000', currency: 'CNY' })
     expect(reviews.rows).toEqual([{ status: 'pending' }])
     expect(await sideRecords(ctx, outcome.creatorId)).toEqual({ sources: 0, raw: 0, history: 0 })
   })

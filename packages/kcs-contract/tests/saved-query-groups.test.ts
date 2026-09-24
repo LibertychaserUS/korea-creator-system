@@ -80,8 +80,8 @@ describe('saved query condition groups and extra filters', () => {
     expect(applySavedQuery([rows[2]], q)[0].percentiles).toEqual({ cpe: rank(95) })
   })
 
-  it('normalizes renamed keys inside groups and trims the search', () => {
-    const q = normalizeSavedQuery({ groups: [{ mode: 'any', filters: [{ key: 'cpv', op: 'lte', value: 1 }] }], search: '  博主 ' })
+  it('keeps groups as they are and trims the search', () => {
+    const q = normalizeSavedQuery({ groups: [{ mode: 'any', filters: [{ key: 'cpr', op: 'lte', value: 1 }] }], search: '  博主 ' })
     expect(q.groups).toEqual([{ mode: 'any', filters: [{ key: 'cpr', op: 'lte', value: 1 }] }])
     expect(q.search).toBe('博主')
   })
