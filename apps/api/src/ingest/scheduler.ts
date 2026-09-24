@@ -1,9 +1,23 @@
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_QUOTA_TIME_ZONE, SOURCE_IDS, type SourceId, type SourceQuery } from '@kcs/contract'
+import {
+  DEFAULT_QUOTA_TIME_ZONE,
+  SOURCE_IDS,
+  expectedRefreshCalls,
+  microsToUsd,
+  pgyAccess,
+  refreshCoverage,
+  vendorPriceUsd,
+  type RefreshCoverage,
+  type SourceId,
+  type SourceQuery,
+} from '@kcs/contract'
 import { getAdapter } from '../adapters'
+import { allTrafficReferenceDays, slowRefreshDays } from '../adapters/pugongying'
 import type { AppEnv } from '../http/types'
 import { logEvent } from '../log'
 import { ensureSource } from './jobs'
+import { dailyBudget, vendorPriceOverrides } from './meter'
+import { sourceScope } from './scope'
 import { outcomeEvents } from './outcome-events'
 import { refreshModelConfig, type RefreshModelConfig } from './refresh-model'
 
@@ -25,6 +39,13 @@ import { refreshModelConfig, type RefreshModelConfig } from './refresh-model'
  * [refreshMin, 1 − discoveryMin]. Until both arms have `minTrials` trials the
  * split is the starting 70 / 30.
  *
+ * What a day may spend is the tighter of the call quota and the money budget
+ * (`<SOURCE>_DAILY_BUDGET_USD` / `ingest_sources.daily_budget_usd`), each times
+ * `budgetShare`, less what today already used. A refreshed creator is charged
+ * at its average cost: the base calls plus the slow sections spread over
+ * their cycle (`refreshCost`). The meter still holds the exact quota and
+ * budget call by call.
+ *
  * The plan is always computed and stored (`ingest_scheduler_state`) so ops can
  * see what it would do; jobs are only enqueued when `INGEST_SCHEDULER=1`,
  * because they spend vendor money.
@@ -42,9 +63,9 @@ export type SchedulerConfig = {
   /** Ids per refresh job (one page). */
   idsPerJob: number
   /**
-   * Vendor calls one refreshed creator costs per round. 蒲公英: 资料 + 数据概览 +
-   * 笔记表现; the two slow sections come along once a month (`PGY_SLOW_REFRESH_DAYS`),
-   * and the meter holds the real quota and budget either way.
+   * Vendor calls every refresh round makes. 蒲公英: 资料 + 数据概览 + 笔记表现; the
+   * slow sections (粉丝概览, 粉丝画像, 全部流量对照, the monthly 合作笔记 re-check of
+   * creators without 合作 data) are added by `refreshCost`, spread over their cycle.
    */
   callsPerRefresh: Record<SourceId, number>
   samples: number
@@ -179,7 +200,16 @@ export type SourcePlan = {
   source: SourceId
   quota: number
   usedToday: number
+  /** Money cap of the day (USD, `null` = none), what today already cost, and the price of one refresh call. */
+  budgetUsd: number | null
+  spentTodayUsd: number
+  pricePerCallUsd: number | null
+  /** Which limit set `budget`. */
+  limitedBy: 'quota' | 'money'
+  /** Calls the scheduler may still plan today. */
   budget: number
+  /** Average paid calls one refreshed creator costs. */
+  callsPerRefresh: number
   refreshCalls: number
   discoveryCalls: number
   dueCreators: number
@@ -198,14 +228,55 @@ export type SchedulerState = {
   config: Omit<SchedulerConfig, 'samples'>
 }
 
-async function usedToday(env: AppEnv, source: SourceId): Promise<number> {
+async function usedToday(env: AppEnv, source: SourceId): Promise<{ calls: number; usd: number }> {
   const { rows } = await env.db.query(
-    `SELECT u.calls FROM ingest_source_usage u
+    `SELECT u.calls, u.cost_micros FROM ingest_source_usage u
        JOIN ingest_sources s ON s.id = u.source
       WHERE u.source = $1 AND u.day = ($2::timestamptz AT TIME ZONE COALESCE(s.quota_tz, $3))::date`,
     [source, env.now(), DEFAULT_QUOTA_TIME_ZONE],
   )
-  return Number(rows[0]?.calls ?? 0)
+  return { calls: Number(rows[0]?.calls ?? 0), usd: microsToUsd(Number(rows[0]?.cost_micros ?? 0)) }
+}
+
+/** The endpoint a refresh mostly calls, priced like the meter prices it; `null` = nobody priced it. */
+export function refreshCallPriceUsd(source: SourceId, processEnv: NodeJS.ProcessEnv = process.env): number | null {
+  if (source !== 'pugongying') return null
+  const gateway = pgyAccess(processEnv)?.gateway ?? 'tikhub'
+  const endpoint = {
+    tikhub: 'tikhub:/api/v1/xiaohongshu/pgy/get_blogger_detail',
+    justoneapi: 'justoneapi:/api/xiaohongshu-pgy/api/solar/cooperator/user/blogger/userId/v1',
+    official: 'official:/api/solar/cooperator/user/blogger/:userId',
+  }[gateway]
+  return vendorPriceUsd(endpoint, vendorPriceOverrides(processEnv))
+}
+
+export type RefreshCost = { callsPerRefresh: number; knownCreators: number; modelIntervalDays: number }
+
+/**
+ * Average paid calls per refreshed creator, from the creators the source has:
+ * base calls, plus 蒲公英's slow sections at their share of the model's mean
+ * interval, plus one 合作笔记 re-check a cycle for the creators that fell back
+ * to 日常笔记.
+ */
+export async function refreshCost(env: AppEnv, source: SourceId, config: SchedulerConfig, sourceRow?: Record<string, unknown>): Promise<RefreshCost> {
+  const { rows } = await env.db.query(
+    `SELECT count(*)::int AS n, avg(COALESCE(cs.refresh_interval_days, $2)) AS interval,
+            avg(CASE WHEN c.metrics->'basis'->>'costFallback' = 'noCoopData' THEN 1 ELSE 0 END) AS fallback
+       FROM creator_sources cs JOIN creators c ON c.id = cs.creator_id WHERE cs.source = $1`,
+    [source, config.refresh.defaultDays],
+  )
+  const knownCreators = Number(rows[0]?.n ?? 0)
+  const modelIntervalDays = Number(rows[0]?.interval ?? config.refresh.defaultDays) || config.refresh.defaultDays
+  const base = Math.max(1, config.callsPerRefresh[source] ?? 1)
+  if (source !== 'pugongying') return { callsPerRefresh: base, knownCreators, modelIntervalDays }
+  const scope = sourceScope(source, sourceRow)
+  const slow = slowRefreshDays()
+  const callsPerRefresh = expectedRefreshCalls(base, [
+    { calls: 2, everyDays: slow },
+    { calls: 1, everyDays: scope?.traffic === 'organic' ? allTrafficReferenceDays() : null },
+    { calls: scope?.business === 'coop' ? Number(rows[0]?.fallback ?? 0) : 0, everyDays: slow },
+  ], modelIntervalDays)
+  return { callsPerRefresh, knownCreators, modelIntervalDays }
 }
 
 async function enqueue(env: AppEnv, schedule: 'refresh' | 'discovery', query: SourceQuery, maxPages: number): Promise<string> {
@@ -220,13 +291,17 @@ async function enqueue(env: AppEnv, schedule: 'refresh' | 'discovery', query: So
 
 async function planSource(env: AppEnv, source: SourceId, split: Split, config: SchedulerConfig): Promise<SourcePlan> {
   const plan: SourcePlan = {
-    source, quota: 0, usedToday: 0, budget: 0, refreshCalls: 0, discoveryCalls: 0,
+    source, quota: 0, usedToday: 0, budgetUsd: null, spentTodayUsd: 0, pricePerCallUsd: null, limitedBy: 'quota',
+    budget: 0, callsPerRefresh: 1, refreshCalls: 0, discoveryCalls: 0,
     dueCreators: 0, refreshIds: 0, refreshJobs: [], discoveryJobs: [], skipped: null,
   }
   const adapter = env.getAdapter?.(source) ?? getAdapter(source)
   if (!adapter) return { ...plan, skipped: 'no_adapter' }
   await ensureSource(env, source)
-  const row = (await env.db.query('SELECT enabled, quota FROM ingest_sources WHERE id = $1', [source])).rows[0]
+  const row = (await env.db.query(
+    'SELECT enabled, quota, daily_budget_usd, traffic_scope, business_scope FROM ingest_sources WHERE id = $1',
+    [source],
+  )).rows[0]
   plan.quota = Math.max(0, Number(row?.quota ?? 0))
   if (row?.enabled === false || plan.quota === 0) return { ...plan, skipped: 'paused' }
   const pending = await env.db.query(
@@ -235,8 +310,17 @@ async function planSource(env: AppEnv, source: SourceId, split: Split, config: S
     [source],
   )
   if (pending.rowCount) return { ...plan, skipped: 'previous_plan_running' }
-  plan.usedToday = await usedToday(env, source)
-  plan.budget = Math.max(0, Math.floor(plan.quota * config.budgetShare) - plan.usedToday)
+  const used = await usedToday(env, source)
+  plan.usedToday = used.calls
+  plan.spentTodayUsd = used.usd
+  plan.budgetUsd = dailyBudget(source, row?.daily_budget_usd).usd
+  plan.pricePerCallUsd = refreshCallPriceUsd(source)
+  const byQuota = Math.max(0, Math.floor(plan.quota * config.budgetShare) - plan.usedToday)
+  const byMoney = plan.budgetUsd != null && plan.pricePerCallUsd
+    ? Math.max(0, Math.floor((plan.budgetUsd * config.budgetShare - plan.spentTodayUsd) / plan.pricePerCallUsd + 1e-9))
+    : Number.POSITIVE_INFINITY
+  plan.limitedBy = byMoney < byQuota ? 'money' : 'quota'
+  plan.budget = Math.min(byQuota, byMoney)
   if (plan.budget === 0) return { ...plan, skipped: 'no_budget' }
 
   const now = env.now()
@@ -251,7 +335,8 @@ async function planSource(env: AppEnv, source: SourceId, split: Split, config: S
   plan.refreshCalls = plan.budget - plan.discoveryCalls
 
   const canRefresh = adapter.supports.includes('externalIds')
-  const cost = Math.max(1, config.callsPerRefresh[source] ?? 1)
+  const cost = (await refreshCost(env, source, config, row)).callsPerRefresh
+  plan.callsPerRefresh = cost
   const due = canRefresh
     ? (await env.db.query(
         `SELECT cs.external_id FROM creator_sources cs JOIN creators c ON c.id = cs.creator_id
@@ -264,7 +349,7 @@ async function planSource(env: AppEnv, source: SourceId, split: Split, config: S
   const ids = due.slice(0, Math.floor(plan.refreshCalls / cost))
   plan.refreshIds = ids.length
   // What refresh cannot use goes to discovery, and the other way round.
-  let discoveryLeft = plan.discoveryCalls + (plan.refreshCalls - ids.length * cost)
+  let discoveryLeft = plan.discoveryCalls + Math.floor(plan.refreshCalls - ids.length * cost)
 
   for (let i = 0; i < ids.length; i += config.idsPerJob) {
     const chunk = ids.slice(i, i + config.idsPerJob)
@@ -312,6 +397,37 @@ export async function runScheduler(
     jobs: sources.reduce((n, s) => n + s.refreshJobs.length + s.discoveryJobs.length, 0),
   })
   return state
+}
+
+/**
+ * Per source that can refresh: what the full daily budget buys, with the
+ * refresh share of the last plan (or the starting split before the first one).
+ */
+export async function refreshCoverageFor(env: AppEnv, config: SchedulerConfig = schedulerConfig()): Promise<RefreshCoverage[]> {
+  const last = await readSchedulerState(env)
+  const refreshShare = last?.split.refreshShare ?? config.startRefreshShare
+  const out: RefreshCoverage[] = []
+  for (const source of SOURCE_IDS) {
+    const adapter = env.getAdapter?.(source) ?? getAdapter(source)
+    if (!adapter?.supports.includes('externalIds')) continue
+    const row = (await env.db.query(
+      'SELECT enabled, quota, daily_budget_usd, traffic_scope, business_scope FROM ingest_sources WHERE id = $1',
+      [source],
+    )).rows[0]
+    if (!row || row.enabled === false) continue
+    const cost = await refreshCost(env, source, config, row)
+    if (!cost.knownCreators && source !== 'pugongying') continue
+    out.push(refreshCoverage({
+      source,
+      quota: Math.max(0, Number(row.quota ?? 0)),
+      budgetShare: config.budgetShare,
+      budgetUsd: dailyBudget(source, row.daily_budget_usd).usd,
+      pricePerCallUsd: refreshCallPriceUsd(source),
+      refreshShare,
+      ...cost,
+    }))
+  }
+  return out
 }
 
 export async function readSchedulerState(env: AppEnv): Promise<SchedulerState | null> {
