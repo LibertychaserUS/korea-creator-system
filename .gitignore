@@ -98,3 +98,5 @@ __pycache__/
 /e2e/**/*.md
 /libs/**/*.md
 /apps/**/*.md
+# Unpacked from docs-archive/ alongside the docs above.
+/MANIFEST.txt
