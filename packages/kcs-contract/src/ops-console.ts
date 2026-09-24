@@ -61,6 +61,29 @@ export type PipelineSourceView = {
   openDeadLetters: number
 }
 
+/**
+ * The paid gateway's account balance (TikHub `get_user_info`, a free call),
+ * checked daily and on demand. `daysLeft` = what is left ÷ the average daily
+ * spend over the last 7 days that had calls (conservative on quiet weeks).
+ */
+export type VendorBalanceView = {
+  vendor: 'tikhub'
+  checkedAt: string | null
+  /** `null` = never checked. */
+  ok: boolean | null
+  balanceUsd: number | null
+  freeCreditUsd: number | null
+  /** balance + free credit. */
+  availableUsd: number | null
+  /** `TIKHUB_BALANCE_ALERT_USD`, default 5. */
+  alertBelowUsd: number
+  low: boolean
+  avgDailyCostUsd: number | null
+  daysLeft: number | null
+  error: string | null
+  requestId: string | null
+}
+
 export type DevPipeline = {
   /** The default zone's quota day (`YYYY-MM-DD`); a source with its own `quota_tz` says so on its row. */
   day: string
@@ -70,6 +93,8 @@ export type DevPipeline = {
   resetsAt: string
   totals: { sources: number; jobs: number; review: number; released: number }
   sources: PipelineSourceView[]
+  /** `null` when 蒲公英 does not go through TikHub (or has no key). */
+  balance: VendorBalanceView | null
 }
 
 export type AuditEntryView = AuditLogView & { actorName: string | null; actorEmail: string | null }

@@ -6,6 +6,7 @@ import { pipelineReport } from '../src/routes/dev-console'
 import { processJob } from '../src/ingest/worker'
 import { dailyBudget, vendorPriceOverrides } from '../src/ingest/meter'
 import { sourceScope } from '../src/ingest/scope'
+import { checkVendorBalance } from '../src/ingest/balance'
 import { createTestApp, type TestCtx } from './helpers'
 import { recordingMeter } from './meter-stub'
 
@@ -465,5 +466,77 @@ describe('fetch scope (蒲公英 business / advertise_switch)', () => {
       traffic: 'all', business: 'daily', from: { traffic: 'default', business: 'default' },
     })
     await expect(context.db.query("UPDATE ingest_sources SET traffic_scope = 'paid' WHERE id = 'pugongying'")).rejects.toThrow()
+  })
+})
+
+describe('TikHub balance monitor', () => {
+  async function balanceSetup() {
+    const context = await setup()
+    process.env.PGY_ACCESS_TOKEN = ''
+    process.env.TIKHUB_API_KEY = 'th-key'
+    delete process.env.TIKHUB_BALANCE_ALERT_USD
+    await context.db.query('DELETE FROM vendor_balance_checks')
+    await context.db.query("DELETE FROM ingest_source_usage WHERE source = 'pugongying'")
+    return context
+  }
+  const bearer = async (context: TestCtx, email: string) => ({ authorization: `Bearer ${(await context.loginJson(email)).token}` })
+
+  it('reads the free account endpoint once a day, estimates days left, and warns under $5', async () => {
+    const context = await balanceSetup()
+    // Two days of spend at $1 each → $1 a day.
+    await context.db.query(
+      `INSERT INTO ingest_source_usage (source, day, calls, cost_micros) VALUES
+         ('pugongying', (now() AT TIME ZONE 'Asia/Shanghai')::date - 1, 50, 1000000),
+         ('pugongying', (now() AT TIME ZONE 'Asia/Shanghai')::date, 50, 1000000)`,
+    )
+    const sent = stubVendor((path) => path.endsWith('/api/v1/tikhub/user/get_user_info')
+      ? { body: { code: 200, request_id: 'req-bal', data: { user_data: { balance: 3.5, free_credit: 0.5, email: 'x@y' } } } }
+      : { status: 404 })
+    const result = await checkVendorBalance(context.env)
+    expect(result).toMatchObject({ ok: true, balanceUsd: 3.5, freeCreditUsd: 0.5, low: true, requestId: 'req-bal' })
+    expect(sent).toEqual([{ path: '/api/v1/tikhub/user/get_user_info', body: {} }])
+    // Free: nothing reserved against the quota or the budget.
+    expect(await usage(context)).toMatchObject({ calls: 50, requests: 0 })
+
+    const view = (await pipelineReport(context.env)).balance!
+    expect(view).toMatchObject({ vendor: 'tikhub', ok: true, availableUsd: 4, alertBelowUsd: 5, low: true, avgDailyCostUsd: 1, daysLeft: 4, requestId: 'req-bal' })
+    const logged = await context.db.query("SELECT actor_id, summary FROM audit_logs WHERE action = 'vendor.balance_low'")
+    expect(logged.rows).toEqual([{ actor_id: null, summary: 'TikHub balance $4.00 < $5' }])
+
+    const health = await (await context.app.request('/api/dev/health', { headers: await bearer(context, 'devops@kcs.local') })).json()
+    expect(health.vendorBalance).toMatchObject({ low: true, daysLeft: 4 })
+
+    process.env.TIKHUB_BALANCE_ALERT_USD = '2'
+    expect((await pipelineReport(context.env)).balance).toMatchObject({ low: false, alertBelowUsd: 2 })
+  })
+
+  it('a failed check is recorded and shown, and the last good balance stays on screen', async () => {
+    const context = await balanceSetup()
+    stubVendor(() => ({ body: { code: 200, request_id: 'r1', data: { user_data: { balance: 40 } } } }))
+    await checkVendorBalance(context.env)
+    stubVendor(() => ({ status: 401, body: { detail: 'Invalid API key', request_id: 'r2' } }))
+    expect(await checkVendorBalance(context.env)).toMatchObject({ ok: false })
+    const view = (await pipelineReport(context.env)).balance!
+    expect(view).toMatchObject({ ok: false, availableUsd: 40, low: false, daysLeft: null })
+    expect(view.error).toMatch(/401/)
+    expect(view.error).not.toContain('th-key')
+  })
+
+  it('checks on demand for dev.retry only; not TikHub → nothing is sent and nothing is shown', async () => {
+    const context = await balanceSetup()
+    stubVendor(() => ({ body: { code: 200, request_id: 'r', data: { user_data: { balance: 12 } } } }))
+    const forbidden = await context.app.request('/api/dev/vendor-balance/check', { method: 'POST', headers: await bearer(context, 'ops@kcs.local') })
+    expect(forbidden.status).toBe(403)
+    const checked = await context.app.request('/api/dev/vendor-balance/check', { method: 'POST', headers: await bearer(context, 'devops@kcs.local') })
+    expect(checked.status).toBe(200)
+    expect(await checked.json()).toMatchObject({ ok: true, balance: { availableUsd: 12, low: false } })
+
+    process.env.TIKHUB_API_KEY = ''
+    const sent = stubVendor(() => ({ body: {} }))
+    expect(await checkVendorBalance(context.env)).toEqual({ skipped: 'not_tikhub' })
+    expect(sent).toHaveLength(0)
+    expect((await pipelineReport(context.env)).balance).toBeNull()
+    const skipped = await context.app.request('/api/dev/vendor-balance/check', { method: 'POST', headers: await bearer(context, 'devops@kcs.local') })
+    expect(skipped.status).toBe(409)
   })
 })

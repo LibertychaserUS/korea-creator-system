@@ -13,6 +13,7 @@ import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 import { camelDeadLetters, scrub } from '../ingest/dead-letters'
 import { retryJob } from '../ingest/jobs'
+import { checkVendorBalance, vendorBalanceView } from '../ingest/balance'
 import { pausedSources, resumeSource } from '../ingest/pause'
 import { enqueueIngestJob, replayRecord } from '../ingest/worker'
 
@@ -57,6 +58,7 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     return context.json({
       ok: true,
       pausedSources: await pausedSources(env),
+      vendorBalance: await vendorBalanceView(env),
       jobs: jobs.rows,
       sourcesEnabled: sources.rows[0].enabled,
       jobCount: Number(total.rows[0].n),
@@ -81,6 +83,15 @@ export function registerDevRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (!exists.rowCount) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     const resumed = await resumeSource(env, id, user!.id)
     return context.json({ id, resumed, pausedSources: await pausedSources(env) })
+  })
+
+  app.post('/api/dev/vendor-balance/check', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'dev.retry')
+    if (denied) return denied
+    const result = await checkVendorBalance(env)
+    if ('skipped' in result) return jsonError(context, 409, 'NOT-TIKHUB', 'not_tikhub')
+    await audit(env.db, user!.id, 'vendor.balance_checked', 'vendor', 'tikhub', result.ok ? 'ok' : result.error)
+    return context.json({ ok: result.ok, balance: await vendorBalanceView(env) })
   })
 
   app.get('/api/dev/jobs', async (context) => {

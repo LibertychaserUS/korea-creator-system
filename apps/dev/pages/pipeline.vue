@@ -23,6 +23,37 @@
       {{ t('kcs.console.pipeline.resets', { time: formatDateTime(report.resetsAt) }) }}
     </p>
 
+    <Card v-if="report?.balance" class="gap-0 border-border/60 py-0 shadow-xs" data-testid="pipeline-balance" :data-low="report.balance.low ? '1' : '0'">
+      <div class="flex flex-wrap items-start justify-between gap-3 px-4 py-3.5">
+        <div class="min-w-0 space-y-1">
+          <h2 class="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+            <Wallet class="size-4 text-primary" aria-hidden="true" />
+            {{ t('kcs.console.balance.title') }}
+            <Badge v-if="report.balance.low" variant="destructive">{{ t('kcs.console.balance.alertBelow', { amount: usd(report.balance.alertBelowUsd) }) }}</Badge>
+          </h2>
+          <p v-if="report.balance.availableUsd != null" class="text-sm tabular-nums">
+            <span class="text-xs text-muted-foreground">{{ t('kcs.console.balance.available') }}</span>
+            <span class="ml-2 text-lg font-semibold" :class="report.balance.low ? 'text-destructive' : 'text-foreground'" data-testid="pipeline-balance-amount">{{ usd(report.balance.availableUsd) }}</span>
+            <span v-if="report.balance.freeCreditUsd" class="ml-2 text-[11px] text-muted-foreground">{{ t('kcs.console.balance.freeCredit', { amount: usd(report.balance.freeCreditUsd) }) }}</span>
+          </p>
+          <p v-else-if="!report.balance.checkedAt" class="text-xs text-muted-foreground">{{ t('kcs.console.balance.never') }}</p>
+          <p class="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-muted-foreground">
+            <span v-if="report.balance.daysLeft != null" class="font-medium text-foreground" data-testid="pipeline-balance-days">{{ t('kcs.console.balance.daysLeft', { n: formatNumber(report.balance.daysLeft) }) }}</span>
+            <span v-else-if="report.balance.availableUsd != null">{{ t('kcs.console.balance.daysUnknown') }}</span>
+            <span v-if="report.balance.avgDailyCostUsd != null">{{ t('kcs.console.balance.avgDaily', { amount: usd(report.balance.avgDailyCostUsd) }) }}</span>
+            <span v-if="!report.balance.low">{{ t('kcs.console.balance.alertBelow', { amount: usd(report.balance.alertBelowUsd) }) }}</span>
+            <span v-if="report.balance.checkedAt">{{ t('kcs.console.balance.checkedAt', { time: formatDateTime(report.balance.checkedAt) }) }}</span>
+          </p>
+          <p v-if="report.balance.ok === false" class="text-[11px] text-destructive" data-testid="pipeline-balance-error">{{ t('kcs.console.balance.failed', { error: report.balance.error ?? '' }) }}</p>
+        </div>
+        <Button v-if="canRetry" variant="outline" size="sm" :disabled="checking" data-testid="btn-balance-check" @click="checkBalance">
+          <Loader2 v-if="checking" class="size-3.5 animate-spin" aria-hidden="true" />
+          <RefreshCw v-else class="size-3.5" aria-hidden="true" />
+          {{ t('kcs.console.balance.checkNow') }}
+        </Button>
+      </div>
+    </Card>
+
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="pipeline-sources">
       <template v-if="loading && !report">
         <Card v-for="i in 3" :key="`sk-${i}`" class="gap-3 border-border/60 p-4 shadow-xs">
@@ -168,15 +199,30 @@
 </template>
 
 <script setup lang="ts">
-import { BadgeCheck, Inbox, ListChecks, Plug, RefreshCw } from 'lucide-vue-next'
-import { API, SCREEN_TESTID, SOURCE_IDS, type DevPipeline, type PipelineSourceView } from '@kcs/contract'
+import { BadgeCheck, Inbox, ListChecks, Loader2, Plug, RefreshCw, Wallet } from 'lucide-vue-next'
+import { API, SCREEN_TESTID, SOURCE_IDS, can, type DevPipeline, type PipelineSourceView, type VendorBalanceView } from '@kcs/contract'
 
 const { t, te, locale } = useI18n()
 const { request } = useApi()
+const { user } = useSession()
 const { formatNumber, formatDateTime } = useFormat()
 
 const report = ref<DevPipeline | null>(null)
 const loading = ref(true)
+const checking = ref(false)
+const canRetry = computed(() => Boolean(user.value && can(user.value.role, 'dev.retry')))
+
+async function checkBalance() {
+  checking.value = true
+  try {
+    const result = await request<{ ok: boolean; balance: VendorBalanceView | null }>(API.devVendorBalanceCheck.path, { method: 'POST' })
+    if (report.value) report.value = { ...report.value, balance: result.balance }
+  } catch {
+    await load()
+  } finally {
+    checking.value = false
+  }
+}
 
 const isSource = (id: unknown): id is (typeof SOURCE_IDS)[number] => typeof id === 'string' && (SOURCE_IDS as readonly string[]).includes(id)
 

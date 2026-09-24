@@ -14,6 +14,7 @@ import { validationError } from '../http/body'
 import { quotaDay, quotaTimeZone } from '../ingest/worker'
 import { dailyBudget } from '../ingest/meter'
 import { sourceScope } from '../ingest/scope'
+import { vendorBalanceView } from '../ingest/balance'
 import { auditLogView } from '../http/views'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -128,6 +129,7 @@ export async function pipelineReport(env: AppEnv): Promise<DevPipeline> {
     resetsAt: base.resetsAt.toISOString(),
     totals: totals.rows[0],
     sources: items,
+    balance: await vendorBalanceView(env),
   }
 }
 

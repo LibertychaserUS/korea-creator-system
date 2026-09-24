@@ -40,6 +40,25 @@
       </Button>
     </Card>
 
+    <Card
+      v-if="health.vendorBalance?.low"
+      role="alert"
+      class="gap-2 border-amber-500/40 bg-amber-500/5 p-4 shadow-xs"
+      data-testid="balance-low"
+    >
+      <div class="flex min-w-0 gap-3">
+        <Wallet class="mt-0.5 size-5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+        <div class="min-w-0 space-y-1">
+          <h2 class="text-sm font-semibold text-foreground">{{ t('kcs.console.balance.low', { amount: usd(health.vendorBalance.availableUsd) }) }}</h2>
+          <p class="text-xs text-muted-foreground">
+            {{ health.vendorBalance.daysLeft != null
+              ? t('kcs.console.balance.lowHint', { line: usd(health.vendorBalance.alertBelowUsd), days: formatNumber(health.vendorBalance.daysLeft) })
+              : t('kcs.console.balance.lowHintNoDays', { line: usd(health.vendorBalance.alertBelowUsd) }) }}
+          </p>
+        </div>
+      </div>
+    </Card>
+
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <KpiTile :label="t('kcs.console.health.database')" :icon="Database" :tone="health.ok ? 'moss' : 'coral'" testid="tile-sql">
         <span class="flex items-center gap-2 text-xl md:text-2xl">
@@ -238,7 +257,7 @@
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, Database, Inbox, ListChecks, Loader2, PauseCircle, PlayCircle, Plug, RefreshCw, RotateCcw } from 'lucide-vue-next'
+import { AlertTriangle, Database, Inbox, ListChecks, Loader2, PauseCircle, PlayCircle, Plug, RefreshCw, RotateCcw, Wallet } from 'lucide-vue-next'
 import { API, apiPath, DEAD_LETTER_MAX_REPLAYS, SOURCE_IDS, can } from '@kcs/contract'
 
 const MAX_REPLAYS = DEAD_LETTER_MAX_REPLAYS
@@ -253,6 +272,10 @@ function reason(code: string | null | undefined): string {
 const { request } = useApi()
 const { user } = useSession()
 const { formatNumber } = useFormat()
+
+function usd(value: number | null | undefined): string {
+  return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value ?? 0))
+}
 
 const health = ref<any>({ jobs: [], sourcesEnabled: 0, ok: false, jobCount: 0 })
 const jobs = ref<any[]>([])

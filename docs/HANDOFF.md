@@ -68,6 +68,7 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `KCS_CAPACITY_INDEX_OVERHEAD` | 最坏情况里的索引开销比例，缺省用 `creator_raw` 实测的索引 ÷ 表 |
 | `TIKHUB_API_KEY` | 蒲公英经 TikHub（默认网关）的 API key，请求头 `Authorization: Bearer`。设了它就算已接入 |
 | `TIKHUB_BASE_URL` | TikHub 地址，默认 `https://api.tikhub.io`；国内网络用 `https://api.tikhub.dev` |
+| `TIKHUB_BALANCE_ALERT_USD` | TikHub 可用余额低于多少美元时在运维端首页提醒并写审计，默认 5；余额每天查一次（免费接口） |
 | `PGY_ACCESS_TOKEN` | JustOneAPI / 官方开放平台的 token。兼容旧写法：没有 `TIKHUB_API_KEY` 且 `PGY_GATEWAY=tikhub`（或不设）时当作 TikHub key，数据源页注明「沿用旧的接入设置」 |
 | `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official`；写错按 `tikhub` |
 | `PGY_BASE_URL` | JustOneAPI / 官方的地址（旧部署里 TikHub 也认它，`TIKHUB_BASE_URL` 优先） |
