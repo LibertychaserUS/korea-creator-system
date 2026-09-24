@@ -43,6 +43,11 @@ export type FetchContext = {
   meter?: CallMeter
   /** The source's configured scope; adapters without scope switches ignore it. */
   scope?: SourceScope | null
+  /**
+   * The latest stored payload for a creator, given on scheduled refreshes only: a
+   * slow-changing section fetched recently is carried over instead of paid for again.
+   */
+  previous?: (externalId: string) => Promise<{ payload: Record<string, unknown>; fetchedAt: string } | null>
 }
 
 export const METER_STOP_REASONS = ['quota', 'budget', 'paused', 'stopping'] as const

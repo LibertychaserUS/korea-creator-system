@@ -18,7 +18,8 @@
  * responses merged under `dataSummary` / `fansSummary` / `notesRate` /
  * `fansProfile` when enrichment ran. Enrichment costs 4 extra billed calls per
  * creator on paid gateways, so it is on for `externalIds` refreshes and opt-in
- * (`PGY_ENRICH=1`) for searches.
+ * (`PGY_ENRICH=1`) for searches: a search page is 1 call by default. Scheduled
+ * refreshes carry the two slow sections over for a month (3 calls a round).
  *
  * Gateway is chosen by `PGY_GATEWAY` (official | tikhub | justoneapi); every
  * gateway answers with the same `data` object so normalize() is shared.
@@ -338,6 +339,34 @@ export function resolveGateway(context?: FetchContext): ResolvedGateway | null {
 const SECTIONS = ['dataSummary', 'fansSummary', 'notesRate', 'fansProfile'] as const
 type Section = (typeof SECTIONS)[number]
 
+/**
+ * Fan facts (粉丝概览: fan quality shares; 粉丝画像: demographics) move slowly.
+ * A scheduled refresh reuses them while they are younger than
+ * `PGY_SLOW_REFRESH_DAYS` (default 30), so a round costs 3 calls (资料 +
+ * 数据概览 + 笔记表现) and the other 2 once a month.
+ */
+const SLOW_SECTIONS: readonly Section[] = ['fansSummary', 'fansProfile']
+
+export function slowRefreshDays(source: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(source.PGY_SLOW_REFRESH_DAYS)
+  return source.PGY_SLOW_REFRESH_DAYS != null && source.PGY_SLOW_REFRESH_DAYS !== '' && Number.isFinite(n) && n >= 0 ? n : 30
+}
+
+type Previous = { payload: Json; fetchedAt: string } | null
+
+/** A slow section from the previous payload that is still fresh enough to keep, with when it was fetched. */
+function carried(previous: Previous, section: Section, now: number): { data: unknown; at: string } | null {
+  if (!previous || !SLOW_SECTIONS.includes(section)) return null
+  const data = previous.payload[section]
+  if (data == null) return null
+  const missed = [previous.payload.kcsEmpty, (previous.payload.kcsIssues as Json[] | undefined)?.map((issue) => issue.section)]
+  if (missed.some((list) => Array.isArray(list) && list.includes(section))) return null
+  const stamps = previous.payload.kcsSectionsAt as Record<string, unknown> | undefined
+  const at = typeof stamps?.[section] === 'string' ? (stamps[section] as string) : previous.fetchedAt
+  const age = now - Date.parse(at)
+  return Number.isFinite(age) && age >= 0 && age < slowRefreshDays() * 86_400_000 ? { data, at } : null
+}
+
 function note(kind: VendorNote['kind'], endpoint: string, externalId: string | null, reply: Partial<Reply> & { code?: string | null; message?: string | null }): VendorNote {
   return { kind, endpoint, externalId, code: reply.code ?? null, message: reply.message ?? null, requestId: reply.requestId ?? null }
 }
@@ -349,6 +378,8 @@ function note(kind: VendorNote['kind'], endpoint: string, externalId: string | n
  * warnings on the creator and as notes on the job. Anything else (timeout,
  * 429, 5xx, the meter) ends the page here, so the creator is fetched again
  * whole on the next run rather than stored with a hole nobody sees.
+ * `kcsSectionsAt` says when each section was fetched; `kcsCarried` lists the
+ * ones taken over from `previous` rather than fetched this time.
  */
 async function enrich(
   resolved: ResolvedGateway,
@@ -356,6 +387,7 @@ async function enrich(
   window: SourceQuery['window'],
   base: Json,
   notes: VendorNote[],
+  previous: Previous = null,
 ): Promise<Json> {
   const { gateway, scope } = resolved
   const dateType = dateTypeFor(resolved.name, window)
@@ -370,9 +402,20 @@ async function enrich(
   const out: Json = { ...base, kcsWindow: window, kcsDateType: dateType, kcsScope: { ...scope } }
   const empty: Section[] = []
   const issues: Json[] = []
+  const sectionsAt: Partial<Record<Section, string>> = {}
+  const carriedOver: Section[] = []
+  const now = Date.now()
   for (const section of SECTIONS) {
+    const kept = carried(previous, section, now)
+    if (kept) {
+      out[section] = kept.data
+      sectionsAt[section] = kept.at
+      carriedOver.push(section)
+      continue
+    }
     try {
       const reply = await request[section]()
+      sectionsAt[section] = new Date().toISOString()
       out[section] = reply.data
       if (reply.empty) {
         empty.push(section)
@@ -387,6 +430,8 @@ async function enrich(
   }
   if (empty.length) out.kcsEmpty = empty
   if (issues.length) out.kcsIssues = issues
+  out.kcsSectionsAt = sectionsAt
+  if (carriedOver.length) out.kcsCarried = carriedOver
   return out
 }
 
@@ -417,7 +462,7 @@ function interrupted(records: RawRecord[], notes: VendorNote[], nextCursor: stri
   }
 }
 
-async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise<AdapterPage> {
+async function fetchPage(query: SourceQuery, resolved: ResolvedGateway, context?: FetchContext): Promise<AdapterPage> {
   const { gateway } = resolved
   const fetchedAt = new Date().toISOString()
   const at = parsePgyCursor(query.cursor)
@@ -442,7 +487,8 @@ async function fetchPage(query: SourceQuery, resolved: ResolvedGateway): Promise
           notes.push(note('empty', 'detail', userId, detail))
           continue
         }
-        records.push(toRecord(await enrich(resolved, userId, query.window, detail.data, notes), fetchedAt))
+        const previous = context?.previous ? await context.previous(userId) : null
+        records.push(toRecord(await enrich(resolved, userId, query.window, detail.data, notes, previous as Previous), fetchedAt))
       } catch (error) {
         return interrupted(records, notes, `@${i}`, error)
       }
@@ -792,7 +838,7 @@ export const pugongyingAdapter: SourceAdapter = {
       const page = fixturePage('pugongying', new URL('./fixtures/pugongying.json', import.meta.url), query)
       return filterFixturePage(page, query, normalizePugongying)
     }
-    return fetchPage(query, resolved)
+    return fetchPage(query, resolved, context)
   },
   normalize: normalizePugongying,
 }

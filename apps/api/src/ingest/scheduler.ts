@@ -41,7 +41,11 @@ export type SchedulerConfig = {
   discoveryWindowDays: number
   /** Ids per refresh job (one page). */
   idsPerJob: number
-  /** Vendor calls one refreshed creator costs (蒲公英: detail + 4 data calls). */
+  /**
+   * Vendor calls one refreshed creator costs per round. 蒲公英: 资料 + 数据概览 +
+   * 笔记表现; the two slow sections come along once a month (`PGY_SLOW_REFRESH_DAYS`),
+   * and the meter holds the real quota and budget either way.
+   */
   callsPerRefresh: Record<SourceId, number>
   samples: number
   refresh: RefreshModelConfig
@@ -65,7 +69,7 @@ export function schedulerConfig(source: NodeJS.ProcessEnv = process.env): Schedu
     refreshWindowDays: 30,
     discoveryWindowDays: 60,
     idsPerJob: 20,
-    callsPerRefresh: { pugongying: 5, qiangua: 1, xinhong: 1 },
+    callsPerRefresh: { pugongying: 3, qiangua: 1, xinhong: 1 },
     samples: 4000,
     refresh: refreshModelConfig(source),
   }

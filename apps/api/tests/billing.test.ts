@@ -540,3 +540,85 @@ describe('TikHub balance monitor', () => {
     expect(skipped.status).toBe(409)
   })
 })
+
+describe('refresh tiers (蒲公英)', () => {
+  it('a scheduled refresh costs 3 calls: the slow fan sections are carried over for a month; a manual refresh fetches all 5', async () => {
+    const context = await setup()
+    delete process.env.PGY_SLOW_REFRESH_DAYS
+    let profileEmpty = false
+    const sent = stubVendor((path, body) => {
+      if (path.endsWith('get_blogger_detail')) return tikhubOk(DETAIL(String(body.user_id)))
+      if (path.endsWith('get_blogger_fans_summary')) return tikhubOk({ fansNum: 12000, readFansRate: '30.0', activeFansRate: '70.0' })
+      if (path.endsWith('get_blogger_fans_profile')) return tikhubOk(profileEmpty ? {} : { gender: { female: 0.8 } })
+      return tikhubOk({ noteNumber: 3, readMedian: 900 })
+    })
+    const endpoints = () => sent.map((c) => c.path.split('/').at(-1))
+    const run = async (schedule: 'manual' | 'refresh') => {
+      const job = await refreshJob(context, ['t1'])
+      if (schedule === 'refresh') await context.db.query("UPDATE ingest_jobs SET schedule = 'refresh' WHERE id = $1", [job.id])
+      sent.length = 0
+      const done = await processJob(context.env, job.id)
+      expect(done).toMatchObject({ status: 'ok', failedCount: 0 })
+      expect(done.writtenCount + done.skippedDupes).toBe(1)
+      const { rows } = await context.db.query(
+        `SELECT COALESCE(r.payload, p.payload) AS payload FROM creator_raw r LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
+          WHERE r.external_id = 't1' ORDER BY r.fetched_at DESC, r.id DESC LIMIT 1`,
+      )
+      return rows[0].payload
+    }
+
+    const first = await run('manual')
+    expect(endpoints()).toEqual(['get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_fans_summary', 'get_blogger_notes_rate', 'get_blogger_fans_profile'])
+    expect(Object.keys(first.kcsSectionsAt).sort()).toEqual(['dataSummary', 'fansProfile', 'fansSummary', 'notesRate'])
+
+    const second = await run('refresh')
+    expect(endpoints()).toEqual(['get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_notes_rate'])
+    expect(second.kcsCarried).toEqual(['fansSummary', 'fansProfile'])
+    expect(second.kcsSectionsAt.fansSummary).toBe(first.kcsSectionsAt.fansSummary)
+    const { rows } = await context.db.query("SELECT metrics FROM creators WHERE creator_key LIKE '%:t1'")
+    expect(rows[0].metrics.readFanRatio).toBeCloseTo(0.3, 6)
+    expect(rows[0].metrics.audience.femaleRatio).toBe(0.8)
+
+    // Too old (here: any age) → fetched again.
+    process.env.PGY_SLOW_REFRESH_DAYS = '0'
+    const third = await run('refresh')
+    expect(endpoints()).toHaveLength(5)
+    expect(third.kcsCarried).toBeUndefined()
+
+    // A person asking for a refresh gets everything fresh.
+    delete process.env.PGY_SLOW_REFRESH_DAYS
+    await run('manual')
+    expect(endpoints()).toHaveLength(5)
+
+    // A section that came back empty last time is asked for again, not carried.
+    profileEmpty = true
+    expect((await run('manual')).kcsEmpty).toEqual(['fansProfile'])
+    profileEmpty = false
+    const fifth = await run('refresh')
+    expect(endpoints()).toEqual(['get_blogger_detail', 'get_blogger_data_summary', 'get_blogger_notes_rate', 'get_blogger_fans_profile'])
+    expect(fifth.kcsCarried).toEqual(['fansSummary'])
+  })
+
+  it('a search page is one call unless PGY_ENRICH=1', async () => {
+    const context = await setup()
+    const sent = stubVendor((path) => path.endsWith('get_blogger_list')
+      ? tikhubOk({ kols: [DETAIL('s1'), DETAIL('s2')], total: 5000 })
+      : tikhubOk({ noteNumber: 3 }))
+    const token = (await context.loginJson('ops@kcs.local')).token
+    const search = async () => {
+      const response = await context.app.request('/api/ingest/fetch', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ source: 'pugongying', window: 30, keyword: '护肤', maxPages: 1 }),
+      })
+      const { job } = await response.json()
+      sent.length = 0
+      return processJob(context.env, job.id)
+    }
+    expect(await search()).toMatchObject({ status: 'ok', writtenCount: 2, quotaUsed: 1 })
+    expect(sent).toHaveLength(1)
+    process.env.PGY_ENRICH = '1'
+    expect(await search()).toMatchObject({ quotaUsed: 9 })
+    expect(sent).toHaveLength(9)
+  })
+})

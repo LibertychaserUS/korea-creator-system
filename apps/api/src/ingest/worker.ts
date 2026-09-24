@@ -190,7 +190,10 @@ export async function processJob(env: AppEnv, jobId: string, options: ProcessOpt
         })
       : null
     const scope = sourceScope(source, sourceRow.rows[0])
-    const context = meter || scope ? { meter: meter ?? undefined, scope: scope ? { traffic: scope.traffic, business: scope.business } : null } : undefined
+    const previous = claimed.rows[0].schedule === 'refresh' ? (externalId: string) => latestPayload(env, source, externalId) : undefined
+    const context = meter || scope || previous
+      ? { meter: meter ?? undefined, scope: scope ? { traffic: scope.traffic, business: scope.business } : null, previous }
+      : undefined
 
     const baseQuery = parseQuery(claimed.rows[0].query, source as SourceId)
     let cursor = claimed.rows[0].cursor ?? baseQuery.cursor ?? null
@@ -337,6 +340,20 @@ const LIMIT_SUMMARIES = {
   budget: 'daily source budget exhausted',
   paused: 'source paused',
 } as const
+
+/** The newest stored payload for one creator of a source (what a scheduled refresh may carry over). */
+async function latestPayload(env: AppEnv, source: string, externalId: string) {
+  const { rows } = await env.db.query(
+    `SELECT COALESCE(r.payload, p.payload) AS payload, r.fetched_at
+       FROM creator_raw r LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
+      WHERE r.source = $1 AND r.external_id = $2
+      ORDER BY r.fetched_at DESC, r.id DESC LIMIT 1`,
+    [source, externalId],
+  )
+  const row = rows[0]
+  if (!row?.payload || typeof row.payload !== 'object') return null
+  return { payload: row.payload as Record<string, unknown>, fetchedAt: new Date(row.fetched_at).toISOString() }
+}
 
 /**
  * Shutdown between pages: the run goes back to `queued` with its cursor and

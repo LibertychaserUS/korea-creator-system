@@ -73,6 +73,7 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 | `PGY_GATEWAY` | `tikhub`（默认）/ `justoneapi` / `official`；写错按 `tikhub` |
 | `PGY_BASE_URL` | JustOneAPI / 官方的地址（旧部署里 TikHub 也认它，`TIKHUB_BASE_URL` 优先） |
 | `PGY_BRAND_USER_ID` `PGY_ENRICH` `PGY_DATE_TYPES` | 可选：官方品牌账号、搜索结果是否逐个补全（每人多 4 次计费调用）、`dateType` 覆盖表 |
+| `PGY_SLOW_REFRESH_DAYS` | 调度刷新时粉丝概览 / 粉丝画像沿用上一次结果的天数，默认 30；`0` = 每次都取（每人 5 次调用） |
 | `PGY_TIMEOUT_MS` | 蒲公英单次调用超时，默认 60000（超时的调用记「可能已扣费」） |
 | `PGY_DAILY_BUDGET_USD` | 蒲公英每日金额上限（美元），优先于 `ingest_sources.daily_budget_usd`（默认 5）；`none` = 不限，只看次数 |
 | `QIANGUA_DAILY_BUDGET_USD` `XINHONG_DAILY_BUDGET_USD` | 同上，默认不限 |
