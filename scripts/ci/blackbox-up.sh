@@ -5,7 +5,8 @@
 #   2. identity schema (drizzle push) + the seed accounts (db:seed:auth, plus
 #      --stranger when the seed supports it)
 #   3. workspace app(s) as the TinyShip sign-in origin (production build)
-#   4. KCS API wired to the stand-in vendor that global-setup starts
+#   4. KCS API wired to the stand-in vendor that global-setup starts (千瓜-shaped
+#      and TikHub-shaped for 蒲公英; no real vendor is ever called)
 #
 # Same script in CI (.github/workflows/kcs.yml, job `blackbox`) and locally:
 #
@@ -21,6 +22,7 @@
 #   BLACKBOX_APP_NODE_ENV       runtime NODE_ENV of the apps (default production, see below)
 #   BLACKBOX_RUN_DIR            logs + pid files       (default $RUNNER_TEMP or /tmp, /kcs-blackbox)
 #   BETTER_AUTH_SECRET          shared by all apps     (default: a fixed test-only value)
+#   BLACKBOX_PGY_TIMEOUT_MS     蒲公英 call timeout     (default 1500, so the slow-vendor case times out fast)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -168,6 +170,10 @@ start_bg api env \
   KCS_SEED=demo \
   QIANGUA_BASE_URL="http://127.0.0.1:$BLACKBOX_VENDOR_PORT" \
   QIANGUA_TOKEN="$BLACKBOX_VENDOR_TOKEN" \
+  TIKHUB_API_KEY="$BLACKBOX_VENDOR_TOKEN" \
+  TIKHUB_BASE_URL="http://127.0.0.1:$BLACKBOX_VENDOR_PORT" \
+  PGY_GATEWAY=tikhub \
+  PGY_TIMEOUT_MS="${BLACKBOX_PGY_TIMEOUT_MS:-1500}" \
   bash -c 'cd apps/api && exec node --import tsx src/index.ts'
 
 for app in $BLACKBOX_APPS; do

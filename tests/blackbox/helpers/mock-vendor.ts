@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http'
+import { handleTikhub, resetTikhub } from './mock-tikhub'
 
 /**
  * A stand-in for a paid vendor (千瓜-shaped: POST JSON in, `{ data: [...], next_cursor }` out).
@@ -21,10 +22,12 @@ import { createServer, type Server } from 'node:http'
  *   anything else     1 page of 2 creators
  * Every keyword is namespaced by the caller so creators never collide across runs.
  *
+ * `/api/v1/…` is TikHub-shaped instead (蒲公英 relay, see ./mock-tikhub.ts).
+ *
  * `GET /__calls?keyword=…` returns the call log (for quota / rate assertions);
  * `POST /__reset` clears it.
  */
-export type VendorCall = { at: number; keyword: string; cursor: string | null; status: number }
+export type VendorCall = { at: number; keyword: string; cursor: string | null; status: number; path?: string; requestId?: string }
 
 export const VENDOR_PORT = Number(process.env.BLACKBOX_VENDOR_PORT || 7190)
 export const VENDOR_TOKEN = process.env.BLACKBOX_VENDOR_TOKEN || 'blackbox-vendor-token'
@@ -81,7 +84,12 @@ export function startMockVendor(port = VENDOR_PORT): Promise<Server> {
       calls.length = 0
       flakyCounters.clear()
       growCounters.clear()
+      resetTikhub()
       res.end('{}')
+      return
+    }
+    if (url.pathname.startsWith('/api/v1/')) {
+      await handleTikhub(req, res, url, VENDOR_TOKEN, readBody, (call) => calls.push(call))
       return
     }
     if (req.method !== 'POST') {

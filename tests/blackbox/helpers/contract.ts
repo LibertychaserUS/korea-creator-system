@@ -78,6 +78,8 @@ export const PATHS = {
   devDeadLetters: '/api/dev/dead-letters',
   devDeadLetter: (id: string) => `/api/dev/dead-letters/${id}`,
   devDeadLetterReplay: (id: string) => `/api/dev/dead-letters/${id}/replay`,
+  devPipeline: '/api/dev/pipeline',
+  devSourceResume: (id: string) => `/api/dev/sources/${id}/resume`,
   devDeadLetterDismiss: (id: string) => `/api/dev/dead-letters/${id}/dismiss`,
   assetsPresign: '/api/assets/presign',
   assets: '/api/assets',

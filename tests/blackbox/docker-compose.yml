@@ -42,6 +42,11 @@ services:
       # 千瓜 adapter → the stand-in vendor that the black-box global setup runs on the host (:7190).
       QIANGUA_BASE_URL: http://host.docker.internal:7190
       QIANGUA_TOKEN: blackbox-vendor-token
+      # 蒲公英 via TikHub → the same stand-in (TikHub-shaped routes under /api/v1/).
+      TIKHUB_API_KEY: blackbox-vendor-token
+      TIKHUB_BASE_URL: http://host.docker.internal:7190
+      PGY_GATEWAY: tikhub
+      PGY_TIMEOUT_MS: '1500'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     ports:
