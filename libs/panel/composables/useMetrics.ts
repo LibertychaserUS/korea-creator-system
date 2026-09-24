@@ -48,10 +48,13 @@ export function useMetrics() {
       case 'top10':
         return 'text-primary font-semibold'
       case 'top25':
+      case 'front':
         return 'text-primary'
       case 'upper':
+      case 'middle':
         return 'text-foreground'
       case 'lower':
+      case 'back':
         return 'text-muted-foreground'
       case 'bottom':
         return 'text-amber-700 dark:text-amber-300'
@@ -65,10 +68,13 @@ export function useMetrics() {
       case 'top10':
         return 'bg-primary'
       case 'top25':
+      case 'front':
         return 'bg-primary/60'
       case 'upper':
+      case 'middle':
         return 'bg-foreground/40'
       case 'lower':
+      case 'back':
         return 'bg-muted-foreground/40'
       case 'bottom':
         return 'bg-amber-500'
@@ -83,8 +89,9 @@ export function useMetrics() {
 
   const groups: MetricGroup[] = ['scale', 'reach', 'cost', 'conversion', 'potential', 'trust']
 
+  /** Hidden fields (no trustworthy definition yet) stay out of every list. */
   function fieldsIn(group: MetricGroup) {
-    return METRIC_FIELDS.filter((f) => f.group === group)
+    return METRIC_FIELDS.filter((f) => f.group === group && !f.hidden)
   }
 
   return { label, help, groupLabel, format, bandClass, bandDot, bandLabel, groups, fieldsIn, fields: METRIC_FIELDS }

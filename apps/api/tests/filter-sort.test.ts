@@ -9,9 +9,9 @@ describe('select pool metric filters and sort', () => {
     ctx = await createTestApp()
     const ops = await ctx.loginJson('ops@kcs.local')
     for (const person of [
-      { displayName: '指标甲', followers: 200_000, cpe: 4.2, health: 'normal', source: 'pugongying' },
-      { displayName: '指标乙', followers: 30_000, cpe: 1.8, health: 'excellent', source: 'qiangua' },
-      { displayName: '指标丙', followers: 3_000, cpe: 2.7, health: 'excellent', source: 'xinhong' },
+      { displayName: '指标甲', followers: 200_000, cpe: 4.2, health: 'abnormal', source: 'pugongying' },
+      { displayName: '指标乙', followers: 30_000, cpe: 1.8, health: 'healthy', source: 'qiangua' },
+      { displayName: '指标丙', followers: 3_000, cpe: 2.7, health: 'healthy', source: 'xinhong' },
     ]) {
       const created = await ctx.app.request('/api/ops/creators', {
         method: 'POST',
@@ -57,7 +57,7 @@ describe('select pool metric filters and sort', () => {
     expect(result.map((row: { displayName: string }) => row.displayName)).toEqual(['指标乙', '指标丙', '指标甲'])
     expect(result[0]).not.toHaveProperty('grade')
     expect(result[0]).not.toHaveProperty('final')
-    expect(result[0]).toMatchObject({ source: 'qiangua', tier: 'junior', health: 'excellent' })
+    expect(result[0]).toMatchObject({ source: 'qiangua', tier: 'junior', health: 'healthy' })
   })
 
   it('sorts any numeric metric and supports order', async () => {
@@ -66,7 +66,7 @@ describe('select pool metric filters and sort', () => {
   })
 
   it('filters tier, health, source and metric bounds with AND semantics', async () => {
-    const result = await rows('&tier=junior&health=excellent&source=qiangua&cpeMax=2')
+    const result = await rows('&tier=junior&health=healthy&source=qiangua&cpeMax=2')
     expect(result.map((row: { displayName: string }) => row.displayName)).toEqual(['指标乙'])
   })
 

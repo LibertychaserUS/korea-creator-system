@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   CREATOR_STAGES,
-  deriveMetrics,
-  emptyMetrics,
+  normalizeMetrics,
   parsePaging,
   type CreatorStage,
   type Permission,
@@ -156,12 +155,11 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     if (rejected) return rejected
     const id = randomUUID()
     const key = body.creatorKey || `ck_${id.slice(0, 8)}`
-    const metrics = deriveMetrics({
-      ...emptyMetrics(body.metrics?.window === 90 ? 90 : 30),
+    // A manual quote is folded in on read (`metricsFromRow`), where its currency is checked.
+    const metrics = normalizeMetrics({
       ...(body.metrics && typeof body.metrics === 'object' ? body.metrics : {}),
       followers: body.metrics?.followers ?? body.followers ?? null,
-      priceImage: body.metrics?.priceImage ?? body.price?.amountMin ?? null,
-    })
+    }, body.source ?? null)
     await env.db.query(
       `INSERT INTO creators
         (id, creator_key, display_name, status, needs_review, followers, followers_unknown, regions, verticals,
@@ -217,7 +215,7 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     const rejected = await checkCategories(context, body.categories)
     if (rejected) return rejected
     const metrics = body.metrics && typeof body.metrics === 'object'
-      ? deriveMetrics({ ...emptyMetrics(body.metrics.window === 90 ? 90 : 30), ...body.metrics })
+      ? normalizeMetrics(body.metrics, null)
       : null
     const updated = await env.db.query(
       `UPDATE creators SET

@@ -13,6 +13,12 @@
  */
 import {
   CREATOR_TIERS,
+  COST_METRIC_KEYS,
+  CURRENCIES,
+  currencyExponent,
+  withServiceFee,
+  normalizeCurrency,
+  normalizeHealth,
   METRIC_KEYS,
   RANKED_METRIC_KEYS,
   directedPercentileTenths,
@@ -67,6 +73,8 @@ export function tierSql(followers: string): string {
 }
 
 const TIER = tierSql(metricSql('followers'))
+const EXPONENT_SQL = `(CASE pr.currency ${CURRENCIES.map((code) => `WHEN '${code}' THEN ${10 ** currencyExponent(code)}`).join(' ')} ELSE 100 END)`
+const TO_CNY_SQL = `(CASE WHEN pr.currency = 'CNY' THEN 1 ELSE pr.fx_to_cny END)`
 const HEALTH = `(c.metrics_locked->>'health')`
 
 class Params {
@@ -181,7 +189,7 @@ export async function withPercentiles<T extends Record<string, any>>(
         const equal = firstIndex(sorted, (v) => v > value) - below
         const tenths = directedPercentileTenths(key, below, equal, sorted.length)
         if (tenths == null) return
-        percentiles[key] = { percentile: tenths / 10, band: bandOf(tenths / 10) }
+        percentiles[key] = { percentile: tenths / 10, band: bandOf(tenths / 10, sorted.length), n: sorted.length }
       })
     }
     return {
@@ -217,9 +225,10 @@ function rankedCte(keys: readonly NumericMetricKey[]): string {
     const below = `(rank() OVER (${cohort} ORDER BY m${i}) - 1)`
     const equal = `count(*) OVER (${cohort}, m${i})`
     const n = `count(m${i}) OVER (${cohort})`
-    const tenths = `((1000 * (2 * ${below} + ${equal}) + ${n}) / (2 * ${n}))`
-    const low = metricField(key).better === 'low'
-    return `CASE WHEN m${i} IS NULL OR ${n} < 2 THEN NULL ELSE ${low ? `1000 - ${tenths}` : tenths} END AS p${i}`
+    // Low-is-better counts the worse (higher) values, then rounds the same way.
+    const worse = metricField(key).better === 'low' ? `(${n} - ${below} - ${equal})` : below
+    const tenths = `((1000 * (2 * ${worse} + ${equal}) + ${n}) / (2 * ${n}))`
+    return `CASE WHEN m${i} IS NULL OR ${n} < 2 THEN NULL ELSE ${tenths} END AS p${i}`
   })
   return `ranked AS (
     SELECT id ${cols.length ? `, ${cols.join(', ')}` : ''}
@@ -290,13 +299,17 @@ export async function poolPage(db: Db, query: Record<string, string | undefined>
   if (query.priceMin || query.priceMax) {
     const min = query.priceMin ? numberParam(query.priceMin) : 0
     const max = query.priceMax ? numberParam(query.priceMax) : Number.MAX_SAFE_INTEGER
-    if (min == null || max == null) where.push('false')
+    const currency = query.currency ? normalizeCurrency(query.currency) : null
+    if (min == null || max == null || (query.currency && !currency)) where.push('false')
     else {
+      // With `currency`: that currency's own amounts. Without: 人民币, converting only
+      // quotes that carry a recorded rate — never comparing 원 with 元 as numbers.
+      const amount = (column: string) => `(pr.${column}::numeric / ${EXPONENT_SQL})${currency ? '' : ` * ${TO_CNY_SQL}`}`
       where.push(`EXISTS (
         SELECT 1 FROM (SELECT * FROM prices pr WHERE pr.creator_id = c.id LIMIT 1) pr
-         WHERE COALESCE(pr.amount_min, pr.amount_max, 0) <= ${params.add(max)}::float8
-           AND COALESCE(pr.amount_max, pr.amount_min, 0) >= ${params.add(min)}::float8
-           ${query.currency ? `AND pr.currency = ${params.add(query.currency)}` : ''})`)
+         WHERE ${currency ? `pr.currency = ${params.add(currency)}` : `${TO_CNY_SQL} IS NOT NULL`}
+           AND COALESCE(${amount('amount_min_minor')}, ${amount('amount_max_minor')}, 0) <= ${params.add(max)}::numeric
+           AND COALESCE(${amount('amount_max_minor')}, ${amount('amount_min_minor')}, 0) >= ${params.add(min)}::numeric)`)
     }
   }
   if (query.categories) {
@@ -315,7 +328,10 @@ export async function poolPage(db: Db, query: Record<string, string | undefined>
     where.push(n == null ? 'false' : `${COLLAB_COUNT} ${op} ${params.add(n)}::float8`)
   }
   if (query.tier) where.push(`${TIER} = ANY(${params.add(list(query.tier))}::text[])`)
-  if (query.health) where.push(`${HEALTH} = ANY(${params.add(list(query.health))}::text[])`)
+  if (query.health) {
+    const grades = list(query.health).map((grade) => normalizeHealth(grade, null, null).health ?? grade)
+    where.push(`${HEALTH} = ANY(${params.add(grades)}::text[])`)
+  }
   if (query.source) where.push(`c.source = ANY(${params.add(list(query.source))}::text[])`)
   if (query.region) {
     where.push(`EXISTS (SELECT 1 FROM unnest(c.regions) r, unnest(${params.add(list(query.region))}::text[]) w
@@ -396,13 +412,16 @@ export async function savedQueryPage(
       OR EXISTS (SELECT 1 FROM collaborations col WHERE col.creator_id = c.id AND col.brand = ANY(${brands}::text[])))`)
   }
   const ranked = [...new Set(spec.filters.filter((f) => f.op === 'percentileGte').map((f) => f.key))]
+  const fee = spec.serviceFee ?? 0
+  // Thresholds on cost fields are read with the chosen service fee added, as shown.
+  const valueSql = (key: NumericMetricKey) => (fee && COST_METRIC_KEYS.includes(key) ? `(${metricSql(key)} * ${1 + fee})` : metricSql(key))
   for (const f of spec.filters) {
     if (f.op === 'percentileGte') {
       where.push(`r.p${ranked.indexOf(f.key)}::float8 / 10 >= ${params.add(f.value)}::float8`)
     } else if (f.op === 'between') {
-      where.push(`${metricSql(f.key)} BETWEEN ${params.add(f.value[0])}::float8 AND ${params.add(f.value[1])}::float8`)
+      where.push(`${valueSql(f.key)} BETWEEN ${params.add(f.value[0])}::float8 AND ${params.add(f.value[1])}::float8`)
     } else {
-      where.push(`${metricSql(f.key)} ${f.op === 'gte' ? '>=' : '<='} ${params.add(f.value)}::float8`)
+      where.push(`${valueSql(f.key)} ${f.op === 'gte' ? '>=' : '<='} ${params.add(f.value)}::float8`)
     }
   }
   const search = (query.q ?? '').trim()
@@ -430,7 +449,7 @@ export async function savedQueryPage(
     keys: savedQueryKeys(spec),
   })
   const items = rows.map((item) => {
-    const metrics = item.metrics as CreatorMetrics
+    const metrics = withServiceFee(item.metrics as CreatorMetrics, fee)
     return {
       id: String(item.id),
       creatorKey: String(item.creatorKey),

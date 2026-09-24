@@ -7,6 +7,7 @@ import {
   cohortKey,
   cohortPercentiles,
   METRIC_KEYS,
+  normalizeHealth,
   tierOf,
   type CreatorMetrics,
   type NumericMetricKey,
@@ -78,8 +79,13 @@ export async function queryPool(db: Db, query: Record<string, string>) {
       if (!item.price) return false
       const low = item.price.amountMin ?? item.price.amountMax ?? 0
       const high = item.price.amountMax ?? item.price.amountMin ?? low
-      if (query.currency && item.price.currency !== query.currency) return false
-      return low <= max && high >= min
+      if (query.currency) {
+        if (item.price.currency !== query.currency) return false
+        return low <= max && high >= min
+      }
+      const rate = item.price.currency === 'CNY' ? 1 : item.price.fxToCny
+      if (rate == null) return false
+      return low * rate <= max && high * rate >= min
     })
   }
   for (const field of ['categories', 'category', 'verticals'] as const) {
@@ -102,6 +108,7 @@ export async function queryPool(db: Db, query: Record<string, string>) {
   for (const field of ['tier', 'health', 'source'] as const) {
     if (!query[field]) continue
     const wanted = query[field].split(',')
+      .map((value) => (field === 'health' ? normalizeHealth(value, null, null).health ?? value : value))
     items = items.filter((item) => {
       const value = field === 'health' ? item.metrics.health : item[field]
       return value != null && wanted.includes(value)

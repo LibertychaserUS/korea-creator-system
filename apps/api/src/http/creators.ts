@@ -2,7 +2,12 @@ import {
   creatorStage,
   defaultSavedQuery,
   deriveMetrics,
-  emptyMetrics,
+  normalizeMetrics,
+  normalizeSavedQuery,
+  currencyExponent,
+  normalizeCurrency,
+  priceInCny,
+  toMinorUnits,
   type CreatorMetrics,
   type IngestJobView,
   type SavedQuery,
@@ -127,21 +132,25 @@ export async function saveRelations(db: Queryable, creatorId: string, body: Reco
   }
   if (body.price && typeof body.price === 'object') {
     const price = body.price as {
-      amountMin?: number
-      amountMax?: number
+      amountMin?: number | null
+      amountMax?: number | null
       currency?: string
       unit?: string
+      fxToCny?: number | null
     }
+    const code = normalizeCurrency(price.currency ?? 'CNY') ?? 'CNY'
+    const fx = code === 'CNY' ? null : price.fxToCny ?? null
     await db.query('DELETE FROM prices WHERE creator_id = $1', [creatorId])
     await db.query(
-      `INSERT INTO prices (id, creator_id, amount_min, amount_max, currency, unit)
-       VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5)`,
+      `INSERT INTO prices (id, creator_id, amount_min_minor, amount_max_minor, currency, unit, fx_to_cny, fx_recorded_at)
+       VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,CASE WHEN $6::numeric IS NULL THEN NULL ELSE now() END)`,
       [
         creatorId,
-        price.amountMin ?? null,
-        price.amountMax ?? null,
-        price.currency ?? 'CNY',
+        toMinorUnits(price.amountMin, code),
+        toMinorUnits(price.amountMax, code),
+        code,
         price.unit ?? 'per_post',
+        fx,
       ],
     )
   }
@@ -209,6 +218,7 @@ export async function attachCreatorMeta(
     const creatorCollaborations = collaborations.rows.filter((item) => item.creator_id === row.id)
     const price = prices.rows.find((item) => item.creator_id === row.id)
     const metrics = metricsFromRow({ ...row, price })
+    const quote = price ? priceView(price) : null
     return {
       id: row.id,
       creatorKey: row.creator_key,
@@ -231,7 +241,7 @@ export async function attachCreatorMeta(
       source: row.source ?? null,
       externalId: row.external_id ?? null,
       metrics,
-      metricsLocked: parseMetrics(row.metrics_locked),
+      metricsLocked: parseMetrics(row.metrics_locked, row.source),
       metricsLockedAt: isoOrNull(row.metrics_locked_at),
       stage: creatorStage({ status: row.status, metricsLockedAt: row.metrics_locked_at }),
       metricsFetchedAt: row.metrics_fetched_at ?? null,
@@ -256,14 +266,7 @@ export async function attachCreatorMeta(
             note: item.note ?? null,
           }))
         : undefined,
-      price: price
-        ? {
-            amountMin: price.amount_min == null ? null : Number(price.amount_min),
-            amountMax: price.amount_max == null ? null : Number(price.amount_max),
-            currency: price.currency,
-            unit: price.unit,
-          }
-        : null,
+      price: quote,
     }
   })
 }
@@ -279,31 +282,57 @@ function isoOrNull(value: unknown): string | null {
   return value instanceof Date ? value.toISOString() : String(value)
 }
 
-export function parseMetrics(value: unknown): CreatorMetrics | null {
+/** A stored record in today's shape (see `normalizeMetrics`); `source` decides legacy meanings. */
+export function parseMetrics(value: unknown, source?: string | null): CreatorMetrics | null {
   if (!value) return null
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value
     if (!parsed || typeof parsed !== 'object') return null
-    return deriveMetrics({
-      ...emptyMetrics((parsed as CreatorMetrics).window === 90 ? 90 : 30),
-      ...(parsed as CreatorMetrics),
-    })
+    return normalizeMetrics(parsed, source)
   } catch {
     return null
   }
 }
 
+/** A `prices` row as the API shows it: major units, upper-case currency, the rate if one was recorded. */
+export function priceView(row: Record<string, any>) {
+  return {
+    amountMin: minorToMajor(row.amount_min_minor, row.currency),
+    amountMax: minorToMajor(row.amount_max_minor, row.currency),
+    currency: String(row.currency),
+    unit: row.unit,
+    fxToCny: row.fx_to_cny == null ? null : Number(row.fx_to_cny),
+  }
+}
+
+function minorToMajor(value: unknown, currency: string): number | null {
+  if (value == null) return null
+  return Number(value) / 10 ** currencyExponent(currency)
+}
+
+/**
+ * Latest numbers with the row's followers and manual quote folded in. A quote
+ * only becomes `priceImage` in 人民币: CNY as is, another currency only with the
+ * rate recorded next to it — otherwise cost ratios stay empty rather than
+ * treating 500 万韩元 as 500 万元.
+ */
 export function metricsFromRow(row: Record<string, any>): CreatorMetrics {
-  const metrics = parseMetrics(row.metrics) ?? emptyMetrics()
+  const metrics = parseMetrics(row.metrics, row.source) ?? normalizeMetrics({}, row.source)
   if (metrics.followers == null && row.followers != null) metrics.followers = Number(row.followers)
-  if (metrics.priceImage == null && row.price?.amount_min != null) {
-    metrics.priceImage = Number(row.price.amount_min)
+  if (metrics.priceImage == null && row.price) {
+    const quote = priceView(row.price)
+    const amount = quote.amountMin ?? quote.amountMax
+    const cny = priceInCny(amount, quote.currency, quote.fxToCny)
+    if (cny != null) {
+      metrics.priceImage = cny
+      metrics.priceQuote = { amount: amount!, currency: quote.currency, fxToCny: quote.currency === 'CNY' ? 1 : quote.fxToCny }
+    }
   }
   return deriveMetrics(metrics)
 }
 
 export function coerceSavedQuery(value: unknown, id?: string, version?: number): SavedQuery {
-  const input = value && typeof value === 'object' ? value as Partial<SavedQuery> : {}
+  const input = value && typeof value === 'object' ? normalizeSavedQuery(value) : {}
   return defaultSavedQuery({
     ...input,
     id: id ?? input.id ?? '',

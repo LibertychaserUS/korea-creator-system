@@ -74,7 +74,7 @@
       </div>
 
       <!-- 快捷过滤：量级 / 健康等级 / 排序 / 搜索 -->
-      <div class="grid gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[auto_auto_1fr_auto] lg:items-end">
+      <div class="grid gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[auto_auto_1fr_auto_auto] lg:items-end">
         <fieldset data-testid="filter-tier" class="min-w-0">
           <legend class="mb-1.5 text-xs font-medium text-muted-foreground">{{ t('kcs.query.tiers') }}</legend>
           <div class="inline-flex flex-wrap rounded-md border border-border bg-muted/40 p-0.5" role="group">
@@ -164,6 +164,24 @@
             </Button>
           </div>
         </div>
+
+        <fieldset data-testid="service-fee" class="min-w-0">
+          <legend class="mb-1.5 text-xs font-medium text-muted-foreground" :title="t('kcs.query.serviceFeeHint')">{{ t('kcs.query.serviceFee') }}</legend>
+          <div class="inline-flex rounded-md border border-border bg-muted/40 p-0.5" role="group" :title="t('kcs.query.serviceFeeHint')">
+            <button
+              v-for="rate in SERVICE_FEE_RATES"
+              :key="rate"
+              type="button"
+              class="h-8 rounded-[6px] px-3 text-xs font-medium tabular-nums transition-colors"
+              :class="spec.serviceFee === rate ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+              :aria-pressed="spec.serviceFee === rate"
+              :data-testid="`service-fee-${rate * 100}`"
+              @click="spec.serviceFee = rate"
+            >
+              {{ rate ? t('kcs.query.serviceFeeRate', { n: rate * 100 }) : t('kcs.query.serviceFeeNone') }}
+            </button>
+          </div>
+        </fieldset>
       </div>
 
       <!-- 方案编辑器 -->
@@ -496,7 +514,9 @@ import {
   API,
   apiPath,
   CREATOR_TIERS,
-  METRIC_KEYS,
+  HEALTH_GRADES,
+  SERVICE_FEE_RATES,
+  VISIBLE_METRIC_KEYS,
   PAGE_SIZE_DEFAULT,
   can,
   pageCount,
@@ -521,9 +541,9 @@ const localePath = useLocalePath()
 const route = useRoute()
 
 const tierIds = CREATOR_TIERS.map((x) => x.id).filter((x) => x !== 'unknown') as CreatorTier[]
-const healthIds: HealthGrade[] = ['excellent', 'normal', 'abnormal']
-const metricKeys = METRIC_KEYS
-const sortableKeys = ['followers', ...METRIC_KEYS.filter((k) => k !== 'followers')] as (NumericMetricKey | 'followers')[]
+const healthIds: HealthGrade[] = [...HEALTH_GRADES]
+const metricKeys = VISIBLE_METRIC_KEYS
+const sortableKeys = ['followers', ...VISIBLE_METRIC_KEYS.filter((k) => k !== 'followers')] as (NumericMetricKey | 'followers')[]
 
 const savedQueries = ref<SavedQueryRecord[]>([])
 const activeId = ref('')

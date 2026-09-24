@@ -2,17 +2,22 @@
  * SavedQuery — what used to be "scoring". A saved, versioned set of
  * filters + sort + highlight thresholds over CreatorMetrics. No weights,
  * no composite score: ops express what they want in platform terms
- * (CPE ≤ 3, health = excellent, 收藏/点赞 ≥ 0.8, tier = mid …).
+ * (CPE ≤ 3, health = healthy, 收藏/点赞 ≥ 0.8, tier = mid …).
  */
 import {
   cohortPercentiles,
   deriveMetrics,
+  normalizeHealth,
+  RENAMED_METRIC_KEYS,
+  SERVICE_FEE_RATES,
   tierOf,
+  type ServiceFeeRate,
   type CreatorMetrics,
   type CreatorTier,
   type HealthGrade,
   type MetricPercentiles,
   type NumericMetricKey,
+  HEALTH_GRADES,
   METRIC_KEYS,
 } from './metrics'
 import type { SourceId } from './source-adapter'
@@ -45,6 +50,8 @@ export type SavedQuery = {
   highlights: Highlight[]
   /** Columns the pool table shows for this query, in order. */
   columns: NumericMetricKey[]
+  /** Cost fields shown (and filtered) with this service fee added: 0, 10% or 20% (优效). */
+  serviceFee: ServiceFeeRate
 }
 
 export type QueryRow = {
@@ -108,8 +115,32 @@ export function defaultSavedQuery(overrides: Partial<SavedQuery> = {}): SavedQue
       { key: 'engagementRate', op: 'lte', value: 0.02, tone: 'warn' },
     ],
     columns: [...DEFAULT_QUERY_COLUMNS],
+    serviceFee: 0,
     ...overrides,
   }
+}
+
+function renamedKey<T>(key: T): T {
+  return (typeof key === 'string' && RENAMED_METRIC_KEYS[key] ? RENAMED_METRIC_KEYS[key] : key) as T
+}
+
+/**
+ * A stored or posted spec in today's vocabulary: renamed metric keys
+ * (`cpv` → `cpr` …) and the old three health grades (优秀 / 正常 → 健康).
+ * Unknown values are left for `validateSavedQuery` to reject.
+ */
+export function normalizeSavedQuery(value: unknown): Partial<SavedQuery> {
+  if (!value || typeof value !== 'object') return {}
+  const q = { ...(value as Record<string, any>) }
+  if (Array.isArray(q.columns)) q.columns = [...new Set(q.columns.map(renamedKey))]
+  if (Array.isArray(q.filters)) q.filters = q.filters.map((f: any) => (f && typeof f === 'object' ? { ...f, key: renamedKey(f.key) } : f))
+  if (Array.isArray(q.highlights)) q.highlights = q.highlights.map((h: any) => (h && typeof h === 'object' ? { ...h, key: renamedKey(h.key) } : h))
+  if (q.sort && typeof q.sort === 'object') q.sort = { ...q.sort, key: renamedKey(q.sort.key) }
+  if (Array.isArray(q.health)) {
+    q.health = [...new Set(q.health.map((h: unknown) => normalizeHealth(h, null, null).health ?? h))]
+  }
+  if (q.serviceFee !== undefined && !SERVICE_FEE_RATES.includes(q.serviceFee)) q.serviceFee = 0
+  return q as Partial<SavedQuery>
 }
 
 export function validateSavedQuery(q: unknown): string[] {
@@ -130,6 +161,8 @@ export function validateSavedQuery(q: unknown): string[] {
   if (!s.sort || (s.sort.key !== 'followers' && !METRIC_KEYS.includes(s.sort.key as NumericMetricKey))) errors.push('sort.key')
   if (!Array.isArray(s.columns) || !s.columns.length || s.columns.some((c) => !METRIC_KEYS.includes(c))) errors.push('columns')
   if (!Array.isArray(s.highlights) || s.highlights.some((h) => !h || !METRIC_KEYS.includes(h.key) || typeof h.value !== 'number')) errors.push('highlights')
+  if (s.serviceFee !== undefined && !SERVICE_FEE_RATES.includes(s.serviceFee as ServiceFeeRate)) errors.push('serviceFee')
+  if (Array.isArray(s.health) && s.health.some((h) => !HEALTH_GRADES.includes(h as (typeof HEALTH_GRADES)[number]))) errors.push('health')
   return [...new Set(errors)]
 }
 

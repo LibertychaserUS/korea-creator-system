@@ -29,7 +29,7 @@ describe('INV-01 平台取不到的指标保持 null、不补 0', () => {
 
     const m = deriveMetrics({ ...emptyMetrics(30), followers: 50_000, priceImage: 2_000 })
     expect(m.followers).toBe(50_000)
-    for (const key of ['readMedian', 'interactionMedian', 'engagementRate', 'cpe', 'cpv', 'cpm', 'readToFollowerRatio', 'viralRate', 'collectLikeRatio', 'followerGrowthRate'] as const) {
+    for (const key of ['readMedian', 'interactionMedian', 'engagementRate', 'cpe', 'cpr', 'cpm', 'cpmRead', 'readToFollowerRatio', 'viralRate', 'collectLikeRatio', 'followerGrowthRate'] as const) {
       expect(m[key], key).toBeNull()
     }
   })

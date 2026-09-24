@@ -1,8 +1,11 @@
 import {
+  normalizeMetrics,
+  toMinorUnits,
   SOURCE_DEFAULTS,
   DEFAULT_QUERY_COLUMNS,
   defaultSavedQuery,
   SEED_USERS,
+  type CreatorMetrics,
   type SavedQuery,
   type SourceId,
 } from '@kcs/contract'
@@ -11,6 +14,13 @@ import type { Db } from './db'
 import { pugongyingAdapter, qianguaAdapter, xinhongAdapter } from './adapters'
 import { fixturePage } from './adapters/common'
 import { ensurePublishedSnapshots } from './http/pool'
+
+/** Until the 蒲公英 adapter fills `lowActive` itself, its `health` still means 低活跃. */
+function seedMetrics(metrics: CreatorMetrics, source: SourceId): CreatorMetrics {
+  const raw: Record<string, unknown> = { ...metrics }
+  if (source === 'pugongying' && raw.lowActive == null) delete raw.lowActive
+  return normalizeMetrics(raw, source)
+}
 
 const BASE_DATA_SQL = new URL('./migrations/0008_base_reference_data.sql', import.meta.url)
 
@@ -97,7 +107,7 @@ async function seedCreators(db: Db) {
       const result = adapter.normalize(raw)
       if (!result.ok) continue
       index += 1
-      const creator = result.creator
+      const creator = { ...result.creator, metrics: seedMetrics(result.creator.metrics, adapter.id) }
       const sourceId = `seed_${adapter.id}_${creator.externalId}`
       const exact = await db.query('SELECT id FROM creators WHERE id = $1', [sourceId])
       const matched = exact.rows[0] || !creator.xhsId
@@ -108,7 +118,7 @@ async function seedCreators(db: Db) {
           )
       const id = matched.rows[0]?.id ?? sourceId
       canonicalIds.set(sourceId, id)
-      const isBad = creator.metrics.health === 'abnormal'
+      const isBad = creator.metrics.health === 'abnormal' || creator.metrics.lowActive === true
       const released = !isBad && index % 6 !== 0
       const status = released ? 'released' : 'draft'
       await db.query(
@@ -209,10 +219,11 @@ async function seedCreators(db: Db) {
       await db.query('DELETE FROM prices WHERE creator_id = $1', [id])
       if (creator.metrics.priceImage != null) {
         await db.query(
-          `INSERT INTO prices (id, creator_id, amount_min, amount_max, currency, unit)
+          `INSERT INTO prices (id, creator_id, amount_min_minor, amount_max_minor, currency, unit)
            VALUES ($1,$2,$3,$4,'CNY','per_post')
-           ON CONFLICT (id) DO UPDATE SET amount_min = EXCLUDED.amount_min, amount_max = EXCLUDED.amount_max`,
-          [`price_${id}`, id, creator.metrics.priceImage, creator.metrics.priceVideo],
+           ON CONFLICT (id) DO UPDATE SET
+             amount_min_minor = EXCLUDED.amount_min_minor, amount_max_minor = EXCLUDED.amount_max_minor`,
+          [`price_${id}`, id, toMinorUnits(creator.metrics.priceImage, 'CNY'), toMinorUnits(creator.metrics.priceVideo, 'CNY')],
         )
       }
     }

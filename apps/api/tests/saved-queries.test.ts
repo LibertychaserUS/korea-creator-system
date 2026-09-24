@@ -34,7 +34,7 @@ describe('saved query CRUD and run', () => {
     const spec = defaultSavedQuery({
       name: '测试性价比',
       filters: [{ key: 'cpe', op: 'lte', value: 3 }],
-      health: ['excellent'],
+      health: ['healthy'],
     })
     const created = await ctx.app.request('/api/select/queries', {
       method: 'POST',
@@ -63,7 +63,7 @@ describe('saved query CRUD and run', () => {
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify(defaultSavedQuery({
         name: '临时查询',
-        health: ['excellent'],
+        health: ['healthy'],
         filters: [{ key: 'cpe', op: 'lte', value: 3 }],
       })),
     })
@@ -71,7 +71,7 @@ describe('saved query CRUD and run', () => {
     const result = await run.json()
     expect(result.total).toBeGreaterThan(0)
     expect(result.items.every((row: { metrics: { cpe: number; health: string } }) =>
-      row.metrics.cpe <= 3 && row.metrics.health === 'excellent')).toBe(true)
+      row.metrics.cpe <= 3 && row.metrics.health === 'healthy')).toBe(true)
     expect(result.items[0]).toHaveProperty('flags')
 
     const removed = await ctx.app.request(`/api/select/queries/${id}`, {

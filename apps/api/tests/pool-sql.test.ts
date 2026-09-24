@@ -6,6 +6,7 @@ import {
   emptyMetrics,
   PAGE_SIZE_DEFAULT,
   PAGE_SIZE_MAX,
+  toMinorUnits,
   type SavedQuery,
 } from '@kcs/contract'
 import { createTestApp, type TestCtx } from './helpers'
@@ -33,6 +34,14 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     return values[Math.floor(rand() * values.length)]
   }
 
+  function minorPair(min: number | null, max: number | null, currency: 'CNY' | 'KRW') {
+    return [
+      min == null ? null : toMinorUnits(min, currency),
+      max == null ? null : toMinorUnits(max, currency),
+      currency,
+    ]
+  }
+
   beforeAll(async () => {
     ctx = await createTestApp()
     token = (await ctx.loginJson('selector@kcs.local')).token
@@ -52,7 +61,7 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
         viralCount: pick([null, 0, 2]),
         priceImage: pick([null, 1_000, 3_000, 3_000, 9_000]),
         cpe: pick([null, null, null, 2.5, 3]),
-        health: pick([null, 'excellent', 'normal', 'abnormal'] as const),
+        health: pick([null, 'healthy', 'healthy', 'abnormal'] as const),
         coopBrands: pick([[], ['兰芝'], ['雪花秀', '兰芝']]),
       }
       const legacy = i % 17 === 0
@@ -95,9 +104,9 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
       }
       if (i % 3 === 0) {
         await ctx.db.query(
-          `INSERT INTO prices (id, creator_id, amount_min, amount_max, currency)
+          `INSERT INTO prices (id, creator_id, amount_min_minor, amount_max_minor, currency)
            VALUES (gen_random_uuid()::text, $1, $2, $3, $4)`,
-          [id, pick([null, 800, 2_000]), pick([null, 5_000, 30_000]), pick(['CNY', 'KRW'])],
+          [id, ...minorPair(pick([null, 800, 2_000]), pick([null, 5_000, 30_000]), pick(['CNY', 'KRW'] as const))],
         )
       }
     }
@@ -164,14 +173,15 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     { sort: 'readMedian', dir: 'asc' },
     { sort: 'followers', order: 'desc' },
     { sort: 'engagementRate' },
-    { tier: 'mid,junior', health: 'excellent' },
+    { tier: 'mid,junior', health: 'healthy' },
+    { health: 'excellent' },
     { source: 'qiangua', cpeMax: '3' },
     { region: '上' },
     { brand: '兰' },
     { brand: ',' },
     { q: '博主 1' },
     { hasCollaborated: 'true' },
-    { hasCollaborated: 'false', sort: 'cpv' },
+    { hasCollaborated: 'false', sort: 'cpr' },
     { priceMin: '1000', priceMax: '20000' },
     { priceMin: '1000', currency: 'KRW' },
     { categories: 'blacklist' },
@@ -205,7 +215,7 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     { filters: [{ key: 'cpe', op: 'percentileGte', value: 60 }, { key: 'readMedian', op: 'percentileGte', value: 12.5 }] },
     { filters: [{ key: 'engagementRate', op: 'between', value: [0.01, 0.05] }], sort: { key: 'engagementRate', dir: 'asc' } },
     { filters: [{ key: 'followers', op: 'percentileGte', value: 10 }] },
-    { health: ['excellent'], regions: ['上海'], brandsAny: ['兰芝'] },
+    { health: ['healthy'], regions: ['上海'], brandsAny: ['兰芝'] },
     { columns: ['followers', 'priceImage', 'cpm', 'viralRate'], sort: { key: 'viralRate', dir: 'asc' } },
     { filters: [{ key: 'cpe', op: 'lte', value: 3 }], highlights: [{ key: 'readMedian', op: 'gte', value: 1_000, tone: 'good' }] },
   ]

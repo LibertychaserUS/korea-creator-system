@@ -46,8 +46,8 @@ describe('CreatorMetrics', () => {
       cpe: 1.23,
     })
     expect(m.engagementRate).toBe(0.04)
-    expect(m.cpv).toBe(0.15)
-    expect(m.cpm).toBe(150)
+    expect(m.cpr).toBe(0.15)
+    expect(m.cpm).toBeNull()
     expect(m.cpe).toBe(1.23)
     expect(m.collectLikeRatio).toBe(0.9)
     expect(m.readToFollowerRatio).toBe(0.2)
@@ -69,8 +69,12 @@ describe('CreatorMetrics', () => {
     const c = { ...emptyMetrics(), cpe: 10 }
     const p = cohortPercentiles(a, [a, b, c], ['cpe'])
     expect(p.cpe!.percentile).toBeGreaterThan(80)
-    expect(p.cpe!.band).toBe('top25')
+    expect(p.cpe!.band).toBe('front')
+    expect(p.cpe!.n).toBe(3)
     expect(bandOf(95)).toBe('top10')
+    expect(bandOf(95, 12)).toBe('front')
+    expect(bandOf(50, 12)).toBe('middle')
+    expect(bandOf(10, 12)).toBe('back')
     expect(bandOf(10)).toBe('bottom')
     expect(cohortPercentiles(a, [a], ['cpe'])).toEqual({})
   })
@@ -92,14 +96,14 @@ describe('transform helpers', () => {
 
 describe('SavedQuery replaces scoring', () => {
   const rows = [
-    row('a', { followers: 120_000, readMedian: 30_000, interactionMedian: 1_500, priceImage: 3_000, health: 'excellent', likeMedian: 900, collectMedian: 900 }),
-    row('b', { followers: 90_000, readMedian: 5_000, interactionMedian: 100, priceImage: 6_000, health: 'excellent', likeMedian: 80, collectMedian: 10 }),
+    row('a', { followers: 120_000, readMedian: 30_000, interactionMedian: 1_500, priceImage: 3_000, health: 'healthy', likeMedian: 900, collectMedian: 900 }),
+    row('b', { followers: 90_000, readMedian: 5_000, interactionMedian: 100, priceImage: 6_000, health: 'healthy', likeMedian: 80, collectMedian: 10 }),
     row('c', { followers: 150_000, readMedian: 40_000, interactionMedian: 3_000, priceImage: 2_000, health: 'abnormal', likeMedian: 2_000, collectMedian: 1_000 }),
-    row('d', { followers: 8_000, readMedian: 9_000, interactionMedian: 700, priceImage: 500, health: 'excellent' }),
+    row('d', { followers: 8_000, readMedian: 9_000, interactionMedian: 700, priceImage: 500, health: 'healthy' }),
   ]
 
   it('drops unhealthy accounts, applies metric filters, sorts by CPE ascending', () => {
-    const q = defaultSavedQuery({ name: 'q', health: ['excellent'], filters: [{ key: 'cpe', op: 'lte', value: 5 }] })
+    const q = defaultSavedQuery({ name: 'q', health: ['healthy'], filters: [{ key: 'cpe', op: 'lte', value: 5 }] })
     const res = applySavedQuery(rows, q)
     expect(res.map((r) => r.id)).toEqual(['d', 'a'])
     expect(res[0]!.tier).toBe('junior')
