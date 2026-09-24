@@ -71,7 +71,7 @@
           role="status"
           data-testid="ops-creator-missing"
         >
-          <div class="flex min-w-0 flex-1 items-start gap-2 text-destructive">
+          <div class="flex min-w-0 flex-[1_1_16rem] items-start gap-2 text-destructive">
             <SearchX class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <div class="min-w-0">
               <p class="font-medium">{{ t('kcs.opsCreator.dataStatus.missingTitle') }}</p>
