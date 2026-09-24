@@ -363,8 +363,9 @@ export async function readCalibration(q: Queryable) {
 
 /**
  * Rebuild the pool table from `creators`: drop rows no longer released, write
- * missing or republished ones (`full`: all), calibrate, then re-rank every
- * group (staleness moves with the clock, so every group, not only touched ones).
+ * missing or republished ones (`full`: all), calibrate, then re-rank groups:
+ * every group by default (staleness moves with the clock), or with
+ * `regroup: 'touched'` only those written here or marked dirty.
  */
 export async function refreshPublished(
   db: Db,

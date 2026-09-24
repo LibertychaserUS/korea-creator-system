@@ -154,7 +154,7 @@ describe('saved queries: 我的方案 / 团队方案, history, archive', () => {
     const created = await (await call(selector, 'POST', '/api/select/queries', defaultSavedQuery({ name: '团队的' }))).json()
     const hide = await call(admin, 'PATCH', `/api/select/queries/${created.id}`, { visibility: 'private' })
     expect(hide.status).toBe(403)
-    expect((await hide.json()).error.message).toBe('owner_only')
+    expect((await hide.json()).error).toEqual({ code: 'AUTH-DENIED', message: 'owner_only' })
     const edited = await (await call(admin, 'PATCH', `/api/select/queries/${created.id}`, { categories: ['beauty'] })).json()
     expect(edited).toMatchObject({ version: 2, categories: ['beauty'], updatedByName: '平台管理员', mine: false })
     expect((await call(viewer, 'PATCH', `/api/select/queries/${created.id}`, { name: 'x' })).status).toBe(403)

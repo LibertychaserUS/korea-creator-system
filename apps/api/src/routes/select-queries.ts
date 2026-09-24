@@ -190,7 +190,7 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
     })
     if (outcome.status === 404) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
     if (outcome.status === 400) return invalidQuery(context, outcome.errors)
-    if (outcome.status === 403) return jsonError(context, 403, 'FORBIDDEN', 'owner_only')
+    if (outcome.status === 403) return jsonError(context, 403, 'AUTH-DENIED', 'owner_only')
     if (outcome.status === 409) {
       return context.json({ error: { code: 'CONFLICT', message: 'version_conflict' }, current: outcome.current }, 409)
     }
