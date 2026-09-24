@@ -161,7 +161,8 @@ async function runPage(
   listFingerprint: string,
 ): Promise<{ rows: Array<Record<string, any>>; total: number; page: number; nextCursor: string | null; prevCursor: string | null }> {
   const base = ['NOT p.blacklisted', ...where]
-  const counted = db.query(`SELECT count(*)::int AS total FROM creator_published p WHERE ${base.join('\n AND ')}`, [...params.values])
+  const countSql = `SELECT count(*)::int AS total FROM creator_published p WHERE ${base.join('\n AND ')}`
+  const countValues = [...params.values]
   let page = paging.page
   let offset = paging.offset
   let reverse = false
@@ -178,11 +179,15 @@ async function runPage(
   }
   const values = [...params.values]
   const keys = cols.map((c, i) => `float8send(${c.expr}) AS __k${i}`).join(', ')
-  const fetched = await db.query(
-    `SELECT p.*, ${keys} FROM creator_published p WHERE ${clause.join('\n AND ')}
-      ORDER BY ${orderSql(cols, reverse)} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
-    [...values, paging.pageSize + 1, offset],
-  )
+  // Both awaited together: a failing database rejects once, never leaving an unhandled rejection behind.
+  const [fetched, counted] = await Promise.all([
+    db.query(
+      `SELECT p.*, ${keys} FROM creator_published p WHERE ${clause.join('\n AND ')}
+        ORDER BY ${orderSql(cols, reverse)} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, paging.pageSize + 1, offset],
+    ),
+    db.query(countSql, countValues),
+  ])
   const more = fetched.rows.length > paging.pageSize
   const rows = fetched.rows.slice(0, paging.pageSize)
   if (reverse) rows.reverse()
@@ -193,7 +198,7 @@ async function runPage(
   const nextCursor = hasNext ? cursorAt(rows.at(-1), 'n') : null
   const prevCursor = hasPrev ? cursorAt(rows[0], 'p') : null
   for (const row of rows) for (let i = 0; i < cols.length; i += 1) delete row[`__k${i}`]
-  return { rows, total: (await counted).rows[0].total, page, nextCursor, prevCursor }
+  return { rows, total: counted.rows[0].total, page, nextCursor, prevCursor }
 }
 
 async function groupSizes(db: Queryable, keys: string[]): Promise<Map<string, number>> {
