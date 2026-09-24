@@ -1,5 +1,7 @@
 import { COHORT_RULES, parseCohortGroupKey } from '@kcs/contract'
 import { readCalibration } from '../http/published'
+import { runBasisBacktest } from '../ingest/basis-backtest'
+import { refreshCoverageFor } from '../ingest/scheduler'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
 /** How the pool's percentiles are formed: what each source needs, and what each group has. */
@@ -7,7 +9,7 @@ export function registerDevCohortRoutes(app: KcsApp, env: AppEnv, helpers: Route
   app.get('/api/dev/cohorts', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'dev.read')
     if (denied) return denied
-    const [calibration, groups, lines] = await Promise.all([
+    const [calibration, groups, lines, coverage, basisBacktest] = await Promise.all([
       readCalibration(env.db),
       env.db.query(
         `SELECT group_key, count(*) FILTER (WHERE NOT blacklisted)::int AS size,
@@ -15,6 +17,8 @@ export function registerDevCohortRoutes(app: KcsApp, env: AppEnv, helpers: Route
            FROM creator_published GROUP BY group_key ORDER BY group_key`,
       ),
       env.db.query('SELECT * FROM cohort_reference_lines ORDER BY group_key, tier, metric'),
+      refreshCoverageFor(env),
+      runBasisBacktest(env.db),
     ])
     const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value == null ? null : String(value))
     return context.json({
@@ -37,6 +41,8 @@ export function registerDevCohortRoutes(app: KcsApp, env: AppEnv, helpers: Route
         p75: row.p75,
         computedAt: iso(row.computed_at),
       })),
+      coverage,
+      basisBacktest,
     })
   })
 }

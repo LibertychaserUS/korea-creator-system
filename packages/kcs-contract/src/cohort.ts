@@ -2,7 +2,9 @@
  * Who a creator is compared with, and where they stand.
  *
  * Group = source × window × content form (a missing source or form is its own
- * value). Inside a group each metric has its own cohort: the creators nearest
+ * value). Inside a group, a metric whose value depends on a 口径 is only
+ * compared with values of the same 口径 (合作 vs 日常 cost, 自然 vs 全部流量
+ * reach; `metricBasisOf`). Each metric then has its own cohort: the creators nearest
  * in log10(followers) that have a value, widened until the target size is
  * reached but never wider than `spanDecades` (one decade, the width of one
  * follower tier). Snapshots older than `staleDays` are neither compared nor
@@ -36,6 +38,7 @@ import {
   type MetricPercentiles,
   type NumericMetricKey,
 } from './metrics'
+import { basisFamily, metricBasisOf, PREFERRED_BASIS } from './metric-basis'
 
 export const COHORT_RULES = {
   spanDecades: 1,
@@ -212,6 +215,23 @@ function points(members: readonly CohortMember[], key: NumericMetricKey) {
   return { known, unknown }
 }
 
+/** Members split by the 口径 `key` was measured on; a scope-free key keeps one part. */
+function byBasis(members: readonly CohortMember[], key: NumericMetricKey): CohortMember[][] {
+  if (!basisFamily(key)) return [members as CohortMember[]]
+  const parts = new Map<string, CohortMember[]>()
+  for (const member of members) {
+    const basis = metricBasisOf(key, member.metrics) ?? '-'
+    const part = parts.get(basis)
+    if (part) part.push(member)
+    else parts.set(basis, [member])
+  }
+  return [...parts.values()]
+}
+
+function sameBasis(key: NumericMetricKey, a: CohortMember, b: CohortMember): boolean {
+  return !basisFamily(key) || metricBasisOf(key, a.metrics) === metricBasisOf(key, b.metrics)
+}
+
 function countIn(sorted: readonly number[], value: number): [number, number] {
   const below = lowerBound(sorted, value)
   return [below, upperBound(sorted, value) - below]
@@ -254,8 +274,8 @@ export function rankGroup(members: readonly CohortMember[], options: CohortOptio
     mine[key] = entry
     out.set(id, mine)
   }
-  for (const key of keys) {
-    const { known, unknown } = points(members, key)
+  const rankPart = (part: readonly CohortMember[], key: NumericMetricKey) => {
+    const { known, unknown } = points(part, key)
     if (known.length) {
       const xs = known.map((p) => p.x)
       const values = [...new Set(known.map((p) => p.v))].sort((a, b) => a - b)
@@ -281,6 +301,7 @@ export function rankGroup(members: readonly CohortMember[], options: CohortOptio
       }
     }
   }
+  for (const key of keys) for (const part of byBasis(members, key)) rankPart(part, key)
   withPlatformRanks(members, keys, out)
   return out
 }
@@ -297,7 +318,8 @@ export function rankAgainst(members: readonly CohortMember[], target: CohortMemb
   const out: MetricPercentiles = {}
   if (target.stale) return out
   for (const key of keys) {
-    const { known, unknown } = points([...others, target], key)
+    const peers = others.filter((member) => sameBasis(key, member, target))
+    const { known, unknown } = points([...peers, target], key)
     const at = known.findIndex((p) => p.id === target.id)
     if (at >= 0) {
       const xs = known.map((p) => p.x)
@@ -335,7 +357,23 @@ export function quantile(sorted: readonly number[], q: number): number {
 
 export type ReferenceLine = { tier: CreatorTier; key: NumericMetricKey; n: number; p25: number; p50: number; p75: number }
 
-/** 25 / 50 / 75 分位 of each metric per follower tier; only with at least 30 current values. */
+/**
+ * The members one reference line is drawn from: for a metric with a 口径, the
+ * basis with the most values (ties → the preferred one), never a mix.
+ */
+function referencePart(members: readonly CohortMember[], key: NumericMetricKey): readonly CohortMember[] {
+  const family = basisFamily(key)
+  if (!family) return members
+  const counted = byBasis(members, key).map((part) => ({
+    part,
+    n: part.filter((member) => typeof member.metrics[key] === 'number').length,
+    preferred: metricBasisOf(key, part[0]!.metrics) === PREFERRED_BASIS[family],
+  }))
+  counted.sort((a, b) => b.n - a.n || Number(b.preferred) - Number(a.preferred))
+  return counted[0]?.part ?? []
+}
+
+/** 25 / 50 / 75 分位 of each metric per follower tier (one 口径 per line); only with at least 30 current values. */
 export function referenceLines(members: readonly CohortMember[], keys: readonly NumericMetricKey[]): ReferenceLine[] {
   const byTier = new Map<CreatorTier, CohortMember[]>()
   for (const member of members) {
@@ -346,7 +384,7 @@ export function referenceLines(members: readonly CohortMember[], keys: readonly 
   const out: ReferenceLine[] = []
   for (const [tier, list] of byTier) {
     for (const key of keys) {
-      const values = list
+      const values = referencePart(list, key)
         .map((member) => member.metrics[key])
         .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
         .sort((a, b) => a - b)

@@ -281,8 +281,30 @@ export const koKcs = {
     traffic: { all: "전체 트래픽(광고 부스팅 포함)", organic: "자연 트래픽만" },
     business: { daily: "일반 게시물", coop: "협업 게시물" },
     line: "{traffic} · {business}",
-    hint: "이 수치는 푸궁잉에서 「{traffic} · {business}」 기준으로 가져왔습니다.",
-    fromEnv: "환경 변수로 지정된 기준"
+    sourceLine: "도달: {traffic} · 비용: {business}",
+    fromEnv: "환경 변수로 지정된 기준",
+    rule: "비용은 협업 게시물 기준이며, 협업 기록이 없으면 일반 게시물 기준입니다. 도달은 자연 트래픽 기준이며 광고는 포함하지 않습니다.",
+    cost: {
+      coop: "비용은 협업 게시물 기준입니다.",
+      daily: "비용은 일반 게시물 기준입니다.",
+      fallback: "이 크리에이터는 협업 기록이 없어 비용을 일반 게시물 기준으로 계산했습니다."
+    },
+    reach: {
+      organic: "도달은 자연 트래픽 기준이며 광고는 포함하지 않습니다.",
+      all: "도달은 전체 트래픽 기준이며 광고를 포함합니다."
+    },
+    short: {
+      coop: "협업 게시물",
+      daily: "일반 게시물",
+      fallback: "일반 게시물(협업 기록 없음)",
+      organic: "자연 트래픽",
+      all: "광고 포함"
+    },
+    allTraffic: {
+      title: "광고 포함",
+      note: "같은 기간 광고를 포함한 수치로, 비교용이며 순위와 정렬에는 쓰지 않습니다",
+      fetchedAt: "{date} 수집"
+    }
   },
   ingest: {
     queued: "수집이 시작되었습니다. 플랫폼 제한에 맞춰 순차적으로 진행되며 완료 후 아래 기록에 표시됩니다.",

@@ -27,7 +27,15 @@ import { handleTikhub, resetTikhub } from './mock-tikhub'
  * `GET /__calls?keyword=…` returns the call log (for quota / rate assertions);
  * `POST /__reset` clears it.
  */
-export type VendorCall = { at: number; keyword: string; cursor: string | null; status: number; path?: string; requestId?: string }
+export type VendorCall = {
+  at: number
+  keyword: string
+  cursor: string | null
+  status: number
+  path?: string
+  requestId?: string
+  params?: { business?: unknown; advertiseSwitch?: unknown }
+}
 
 export const VENDOR_PORT = Number(process.env.BLACKBOX_VENDOR_PORT || 7190)
 export const VENDOR_TOKEN = process.env.BLACKBOX_VENDOR_TOKEN || 'blackbox-vendor-token'

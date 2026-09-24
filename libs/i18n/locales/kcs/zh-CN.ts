@@ -281,8 +281,30 @@ export const zhCNKcs = {
     traffic: { all: "全部流量（含投放加热）", organic: "仅自然流量" },
     business: { daily: "日常笔记", coop: "合作笔记" },
     line: "{traffic} · {business}",
-    hint: "这些数按「{traffic} · {business}」取自蒲公英。",
-    fromEnv: "口径由环境变量设定"
+    sourceLine: "传播：{traffic} · 成本：{business}",
+    fromEnv: "口径由环境变量设定",
+    rule: "成本按合作笔记计，没有合作记录时按日常笔记；传播按自然流量计，不含投放。",
+    cost: {
+      coop: "成本按合作笔记计。",
+      daily: "成本按日常笔记计。",
+      fallback: "这位博主没有合作记录，成本按日常笔记计。"
+    },
+    reach: {
+      organic: "传播按自然流量计，不含投放。",
+      all: "传播按全部流量计，含投放。"
+    },
+    short: {
+      coop: "合作笔记",
+      daily: "日常笔记",
+      fallback: "日常笔记（没有合作记录）",
+      organic: "自然流量",
+      all: "含投放"
+    },
+    allTraffic: {
+      title: "含投放",
+      note: "同一时期含投放的数，只作对照，不参与排位和排序",
+      fetchedAt: "{date} 取数"
+    }
   },
   ingest: {
     queued: "已开始抓取，后台会按平台允许的额度慢慢跑完，结束后出现在下方记录里。",

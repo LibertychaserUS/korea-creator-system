@@ -75,7 +75,7 @@
               <template v-if="s.rateLimit">{{ t('kcs.console.pipeline.rate', { n: formatNumber(s.rateLimit) }) }}</template>
             </p>
             <p v-if="s.scope" class="mt-0.5 text-[11px] text-muted-foreground" data-testid="pipeline-scope" :title="s.scope.from.traffic === 'env' || s.scope.from.business === 'env' ? t('kcs.scope.fromEnv') : undefined">
-              {{ t('kcs.scope.line', { traffic: t(`kcs.scope.traffic.${s.scope.traffic}`), business: t(`kcs.scope.business.${s.scope.business}`) }) }}
+              {{ t('kcs.scope.sourceLine', { traffic: t(`kcs.scope.traffic.${s.scope.traffic}`), business: t(`kcs.scope.business.${s.scope.business}`) }) }}
             </p>
             <p
               v-if="report && s.quotaTimeZone !== report.quotaTimeZone"

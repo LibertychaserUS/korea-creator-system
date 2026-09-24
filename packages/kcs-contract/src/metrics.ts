@@ -55,6 +55,19 @@ export type AudienceProfile = {
 
 export type VendorIndex = { name: string; value: number; max: number }
 
+/**
+ * 蒲公英「全部流量」(including paid boosts) reach, fetched about once a month next
+ * to the organic numbers the metrics hold. Reference only: never ranked, sorted
+ * or filtered on.
+ */
+export type AllTrafficReference = {
+  impressionMedian: number | null
+  readMedian: number | null
+  interactionMedian: number | null
+  engagementRate: number | null
+  fetchedAt: string | null
+}
+
 export type CreatorMetrics = {
   window: MetricWindow
   // 规模
@@ -72,7 +85,7 @@ export type CreatorMetrics = {
   engagedFanRatio: number | null
   /** 新红「互动粉丝比」：口径无公开定义，单独存放、只描述。 */
   fanInteractionRatio: number | null
-  // 传播（自然流量、中位数）
+  // 传播（中位数；蒲公英默认仅自然流量，见 `SOURCE_SCOPE_DEFAULTS`）
   impressionMedian: number | null
   readMedian: number | null
   interactionMedian: number | null
@@ -123,6 +136,8 @@ export type CreatorMetrics = {
   coopBrands: string[]
   audience: AudienceProfile | null
   vendorIndex: VendorIndex | null
+  /** 含投放的传播数字，只作对照（见 `AllTrafficReference`）。 */
+  allTraffic: AllTrafficReference | null
   contentForm: ContentForm | null
   /**
    * 平台自带的同类排位（蒲公英 `*BeyondRate`：超过百分之几的同类博主），0..1。
@@ -297,6 +312,7 @@ export function emptyMetrics(window: MetricWindow = 30): CreatorMetrics {
     coopBrands: [],
     audience: null,
     vendorIndex: null,
+    allTraffic: null,
     contentForm: null,
     platformRanks: null,
     derived: [],
@@ -484,6 +500,7 @@ export function normalizeMetrics(input: unknown, source?: string | null): Creato
   m.coopBrands = Array.isArray(m.coopBrands) ? m.coopBrands.map(String) : []
   m.contentForm = CONTENT_FORMS.includes(m.contentForm as ContentForm) ? m.contentForm : null
   m.platformRanks = cleanRanks(m.platformRanks)
+  m.allTraffic = cleanAllTraffic(m.allTraffic)
   m.basis = m.basis && typeof m.basis === 'object' ? m.basis : {}
   if (!Array.isArray(raw.derived)) delete (m as Partial<CreatorMetrics>).derived
   return deriveMetrics(m)
@@ -502,6 +519,20 @@ function takeSourceValue(raw: Record<string, any>, key: string, value: unknown) 
     raw.basis = { ...raw.basis }
     delete raw.basis[key]
   }
+}
+
+function cleanAllTraffic(value: unknown): AllTrafficReference | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  const n = (x: unknown) => (finite(x) && x >= 0 ? x : null)
+  const out: AllTrafficReference = {
+    impressionMedian: n(v.impressionMedian),
+    readMedian: n(v.readMedian),
+    interactionMedian: n(v.interactionMedian),
+    engagementRate: n(v.engagementRate),
+    fetchedAt: typeof v.fetchedAt === 'string' ? v.fetchedAt : null,
+  }
+  return out.impressionMedian == null && out.readMedian == null && out.interactionMedian == null && out.engagementRate == null ? null : out
 }
 
 function cleanRanks(value: unknown): CreatorMetrics['platformRanks'] {

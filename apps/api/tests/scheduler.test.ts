@@ -6,6 +6,8 @@ import {
   allocate,
   measureArms,
   mulberry32,
+  refreshCost,
+  refreshCoverageFor,
   runScheduler,
   sampleBeta,
   schedulerConfig,
@@ -213,6 +215,67 @@ describe('scheduler against the database', () => {
 
     const again = await runScheduler(ctx.env, config, mulberry32(9))
     expect(again.sources.find((s) => s.source === 'qiangua')!.skipped).toBe('previous_plan_running')
+  })
+
+  it('蒲公英 plans within its daily money budget, counts the slow and 含投放 calls, and the ops console says what the budget buys', async () => {
+    ctx.env.now = () => new Date('2026-09-24T02:00:00Z')
+    const saved = { ...process.env }
+    const row = (await ctx.db.query("SELECT quota, enabled, daily_budget_usd, traffic_scope, business_scope FROM ingest_sources WHERE id = 'pugongying'")).rows[0]
+    try {
+      process.env.PGY_ACCESS_TOKEN = 'test-token'
+      process.env.PGY_GATEWAY = 'tikhub'
+      delete process.env.PGY_DAILY_BUDGET_USD
+      delete process.env.PGY_TRAFFIC_SCOPE
+      delete process.env.PGY_BUSINESS_SCOPE
+      delete process.env.PGY_SLOW_REFRESH_DAYS
+      delete process.env.PGY_ALL_TRAFFIC_REFERENCE_DAYS
+      delete process.env.KCS_VENDOR_PRICES
+      await ctx.db.query("UPDATE ingest_sources SET quota = 1000, enabled = true, daily_budget_usd = 1, traffic_scope = NULL, business_scope = NULL WHERE id = 'pugongying'")
+      await ctx.db.query("DELETE FROM ingest_source_usage WHERE source = 'pugongying'")
+      const config = schedulerConfig({})
+
+      // $1 × 0.8 ÷ $0.02 = 40 calls, far under the call quota (800).
+      const plan = (await runScheduler(ctx.env, config, mulberry32(5))).sources.find((s) => s.source === 'pugongying')!
+      expect(plan).toMatchObject({ limitedBy: 'money', budget: 40, budgetUsd: 1, pricePerCallUsd: 0.02, spentTodayUsd: 0 })
+      const cost = await refreshCost(ctx.env, 'pugongying', config)
+      expect(cost.callsPerRefresh).toBeGreaterThan(3)
+      expect(plan.callsPerRefresh).toBeCloseTo(cost.callsPerRefresh, 10)
+      expect(plan.refreshIds).toBeLessThanOrEqual(Math.floor(plan.refreshCalls / plan.callsPerRefresh))
+
+      // Spend already booked today comes off the money, not only the calls.
+      await ctx.db.query(
+        `INSERT INTO ingest_source_usage (source, day, calls, cost_micros)
+         VALUES ('pugongying', ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date, 10, 500000)`,
+        [ctx.env.now()],
+      )
+      const later = (await runScheduler(ctx.env, config, mulberry32(5))).sources.find((s) => s.source === 'pugongying')!
+      expect(later).toMatchObject({ limitedBy: 'money', budget: 15, spentTodayUsd: 0.5 })
+
+      // Without the reference the same budget buys more refreshes.
+      const withReference = await refreshCoverageFor(ctx.env, config)
+      process.env.PGY_ALL_TRAFFIC_REFERENCE_DAYS = 'off'
+      const withoutReference = await refreshCoverageFor(ctx.env, config)
+      const [a, b] = [withReference, withoutReference].map((list) => list.find((c) => c.source === 'pugongying')!)
+      expect(a).toMatchObject({ limitedBy: 'money', dailyCalls: 40, budgetUsd: 1 })
+      expect(a!.callsPerRefresh).toBeGreaterThan(b!.callsPerRefresh)
+      expect(a!.refreshesPerDay).toBeLessThan(b!.refreshesPerDay)
+      delete process.env.PGY_ALL_TRAFFIC_REFERENCE_DAYS
+
+      const response = await ctx.app.request('/api/dev/cohorts', { headers: { authorization: 'Bearer test:devops@kcs.local' } })
+      expect(response.status).toBe(200)
+      const report = await response.json()
+      expect(report.coverage.find((c: { source: string }) => c.source === 'pugongying')).toMatchObject({ limitedBy: 'money', dailyCalls: 40 })
+      // The test pool has few labelled creators: advice only, and it says so.
+      expect(report.basisBacktest).toMatchObject({ status: 'insufficient' })
+      expect(report.basisBacktest.comparisons.every((c: { verdict: string }) => c.verdict === 'insufficient')).toBe(true)
+    } finally {
+      process.env = saved
+      await ctx.db.query(
+        "UPDATE ingest_sources SET quota = $1, enabled = $2, daily_budget_usd = $3, traffic_scope = $4, business_scope = $5 WHERE id = 'pugongying'",
+        [row.quota, row.enabled, row.daily_budget_usd, row.traffic_scope, row.business_scope],
+      )
+      await ctx.db.query("DELETE FROM ingest_source_usage WHERE source = 'pugongying'")
+    }
   })
 
   it('counts rewards: a refresh that moved the numbers of a creator in use, a discovery that got published', async () => {

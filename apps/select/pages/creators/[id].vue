@@ -148,18 +148,21 @@
       </Card>
 
       <!-- 六组指标 -->
+      <p v-if="scope" class="-mb-2 text-xs text-muted-foreground" data-testid="creator-basis-rule">{{ t('kcs.scope.rule') }}</p>
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="creator-metrics">
         <Card v-for="group in groups" :key="group" class="gap-0 border-border/60 py-0 shadow-xs">
           <div class="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <h3 class="text-sm font-semibold">{{ groupLabel(group) }}</h3>
             <span class="text-right text-[11px] text-muted-foreground">
-              {{ t(`kcs.ingest.window${metrics.window === 90 ? 90 : 30}`) }}<template v-if="scope"> · <span data-testid="creator-scope">{{ scope }}</span></template>
+              {{ t(`kcs.ingest.window${metrics.window === 90 ? 90 : 30}`) }}<template v-if="groupBasis(group, metrics)"> · <span data-testid="creator-scope" :data-group="group">{{ groupBasis(group, metrics) }}</span></template>
             </span>
           </div>
           <dl class="divide-y divide-border/40">
-            <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="helpIn(field.key, metrics.basis)">
+            <div v-for="field in fieldsIn(group)" :key="field.key" class="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5" :title="helpIn(field.key, metrics)">
               <dt class="min-w-0">
-                <span class="block truncate text-sm text-foreground">{{ label(field.key) }}</span>
+                <span class="block truncate text-sm text-foreground">
+                  {{ label(field.key) }}<span v-if="rowBasis(field.key, group, metrics)" class="ml-1.5 text-[11px] text-muted-foreground" data-testid="creator-row-basis">{{ rowBasis(field.key, group, metrics) }}</span>
+                </span>
                 <span v-if="percentiles[field.key]" class="mt-1 block h-1 w-28 overflow-hidden rounded-full bg-muted">
                   <span class="block h-full rounded-full bg-primary/70" :style="{ width: `${percentiles[field.key]!.percentile}%` }" />
                 </span>
@@ -169,6 +172,18 @@
               </dd>
             </div>
           </dl>
+          <div v-if="group === 'reach' && allTrafficRows.length" class="border-t border-border/60 bg-muted/30 px-5 py-3" data-testid="creator-all-traffic">
+            <p class="text-xs font-medium text-foreground">{{ t('kcs.scope.allTraffic.title') }}</p>
+            <dl class="mt-1.5 space-y-1">
+              <div v-for="row in allTrafficRows" :key="row.key" class="flex items-center justify-between gap-3 text-xs">
+                <dt class="text-muted-foreground">{{ label(row.key) }}</dt>
+                <dd class="tabular-nums text-muted-foreground">{{ format(row.key, row.value) }}</dd>
+              </div>
+            </dl>
+            <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              {{ t('kcs.scope.allTraffic.note') }}<template v-if="metrics.allTraffic?.fetchedAt"> · {{ t('kcs.scope.allTraffic.fetchedAt', { date: formatDate(metrics.allTraffic.fetchedAt) }) }}</template>
+            </p>
+          </div>
         </Card>
       </div>
 
@@ -271,7 +286,7 @@ const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'sele
 const inShortlist = ref(false)
 const shortlisting = ref(false)
 const shortlistError = ref('')
-const { label, helpIn, scopeLine, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
+const { label, helpIn, groupBasis, rowBasis, scopeLine, groupLabel, groups, fieldsIn, bandLabel, format } = useMetrics()
 
 const creator = ref<any>(null)
 const loading = ref(true)
@@ -289,6 +304,18 @@ const historyWindow = ref<30 | 90>(30)
 
 const metrics = computed<CreatorMetrics>(() => ({ ...emptyMetrics(), ...(creator.value?.metrics ?? {}) }))
 const scope = computed(() => scopeLine(metrics.value.basis))
+/** 含投放 reach from the monthly reference: shown next to the organic figures, never ranked. */
+const allTrafficRows = computed(() => {
+  const all = metrics.value.allTraffic
+  if (!all) return []
+  const rows: { key: NumericMetricKey; value: number | null }[] = [
+    { key: 'impressionMedian', value: all.impressionMedian },
+    { key: 'readMedian', value: all.readMedian },
+    { key: 'interactionMedian', value: all.interactionMedian },
+    { key: 'engagementRate', value: all.engagementRate },
+  ]
+  return rows.filter((row) => row.value != null)
+})
 const percentiles = computed<MetricPercentiles>(() => creator.value?.percentiles ?? {})
 /** 本库同组同量级的 25/50/75 分位（组内 ≥ 30 人才有）。 */
 const references = computed<Partial<Record<NumericMetricKey, { n: number; p25: number; p50: number; p75: number }>>>(
