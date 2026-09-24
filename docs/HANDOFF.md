@@ -81,7 +81,10 @@ PORT=7005 pnpm --filter @kcs/app-marketing dev
 ## 当前状态
 
 - 契约：`CreatorMetrics` 33 字段 + 派生；`SavedQuery`；分位按 `source × tier`；`MetricSnapshot`、`CreatorSourceLink`、任务生命周期；`roleFromIdentity`。
-- API：路由按领域拆到 `routes/`；迁移版本化；身份走 TinyShip；ingest 队列 + worker + 速率 / 日配额 + 重试 / 取消；历史快照；身份归并。
+- API：路由按领域拆到 `routes/`；迁移版本化（执行时拿 `pg_advisory_lock`，多副本同时启动只有一个在迁）；身份走 TinyShip；ingest 队列 + worker + 速率 / 日配额 + 重试 / 取消；历史快照；身份归并；入库只有 `upsertCreatorFromNormalized` 一处。
+- 博主池：筛选、排序、同层分位、分页都在 SQL 里读发布快照（`apps/api/src/http/pool.ts`），与契约 `applySavedQuery` / `cohortPercentiles` 逐行对拍；运营博主、任务、批次列表同样分页（`{ items, total, page, pageSize }`）。
+- 运行：抽水进程每日清理旧原始 JSON / 已处理搁置记录 / 审计；SIGTERM 优雅停机；`/api/health` 真查库、`/api/health/live` 做存活；日志是单行 JSON。
+- 接口命名：响应一律 camelCase，手工拼的行在契约 `responses.ts` 有类型；前端路径全部用契约 `API` + `apiPath`。
 - 四端：池 + 方案编辑器、详情页（趋势、来源、cohort）、数据源页（队列状态、进度、重试 / 取消）、运维重试含 `partial`、退出走 `/__logout`。
 - 文案：三语按新架构重写，清单在 `11`。
 - 文档：`00`–`10` 只讲当前架构；旧文档在 `docs/archive/`。
