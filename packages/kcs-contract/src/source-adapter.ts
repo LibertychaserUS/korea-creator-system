@@ -311,7 +311,7 @@ export const SOURCE_CREDENTIALS: readonly SourceCredentialRef[] = [
   {
     source: 'pugongying',
     envVars: ['PGY_ACCESS_TOKEN'],
-    optionalEnvVars: ['PGY_GATEWAY', 'PGY_BASE_URL', 'PGY_BRAND_USER_ID', 'PGY_ENRICH'],
+    optionalEnvVars: ['PGY_GATEWAY', 'PGY_BASE_URL', 'PGY_BRAND_USER_ID', 'PGY_ENRICH', 'PGY_DATE_TYPES'],
   },
   { source: 'qiangua', envVars: ['QIANGUA_TOKEN'], optionalEnvVars: ['QIANGUA_BASE_URL', 'QIANGUA_SEARCH_PATH', 'QIANGUA_FIELD_MAP'] },
   { source: 'xinhong', envVars: ['XINHONG_TOKEN'], optionalEnvVars: ['XINHONG_BASE_URL', 'XINHONG_SEARCH_PATH', 'XINHONG_FIELD_MAP'] },

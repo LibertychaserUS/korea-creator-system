@@ -125,6 +125,7 @@ describe('蒲公英 gateways', () => {
     delete process.env.PGY_BASE_URL
     delete process.env.PGY_BRAND_USER_ID
     delete process.env.PGY_ENRICH
+    delete process.env.PGY_DATE_TYPES
   })
   afterEach(() => {
     process.env = { ...env }
@@ -174,14 +175,36 @@ describe('蒲公英 gateways', () => {
     const page = await pugongyingAdapter.fetch({ source: 'pugongying', window: 90, externalIds: ['pgy_002'] })
     expect(calls).toHaveLength(5)
     const notesCall = calls.find((c) => c.url.endsWith('get_blogger_notes_rate'))!
-    expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 2, business: 0, note_type: 3 })
+    // TikHub: 1 ≈ 7 天, 2 = 30 天, 3 = 90 天 (待实测).
+    expect(JSON.parse(String(notesCall.init.body))).toMatchObject({ user_id: 'pgy_002', date_type: 3, business: 0, note_type: 3 })
     const raw = page.records[0]!
     expect(raw.payload.kcsWindow).toBe(90)
+    expect(raw.payload.kcsDateType).toBe(3)
     const result = pugongyingAdapter.normalize(raw)
     expect(result.ok && result.creator.metrics.window).toBe(90)
     expect(result.ok && result.creator.metrics.readFanRatio).toBeCloseTo(0.29, 3)
     expect(result.ok && result.creator.metrics.noteCount).toBe(18)
     expect(result.ok && result.creator.metrics.engagementRate).toBeCloseTo(0.067, 3)
+  })
+
+  it('dateType: 30 天 is 2 on TikHub / official, a string enum on JustOneAPI, and PGY_DATE_TYPES overrides both', async () => {
+    const detail = record(1).payload
+    const notesParams = async (gateway: string, window: 30 | 90) => {
+      calls = []
+      process.env.PGY_GATEWAY = gateway
+      stubFetch((url) => (/detail|user\/blogger/.test(url) ? { data: { data: detail, ...detail } } : { data: { data: null } }))
+      const page = await pugongyingAdapter.fetch({ source: 'pugongying', window, externalIds: ['pgy_002'] })
+      const call = calls.find((c) => /notes_?[rR]ate/.test(c.url))!
+      const sent = call.init.body ? JSON.parse(String(call.init.body)).date_type : new URL(call.url).searchParams.get('dateType')
+      return { sent, stored: page.records[0]?.payload.kcsDateType }
+    }
+    expect(await notesParams('tikhub', 30)).toEqual({ sent: 2, stored: 2 })
+    expect(await notesParams('official', 90)).toEqual({ sent: '3', stored: 3 })
+    expect(await notesParams('justoneapi', 30)).toEqual({ sent: 'DAY_30', stored: 'DAY_30' })
+    process.env.PGY_DATE_TYPES = '{"30":1,"90":2}'
+    expect(await notesParams('tikhub', 30)).toEqual({ sent: 1, stored: 1 })
+    process.env.PGY_DATE_TYPES = 'not json'
+    expect(await notesParams('tikhub', 90)).toEqual({ sent: 3, stored: 3 })
   })
 
   it('justoneapi: GET with token query and one-layer data', async () => {

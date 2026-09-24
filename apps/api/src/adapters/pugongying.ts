@@ -8,7 +8,7 @@
  *   资料   GET  /api/solar/cooperator/user/blogger/{userId}    → data
  *   数据概览 GET  /api/solar/kol/dataV3/dataSummary?userId&business=0
  *   粉丝概览 GET  /api/solar/kol/dataV3/fansSummary?userId
- *   笔记表现 GET  /api/solar/kol/dataV3/notesRate?userId&business=0&noteType=3&dateType=1|2&advertiseSwitch=1
+ *   笔记表现 GET  /api/solar/kol/dataV3/notesRate?userId&business=0&noteType=3&dateType=…&advertiseSwitch=1
  *   粉丝画像 GET  /api/solar/kol/data/{userId}/fans_profile
  *
  * RawRecord.payload is the kol item (or the 资料 object) with the four data
@@ -62,8 +62,38 @@ type Gateway = {
   detail(userId: string): Promise<Json | null>
   dataSummary(userId: string): Promise<Json | null>
   fansSummary(userId: string): Promise<Json | null>
-  notesRate(userId: string, window: SourceQuery['window']): Promise<Json | null>
+  notesRate(userId: string, dateType: DateType): Promise<Json | null>
   fansProfile(userId: string): Promise<Json | null>
+}
+
+type DateType = number | string
+
+/**
+ * notesRate `dateType` per window. TikHub documents 1 ≈ 7 天 / 2 = 30 天 /
+ * 3 = 90 天 and relays the solar value unchanged, so `official` follows it;
+ * JustOneAPI takes string enums. None of this has been checked against a live
+ * account yet (待实测: same creator, dateType 1/2/3, compare noteNumber), so
+ * `PGY_DATE_TYPES` (JSON, e.g. `{"30":1,"90":2}`) overrides the table and the
+ * value actually sent is stored in the payload as `kcsDateType`.
+ */
+export const PGY_DATE_TYPES: Record<PgyGateway, Record<SourceQuery['window'], DateType>> = {
+  official: { 30: 2, 90: 3 },
+  tikhub: { 30: 2, 90: 3 },
+  justoneapi: { 30: 'DAY_30', 90: 'DAY_90' },
+}
+
+export function dateTypeFor(gateway: PgyGateway, window: SourceQuery['window']): DateType {
+  const raw = process.env.PGY_DATE_TYPES
+  if (raw) {
+    try {
+      const override = JSON.parse(raw) as Record<string, unknown>
+      const value = override[String(window)]
+      if (typeof value === 'number' || (typeof value === 'string' && value)) return value
+    } catch {
+      // A broken override falls back to the documented table.
+    }
+  }
+  return PGY_DATE_TYPES[gateway][window]
 }
 
 async function http(url: string, init: RequestInit): Promise<Json> {
@@ -127,8 +157,8 @@ function tikhub(token: string, base: string): Gateway {
     detail: (userId) => call('get_blogger_detail', { user_id: userId }),
     dataSummary: (userId) => call('get_blogger_data_summary', { user_id: userId, business: 0 }),
     fansSummary: (userId) => call('get_blogger_fans_summary', { user_id: userId }),
-    notesRate: (userId, window) =>
-      call('get_blogger_notes_rate', { user_id: userId, business: 0, note_type: 3, date_type: window === 90 ? 2 : 1, advertise_switch: 1 }),
+    notesRate: (userId, dateType) =>
+      call('get_blogger_notes_rate', { user_id: userId, business: 0, note_type: 3, date_type: dateType, advertise_switch: 1 }),
     fansProfile: (userId) => call('get_blogger_fans_profile', { user_id: userId }),
   }
 }
@@ -162,8 +192,8 @@ function justoneapi(token: string, base: string): Gateway {
     detail: (userId) => call('cooperator/user/blogger/userId/v1', { userId }),
     dataSummary: (userId) => call('kol/dataV3/dataSummary/v1', { userId, business: 0 }),
     fansSummary: (userId) => call('kol/dataV3/fansSummary/v1', { userId }),
-    notesRate: (userId, window) =>
-      call('kol/dataV3/notesRate/v1', { userId, business: 0, noteType: 3, dateType: window === 90 ? 2 : 1, advertiseSwitch: 1 }),
+    notesRate: (userId, dateType) =>
+      call('kol/dataV3/notesRate/v1', { userId, business: 0, noteType: 3, dateType, advertiseSwitch: 1 }),
     fansProfile: (userId) => call('kol/data/userId/fans_profile/v1', { userId }),
   }
 }
@@ -206,8 +236,8 @@ function official(token: string, base: string): Gateway {
     detail: (userId) => get(`/api/solar/cooperator/user/blogger/${encodeURIComponent(userId)}`),
     dataSummary: (userId) => get('/api/solar/kol/dataV3/dataSummary', { userId, business: 0 }),
     fansSummary: (userId) => get('/api/solar/kol/dataV3/fansSummary', { userId }),
-    notesRate: (userId, window) =>
-      get('/api/solar/kol/dataV3/notesRate', { userId, business: 0, noteType: 3, dateType: window === 90 ? 2 : 1, advertiseSwitch: 1 }),
+    notesRate: (userId, dateType) =>
+      get('/api/solar/kol/dataV3/notesRate', { userId, business: 0, noteType: 3, dateType, advertiseSwitch: 1 }),
     fansProfile: (userId) => get(`/api/solar/kol/data/${encodeURIComponent(userId)}/fans_profile`),
   }
 }
@@ -218,7 +248,9 @@ const GATEWAY_BASE: Record<PgyGateway, string> = {
   justoneapi: 'https://api.justoneapi.com',
 }
 
-export function resolveGateway(): { name: PgyGateway; gateway: Gateway } | null {
+type ResolvedGateway = { name: PgyGateway; gateway: Gateway }
+
+export function resolveGateway(): ResolvedGateway | null {
   const token = process.env.PGY_ACCESS_TOKEN
   if (!token) return null
   const name = (process.env.PGY_GATEWAY || 'tikhub') as PgyGateway
@@ -232,7 +264,9 @@ export function resolveGateway(): { name: PgyGateway; gateway: Gateway } | null 
 // Fetch
 // ---------------------------------------------------------------------------
 
-async function enrich(gateway: Gateway, userId: string, window: SourceQuery['window'], base: Json): Promise<Json> {
+async function enrich(resolved: ResolvedGateway, userId: string, window: SourceQuery['window'], base: Json): Promise<Json> {
+  const { gateway } = resolved
+  const dateType = dateTypeFor(resolved.name, window)
   const settle = async (p: Promise<Json | null>) => {
     try {
       return await p
@@ -243,18 +277,20 @@ async function enrich(gateway: Gateway, userId: string, window: SourceQuery['win
   const [dataSummary, fansSummary, notesRate, fansProfile] = await Promise.all([
     settle(gateway.dataSummary(userId)),
     settle(gateway.fansSummary(userId)),
-    settle(gateway.notesRate(userId, window)),
+    settle(gateway.notesRate(userId, dateType)),
     settle(gateway.fansProfile(userId)),
   ])
-  // notesRate carries no dateType back, so remember which window we asked for.
-  return { ...base, dataSummary, fansSummary, notesRate, fansProfile, kcsWindow: window }
+  // notesRate carries no dateType back, so remember what we asked for; if the
+  // table above turns out wrong, stored payloads can still be re-read correctly.
+  return { ...base, dataSummary, fansSummary, notesRate, fansProfile, kcsWindow: window, kcsDateType: dateType }
 }
 
 function toRecord(payload: Json, fetchedAt: string): RawRecord {
   return { source: 'pugongying', platform: 'xhs', externalId: String(payload.userId ?? ''), fetchedAt, payload }
 }
 
-async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterPage> {
+async function fetchLive(query: SourceQuery, resolved: ResolvedGateway): Promise<AdapterPage> {
+  const { gateway } = resolved
   const fetchedAt = new Date().toISOString()
   if (query.externalIds?.length) {
     const ids = query.externalIds.slice(0, query.limit ?? query.externalIds.length)
@@ -262,7 +298,7 @@ async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterP
     for (const userId of ids) {
       const detail = await gateway.detail(userId)
       if (!detail) continue
-      records.push(toRecord(await enrich(gateway, userId, query.window, detail), fetchedAt))
+      records.push(toRecord(await enrich(resolved, userId, query.window, detail), fetchedAt))
     }
     return { sourceMode: 'live', records, nextCursor: null }
   }
@@ -276,7 +312,7 @@ async function fetchLive(query: SourceQuery, gateway: Gateway): Promise<AdapterP
   for (const kol of kols) {
     const userId = String(kol.userId ?? '')
     if (!userId) continue
-    records.push(toRecord(shouldEnrich ? await enrich(gateway, userId, query.window, kol) : kol, fetchedAt))
+    records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol) : kol, fetchedAt))
   }
   // `total` on the 找博主 list is a paging ceiling (5000), not a hit count.
   const hasMore = kols.length === PAGE_SIZE && pageNum < 250
@@ -524,7 +560,7 @@ export const pugongyingAdapter: SourceAdapter = {
       const page = fixturePage('pugongying', new URL('./fixtures/pugongying.json', import.meta.url), query)
       return filterFixturePage(page, query, normalizePugongying)
     }
-    return fetchLive(query, resolved.gateway)
+    return fetchLive(query, resolved)
   },
   normalize: normalizePugongying,
 }
