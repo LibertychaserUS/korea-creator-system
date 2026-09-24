@@ -4,7 +4,8 @@ import { coerceSavedQuery, savedQueryFromRow } from '../http/creators'
 import { savedQueryPage } from '../http/pool'
 import type { Context } from 'hono'
 import { z } from 'zod'
-import { readJson } from '../http/body'
+import { readJson, validationError } from '../http/body'
+import { CursorError } from '../http/cursor'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -40,7 +41,12 @@ export function registerSelectQueryRoutes(app: KcsApp, env: AppEnv, helpers: Rou
     const spec = coerceSavedQuery(raw)
     const errors = validateSavedQuery(spec)
     if (errors.length) return invalidQuery(context, errors)
-    return context.json(await savedQueryPage(env.db, spec, context.req.query()))
+    try {
+      return context.json(await savedQueryPage(env.db, spec, context.req.query()))
+    } catch (err) {
+      if (err instanceof CursorError) return validationError(context, err.code, [{ path: 'cursor', message: err.code }])
+      throw err
+    }
   })
 
   app.post('/api/select/queries', async (context) => {

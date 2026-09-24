@@ -19,7 +19,7 @@ import {
   isStale,
   normalizeCurrency,
   normalizeHealth,
-  parsePaging,
+  parseCursorPaging,
   tierOf,
   withServiceFee,
   cohortGroupKey,
@@ -34,6 +34,7 @@ import {
 import type { Db, Queryable } from '../db'
 import { asPublished, attachCreatorMeta, parseMetrics, publicPoolRow } from './creators'
 import { metricColumn, rankColumn, ranksFor } from './published'
+import { bytesToHex, CursorError, decodeCursor, encodeCursor, fingerprint, hexToFloat } from './cursor'
 
 const SNAPSHOT_KEYS = Object.keys(emptyMetrics())
 
@@ -106,26 +107,93 @@ function staleBefore(now: Date): Date {
   return new Date(now.getTime() - COHORT_RULES.staleDays * 86_400_000)
 }
 
-type PageResult<T> = { items: T[]; total: number; page: number; pageSize: number }
+type PageResult<T> = {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+  nextCursor: string | null
+  prevCursor: string | null
+}
+
+/** One float8 sort column; every list ends with `creator_id` (C collation) so the order is total. */
+type OrderCol = { expr: string; dir: 'ASC' | 'DESC' }
+
+function orderSql(cols: OrderCol[], reverse: boolean): string {
+  const flip = (dir: 'ASC' | 'DESC') => (reverse ? (dir === 'ASC' ? 'DESC' : 'ASC') : dir)
+  return [
+    ...cols.map((c) => `${c.expr} ${flip(c.dir)} NULLS ${reverse ? 'FIRST' : 'LAST'}`),
+    `p.creator_id COLLATE "C" ${flip('ASC')}`,
+  ].join(', ')
+}
+
+/**
+ * Rows strictly after (or before) the boundary row in `cols` order, NULLS
+ * LAST: position by position, "the earlier columns equal and this one past it".
+ * Nothing sorts after a null but more nulls, which the later columns settle.
+ */
+function keysetSql(cols: OrderCol[], keys: Array<number | null>, id: string, params: Params, side: 'after' | 'before'): string {
+  const parts: string[] = []
+  for (let i = 0; i <= cols.length; i += 1) {
+    if (side === 'after' && i < cols.length && keys[i] == null) continue
+    const equal = cols.slice(0, i).map((c, j) => (keys[j] == null ? `${c.expr} IS NULL` : `${c.expr} = ${params.add(String(keys[j]))}::float8`))
+    let step: string
+    if (i === cols.length) {
+      step = `p.creator_id COLLATE "C" ${side === 'after' ? '>' : '<'} ${params.add(id)}`
+    } else {
+      const { expr, dir } = cols[i]
+      const v = keys[i]
+      const past = (dir === 'ASC') === (side === 'after') ? '>' : '<'
+      if (side === 'after') step = `(${expr} ${past} ${params.add(String(v))}::float8 OR ${expr} IS NULL)`
+      else step = v == null ? `${expr} IS NOT NULL` : `${expr} ${past} ${params.add(String(v))}::float8`
+    }
+    parts.push(`(${[...equal, step].join(' AND ')})`)
+  }
+  return `(${parts.join(' OR ')})`
+}
 
 async function runPage(
   db: Queryable,
   where: string[],
-  order: string,
+  cols: OrderCol[],
   params: Params,
-  paging: Paging,
-): Promise<{ rows: Array<Record<string, any>>; total: number }> {
-  const clause = ['NOT p.blacklisted', ...where].join('\n AND ')
+  paging: Paging & { cursor: string | null },
+  listFingerprint: string,
+): Promise<{ rows: Array<Record<string, any>>; total: number; page: number; nextCursor: string | null; prevCursor: string | null }> {
+  const base = ['NOT p.blacklisted', ...where]
+  const counted = db.query(`SELECT count(*)::int AS total FROM creator_published p WHERE ${base.join('\n AND ')}`, [...params.values])
+  let page = paging.page
+  let offset = paging.offset
+  let reverse = false
+  let direction: 'offset' | 'n' | 'p' = 'offset'
+  const clause = [...base]
+  if (paging.cursor) {
+    const cursor = decodeCursor(paging.cursor, listFingerprint)
+    if (cursor.k.length !== cols.length) throw new CursorError('cursor_invalid')
+    clause.push(keysetSql(cols, cursor.k.map(hexToFloat), cursor.id, params, cursor.d === 'n' ? 'after' : 'before'))
+    direction = cursor.d
+    reverse = cursor.d === 'p'
+    page = cursor.d === 'n' ? cursor.page + 1 : Math.max(1, cursor.page - 1)
+    offset = 0
+  }
   const values = [...params.values]
-  const [page, counted] = await Promise.all([
-    db.query(
-      `SELECT p.* FROM creator_published p WHERE ${clause}
-        ORDER BY ${order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
-      [...values, paging.pageSize, paging.offset],
-    ),
-    db.query(`SELECT count(*)::int AS total FROM creator_published p WHERE ${clause}`, values),
-  ])
-  return { rows: page.rows, total: counted.rows[0].total }
+  const keys = cols.map((c, i) => `float8send(${c.expr}) AS __k${i}`).join(', ')
+  const fetched = await db.query(
+    `SELECT p.*, ${keys} FROM creator_published p WHERE ${clause.join('\n AND ')}
+      ORDER BY ${orderSql(cols, reverse)} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+    [...values, paging.pageSize + 1, offset],
+  )
+  const more = fetched.rows.length > paging.pageSize
+  const rows = fetched.rows.slice(0, paging.pageSize)
+  if (reverse) rows.reverse()
+  const cursorAt = (row: Record<string, any> | undefined, d: 'n' | 'p') =>
+    row ? encodeCursor({ v: 1, f: listFingerprint, d, k: cols.map((_, i) => bytesToHex(row[`__k${i}`])), id: String(row.creator_id), page }) : null
+  const hasNext = direction === 'p' ? rows.length > 0 : more
+  const hasPrev = direction === 'offset' ? page > 1 : direction === 'n' ? rows.length > 0 : more
+  const nextCursor = hasNext ? cursorAt(rows.at(-1), 'n') : null
+  const prevCursor = hasPrev ? cursorAt(rows[0], 'p') : null
+  for (const row of rows) for (let i = 0; i < cols.length; i += 1) delete row[`__k${i}`]
+  return { rows, total: (await counted).rows[0].total, page, nextCursor, prevCursor }
 }
 
 async function groupSizes(db: Queryable, keys: string[]): Promise<Map<string, number>> {
@@ -200,8 +268,16 @@ async function hydrate(db: Queryable, rows: Array<Record<string, any>>, now: Dat
   })
 }
 
-function order(sortKey: NumericMetricKey | 'followers', dir: 'ASC' | 'DESC', tail: string[]): string {
-  return [`${col(sortKey)} ${dir} NULLS LAST`, ...tail, 'p.creator_id COLLATE "C"'].join(', ')
+function orderCols(sortKey: NumericMetricKey | 'followers', dir: 'ASC' | 'DESC', tail: OrderCol[]): OrderCol[] {
+  return [{ expr: col(sortKey), dir }, ...tail]
+}
+
+/** What a pool cursor is bound to: the list and every parameter but the paging ones. */
+function poolFingerprint(query: Record<string, string | undefined>): string {
+  const rest = Object.entries(query)
+    .filter(([key, value]) => value !== undefined && !['page', 'pageSize', 'cursor'].includes(key))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return fingerprint(['pool', rest])
 }
 
 function priceFilter(query: Record<string, string | undefined>, params: Params): string | null {
@@ -290,10 +366,11 @@ export async function poolPage(
     ? query.sort
     : 'cpe') as NumericMetricKey
   const dir = (query.dir ?? query.order ?? (sortKey === 'cpe' ? 'asc' : 'desc')) === 'asc' ? 'ASC' : 'DESC'
-  const paging = parsePaging(query)
-  const { rows, total } = await runPage(db, where, order(sortKey, dir, [`${col('followers')} DESC NULLS LAST`]), params, paging)
+  const paging = parseCursorPaging(query)
+  const cols = orderCols(sortKey, dir, [{ expr: col('followers'), dir: 'DESC' }])
+  const { rows, total, page, nextCursor, prevCursor } = await runPage(db, where, cols, params, paging, poolFingerprint(query))
   const items = await hydrate(db, rows, now)
-  return { items: items.map(publicPoolRow), total, page: paging.page, pageSize: paging.pageSize }
+  return { items: items.map(publicPoolRow), total, page, pageSize: paging.pageSize, nextCursor, prevCursor }
 }
 
 /** Keys a saved query shows: its columns, filters and highlights, in that order. */
@@ -347,16 +424,13 @@ export async function savedQueryPage(
     where.push(`strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${params.add(search)})) > 0`)
   }
 
-  const paging = parsePaging(query)
-  const { rows, total } = await runPage(
-    db,
-    where,
-    order(spec.sort.key, spec.sort.dir === 'asc' ? 'ASC' : 'DESC', [
-      `${col('cpe')} ASC NULLS LAST`,
-      `${col('followers')} DESC NULLS LAST`,
-    ]),
-    params,
-    paging,
+  const paging = parseCursorPaging(query)
+  const cols = orderCols(spec.sort.key, spec.sort.dir === 'asc' ? 'ASC' : 'DESC', [
+    { expr: col('cpe'), dir: 'ASC' },
+    { expr: col('followers'), dir: 'DESC' },
+  ])
+  const { rows, total, page, nextCursor, prevCursor } = await runPage(
+    db, where, cols, params, paging, fingerprint(['query', spec, search]),
   )
   const keys = savedQueryKeys(spec)
   const items = (await hydrate(db, rows, now)).map((item) => {
@@ -379,7 +453,7 @@ export async function savedQueryPage(
       stale: item.stale,
     }
   })
-  return { items, total, page: paging.page, pageSize: paging.pageSize }
+  return { items, total, page, pageSize: paging.pageSize, nextCursor, prevCursor }
 }
 
 /**

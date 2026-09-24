@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PAGE_MAX, PAGE_SIZE_DEFAULT, PAGE_SIZE_MAX, pageCount, parsePaging } from '../src/paging'
+import { PAGE_MAX, PAGE_SIZE_DEFAULT, PAGE_SIZE_MAX, pageCount, parseCursorPaging, parsePaging } from '../src/paging'
 
 describe('paging', () => {
   it('defaults, caps and offsets', () => {
@@ -27,5 +27,11 @@ describe('paging', () => {
   it('page count is at least one', () => {
     expect(pageCount(0, 50)).toBe(1)
     expect(pageCount(101, 50)).toBe(3)
+  })
+
+  it('a cursor is taken when non-empty; paging still parsed for the jump case', () => {
+    expect(parseCursorPaging({ cursor: ' abc ', pageSize: '20' })).toEqual({ page: 1, pageSize: 20, offset: 0, cursor: 'abc' })
+    expect(parseCursorPaging({ cursor: '', page: '2' }).cursor).toBeNull()
+    expect(parseCursorPaging({ page: '2' })).toMatchObject({ page: 2, cursor: null })
   })
 })

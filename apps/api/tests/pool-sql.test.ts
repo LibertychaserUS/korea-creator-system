@@ -296,6 +296,67 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
     }
   })
 
+  const cursorQueries: Array<Record<string, string>> = [
+    {},
+    { sort: 'engagementRate' },
+    { sort: 'readMedian', dir: 'asc' },
+    { sort: 'readToFollowerRatio', dir: 'desc', health: 'healthy' },
+  ]
+  for (const query of cursorQueries) {
+    it(`GET pool ${JSON.stringify(query)} — cursor walk forward and back equals the page walk`, async () => {
+      const base = `/api/select/pool?${new URLSearchParams({ region: tag, ...query, pageSize: '23' })}`
+      const byPage = await allPages(`/api/select/pool?${new URLSearchParams({ region: tag, ...query })}`, 23)
+      const forward: any[] = []
+      const pages: number[] = []
+      let body = await get(base)
+      for (;;) {
+        forward.push(...body.items)
+        pages.push(body.page)
+        if (!body.nextCursor) break
+        body = await get(`${base}&cursor=${encodeURIComponent(body.nextCursor)}`)
+      }
+      expect(forward.map((row) => row.id)).toEqual(byPage.map((row: any) => row.id))
+      expect(pages).toEqual(pages.map((_, i) => i + 1))
+      const backward: any[] = [...body.items]
+      while (body.prevCursor) {
+        body = await get(`${base}&cursor=${encodeURIComponent(body.prevCursor)}`)
+        backward.unshift(...body.items)
+      }
+      expect(body.page).toBe(1)
+      expect(backward.map((row) => row.id)).toEqual(byPage.map((row: any) => row.id))
+    })
+  }
+
+  it('queries/run: a jump to page 3 then nextCursor is page 4; cursors are bound to their spec and signed', async () => {
+    const spec = defaultSavedQuery({ name: 'c', sort: { key: 'engagementRate', dir: 'desc' } })
+    const post = (qs: string, body: unknown = spec) => ctx.app.request(`/api/select/queries/run?${qs}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const third = await (await post('page=3&pageSize=20')).json()
+    const fourth = await (await post('page=4&pageSize=20')).json()
+    const viaCursor = await (await post(`pageSize=20&cursor=${encodeURIComponent(third.nextCursor)}`)).json()
+    expect(viaCursor.page).toBe(4)
+    expect(viaCursor.items.map((row: any) => row.id)).toEqual(fourth.items.map((row: any) => row.id))
+    const back = await (await post(`pageSize=20&cursor=${encodeURIComponent(fourth.prevCursor)}`)).json()
+    expect(back.items.map((row: any) => row.id)).toEqual(third.items.map((row: any) => row.id))
+
+    const other = await post(`pageSize=20&cursor=${encodeURIComponent(third.nextCursor)}`, { ...spec, sort: { key: 'cpe', dir: 'asc' } })
+    expect(other.status).toBe(400)
+    expect((await other.json()).error.message).toBe('cursor_mismatch')
+    const [body, mac] = String(third.nextCursor).split('.')
+    const forged = JSON.parse(Buffer.from(body, 'base64url').toString())
+    forged.page = 99
+    const tampered = await post(`cursor=${Buffer.from(JSON.stringify(forged)).toString('base64url')}.${mac}`)
+    expect(tampered.status).toBe(400)
+    expect((await tampered.json()).error.message).toBe('cursor_invalid')
+    for (const junk of ['x', 'a.b.c', 'a'.repeat(3_000)]) {
+      const res = await ctx.app.request(`/api/select/pool?cursor=${junk}`, { headers: { authorization: `Bearer ${token}` } })
+      expect(res.status, junk.slice(0, 10)).toBe(400)
+    }
+  })
+
   it('paging: default and capped page size, total survives an empty page', async () => {
     const first = await get(`/api/select/pool?region=${tag}`)
     expect(first.pageSize).toBe(PAGE_SIZE_DEFAULT)

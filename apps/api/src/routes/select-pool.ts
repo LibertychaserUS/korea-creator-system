@@ -8,7 +8,8 @@ import {
 } from '../http/creators'
 import { poolPage, withPercentiles } from '../http/pool'
 import { readReferenceLines } from '../http/published'
-import { readJson, shortlistBody } from '../http/body'
+import { readJson, shortlistBody, validationError } from '../http/body'
+import { CursorError } from '../http/cursor'
 import { jsonError } from '../http/responses'
 import type { AppEnv, KcsApp, RouteHelpers } from '../http/types'
 
@@ -16,7 +17,12 @@ export function registerSelectPoolRoutes(app: KcsApp, env: AppEnv, helpers: Rout
   app.get('/api/select/pool', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'select.read')
     if (denied) return denied
-    return context.json(await poolPage(env.db, context.req.query()))
+    try {
+      return context.json(await poolPage(env.db, context.req.query()))
+    } catch (err) {
+      if (err instanceof CursorError) return validationError(context, err.code, [{ path: 'cursor', message: err.code }])
+      throw err
+    }
   })
 
   app.get('/api/select/creators/:id', async (context) => {

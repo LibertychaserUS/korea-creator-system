@@ -732,6 +732,9 @@ function unitHint(key: NumericMetricKey) {
   return unit === 'ratio' ? '0.03' : unit === 'cnyPerUnit' ? '3' : ''
 }
 
+/** 上一页 / 下一页走服务端给的游标（不按偏移数行，翻得再深也一样快）；跳页仍按页码。 */
+const cursors = { page: 0, next: null as string | null, prev: null as string | null }
+
 let loadSeq = 0
 async function run() {
   const mine = ++loadSeq
@@ -739,12 +742,21 @@ async function run() {
   try {
     // 新建还没起名的方案也要能先看结果；名字只在保存时必填。
     const body = { ...spec, name: spec.name.trim() || t('kcs.query.unsaved') }
-    const params = new URLSearchParams({ page: String(page.value), pageSize: String(PAGE_SIZE_DEFAULT) })
+    const params = new URLSearchParams({ pageSize: String(PAGE_SIZE_DEFAULT) })
     if (search.value.trim()) params.set('q', search.value.trim())
-    const res = await request<any>(apiPath(API.queryRun, {}, params), { method: 'POST', body: JSON.stringify(body) })
+    const step = page.value - cursors.page
+    const cursor = step === 1 ? cursors.next : step === -1 ? cursors.prev : null
+    let res: any
+    try {
+      res = await request<any>(apiPath(API.queryRun, {}, new URLSearchParams([...params, cursor ? ['cursor', cursor] : ['page', String(page.value)]])), { method: 'POST', body: JSON.stringify(body) })
+    } catch (e) {
+      if (!cursor) throw e
+      res = await request<any>(apiPath(API.queryRun, {}, new URLSearchParams([...params, ['page', String(page.value)]])), { method: 'POST', body: JSON.stringify(body) })
+    }
     if (mine !== loadSeq) return
     items.value = res.items ?? []
     total.value = res.total ?? items.value.length
+    Object.assign(cursors, { page: res.page ?? page.value, next: res.nextCursor ?? null, prev: res.prevCursor ?? null })
     if (page.value > pages.value) page.value = pages.value
   } finally {
     if (mine === loadSeq) loading.value = false
@@ -836,6 +848,7 @@ onMounted(async () => {
 const debouncedRun = useDebounceFn(run, 300)
 // 条件一变回到第一页；page 本身的变化（翻页）立即取数。
 function rerun() {
+  Object.assign(cursors, { page: 0, next: null, prev: null })
   if (page.value !== 1) page.value = 1
   else debouncedRun()
 }
