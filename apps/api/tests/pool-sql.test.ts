@@ -171,6 +171,19 @@ describe('select pool in SQL matches the in-memory contract evaluation', () => {
       .toBe(await count("SELECT count(*)::int AS n FROM creators WHERE status = 'released' AND creator_key LIKE '" + tag + "%'"))
     const again = await refreshPublished(ctx.db)
     expect(again).toMatchObject({ written: 0, removed: 0, changed: 0 })
+
+    // Startup mode: nothing to do → no group re-ranked; a lost row comes back with the ranks it had.
+    expect(await refreshPublished(ctx.db, { regroup: 'touched', calibrate: false })).toEqual({ written: 0, removed: 0, groups: 0, changed: 0 })
+    const { rows: [lost] } = await ctx.db.query(
+      "SELECT creator_id, group_key, ranks FROM creator_published WHERE creator_key LIKE $1 AND ranks <> '{}'::jsonb ORDER BY creator_id LIMIT 1",
+      [`${tag}%`],
+    )
+    await ctx.db.query('DELETE FROM creator_published WHERE creator_id = $1', [lost.creator_id])
+    const healed = await refreshPublished(ctx.db, { regroup: 'touched', calibrate: false })
+    expect(healed).toMatchObject({ written: 1, removed: 0, changed: 1 })
+    expect(healed.groups).toBeGreaterThanOrEqual(1)
+    const { rows: [back] } = await ctx.db.query('SELECT group_key, ranks FROM creator_published WHERE creator_id = $1', [lost.creator_id])
+    expect(back).toEqual({ group_key: lost.group_key, ranks: lost.ranks })
   })
 
   const poolQueries: Array<Record<string, string>> = [

@@ -27,7 +27,14 @@ async function main() {
     logEvent('info', 'seed.demo_loaded', counts)
   }
   await ensurePublishedSnapshots(db, { full: true })
-  logEvent('info', 'published.refreshed', await refreshPublished(db, { full: true }))
+  // Startup only fills rows that are missing or out of date and re-ranks their
+  // groups (seconds at 50 000 creators instead of a full rebuild); the timer
+  // below re-ranks everything. KCS_PUBLISHED_FULL_REFRESH=1 rebuilds every row,
+  // e.g. after a release that changes how a pool row is derived.
+  const fullRefresh = process.env.KCS_PUBLISHED_FULL_REFRESH === '1'
+  logEvent('info', 'published.refreshed', await refreshPublished(db, fullRefresh
+    ? { full: true }
+    : { regroup: 'touched', calibrate: false }))
   const store =
     process.env.S3_ENDPOINT && process.env.S3_ACCESS_KEY
       ? createS3Store({

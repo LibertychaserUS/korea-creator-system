@@ -368,13 +368,14 @@ export async function readCalibration(q: Queryable) {
  */
 export async function refreshPublished(
   db: Db,
-  options: { now?: Date; full?: boolean; calibrate?: boolean } = {},
+  options: { now?: Date; full?: boolean; calibrate?: boolean; regroup?: 'all' | 'touched' } = {},
 ): Promise<{ written: number; removed: number; groups: number; changed: number }> {
   const now = options.now ?? new Date()
   const removed = await db.query(
     `DELETE FROM creator_published p
       WHERE NOT EXISTS (SELECT 1 FROM creators c WHERE c.id = p.creator_id AND c.status = 'released')`,
   )
+  const touched = new Set<string>()
   const { rows: todo } = await db.query(
     `SELECT c.id FROM creators c LEFT JOIN creator_published p ON p.creator_id = c.id
       WHERE c.status = 'released'
@@ -389,14 +390,22 @@ export async function refreshPublished(
     const { rows } = await db.query('SELECT * FROM creators WHERE id = ANY($1)', [ids])
     const items = new Map((await attachCreatorMeta(db, rows, false)).map((item) => [item.id, item]))
     const built = rows.map((row) => buildRecord(row, items.get(row.id)!)).filter((b): b is Built => b != null)
+    for (const b of built) touched.add(b.groupKey)
     await upsertRecords(db, built.map((b) => b.record))
   }
   if (options.calibrate !== false) await calibrateSources(db, now)
   const targets = await loadTargets(db)
-  const { rows: groups } = await db.query(
-    `SELECT DISTINCT group_key FROM creator_published
-     UNION SELECT group_key FROM cohort_dirty_groups ORDER BY 1`,
-  )
+  // `touched`: only groups that got rows here or were marked dirty (startup);
+  // `all`: every group, so snapshots that aged past the cut-off lose their rank (timer).
+  const { rows: groups } = options.regroup === 'touched'
+    ? await db.query(
+      'SELECT unnest($1::text[]) AS group_key UNION SELECT group_key FROM cohort_dirty_groups ORDER BY 1',
+      [[...touched]],
+    )
+    : await db.query(
+      `SELECT DISTINCT group_key FROM creator_published
+       UNION SELECT group_key FROM cohort_dirty_groups ORDER BY 1`,
+    )
   let changed = 0
   for (const row of groups) {
     changed += (await inTransaction(db, (client) => recomputeGroups(client, [row.group_key], { now, targets }))).changed
