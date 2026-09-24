@@ -58,6 +58,11 @@ spec:
                   key: s3-secret-key
             - name: S3_FORCE_PATH_STYLE
               value: "true"
+            # Signs the select pool's page cursors. Every replica needs the same value; without
+            # it (and without BETTER_AUTH_SECRET) each process picks a random one at start,
+            # so cursors stop working across replicas and after a restart.
+            - name: KCS_CURSOR_SECRET
+              valueFrom: { secretKeyRef: { name: kcs-api, key: cursor-secret, optional: true } }
             - name: WEB_ORIGIN
               value: https://kcs.example.com,https://legacy.kcs.example.com,https://ops.kcs.example.com,https://dev.kcs.example.com,https://select.kcs.example.com
             - name: PGY_ACCESS_TOKEN
