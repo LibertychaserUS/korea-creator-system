@@ -559,7 +559,7 @@ describe('refresh tiers (蒲公英)', () => {
       sent.length = 0
       const done = await processJob(context.env, job.id)
       expect(done).toMatchObject({ status: 'ok', failedCount: 0 })
-      expect(done.writtenCount + done.skippedDupes).toBe(1)
+      expect(done!.writtenCount + done!.skippedDupes).toBe(1)
       const { rows } = await context.db.query(
         `SELECT COALESCE(r.payload, p.payload) AS payload FROM creator_raw r LEFT JOIN raw_payloads p ON p.hash = r.payload_hash
           WHERE r.external_id = 't1' ORDER BY r.fetched_at DESC, r.id DESC LIMIT 1`,
