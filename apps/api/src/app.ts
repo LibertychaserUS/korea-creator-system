@@ -56,6 +56,8 @@ export function createApp(env: AppEnv) {
       credentials: true,
       allowHeaders: ['Authorization', 'Content-Type'],
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      // Browsers cache the preflight per URL for this long (Chrome caps it at 2 h).
+      maxAge: 7200,
     }),
   )
 

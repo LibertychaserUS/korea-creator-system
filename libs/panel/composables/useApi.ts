@@ -23,7 +23,10 @@ export function useApi() {
   async function send(path: string, opts: RequestInit = {}, origin: ApiOrigin = 'api'): Promise<Response> {
     const headers = new Headers(opts.headers)
     const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
-    if (!isForm && !headers.has('content-type')) headers.set('content-type', 'application/json')
+    // A cross-origin GET without a content-type is a "simple" request: no CORS preflight.
+    const method = (opts.method ?? 'GET').toUpperCase()
+    const bodyless = method === 'GET' || method === 'HEAD'
+    if (!bodyless && !isForm && !headers.has('content-type')) headers.set('content-type', 'application/json')
     if (serverToken?.value) headers.set('authorization', `Bearer ${serverToken.value}`)
     const apiBase = (import.meta.server && config.apiInternalBase) || config.public.apiBase
     const res = await fetch(`${origin === 'self' ? '' : apiBase}${path}`, {
