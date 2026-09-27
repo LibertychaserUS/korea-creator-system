@@ -1,0 +1,55 @@
+name: AWS OIDC 冒烟
+
+# 只验证 GitHub Actions 能否用 OIDC 代入 kcs-github-deploy。
+# 不部署应用，不创建 Lightsail、数据库、S3、ECR。
+# 手动运行，且必须选 main：信任策略的 sub 只放行 refs/heads/main 与 environment:production。
+# 本工作流不声明 environment，因此走的是 ref 那条。
+# 不改 .github/workflows/kcs.yml。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  caller-identity:
+    name: caller-identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 仅 main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "请在 main 分支上运行。其他分支的 OIDC sub 不在角色信任策略里。"
+          exit 1
+
+      - name: 仓库变量 AWS_ROLE_ARN
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          case "${AWS_ROLE_ARN}" in
+            arn:aws:iam::*:role/kcs-github-deploy) ;;
+            "")
+              echo "还没有仓库变量 AWS_ROLE_ARN。先在 CloudShell 跑 deploy/aws/cloudshell-oidc-bootstrap.sh，再把角色 ARN 填进 GitHub Actions 变量。"
+              exit 1
+              ;;
+            *)
+              echo "AWS_ROLE_ARN 不是角色 kcs-github-deploy 的 ARN。"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v5
+
+      - name: 配置 AWS 凭证
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-2
+          audience: sts.amazonaws.com
+          role-session-name: kcs-oidc-smoke
+
+      - name: 确认调用身份
+        run: aws sts get-caller-identity
