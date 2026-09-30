@@ -253,6 +253,29 @@
           </Card>
         </div>
       </div>
+
+      <!-- 危险区：只有未发布（draft / review / ready）的达人能删，和端点约束一致 -->
+      <Card v-if="canDelete" class="gap-0 border-destructive/30 py-0 shadow-xs" data-testid="creator-danger-zone">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-destructive/20 px-5 py-3.5">
+          <div class="min-w-0">
+            <h3 class="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <TriangleAlert class="size-4" aria-hidden="true" />
+              {{ t('kcs.opsCreator.danger.title') }}
+            </h3>
+            <p class="mt-0.5 text-xs text-muted-foreground">{{ t('kcs.opsCreator.danger.lead') }}</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
+            data-testid="btn-delete-creator"
+            @click="deleteOpen = true"
+          >
+            <Trash2 class="size-4" />
+            {{ t('kcs.opsCreator.danger.delete') }}
+          </Button>
+        </div>
+      </Card>
     </template>
 
     <EmptyState v-else :title="t('kcs.opsCreator.notFound')" :icon="UserX">
@@ -278,6 +301,24 @@
           >
             <Loader2 v-if="acting" class="size-4 animate-spin" />
             {{ t('kcs.opsCreator.confirm.ok') }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <!-- 删除达人：不可恢复；409 creator_released 时把原因留在弹窗里 -->
+    <AlertDialog :open="deleteOpen" @update:open="(v: boolean) => { deleteOpen = v; if (!v) deleteError = '' }">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('kcs.opsCreator.danger.deleteTitle', { name: creator?.displayName ?? '' }) }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('kcs.opsCreator.danger.deleteBody') }}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <p v-if="deleteError" role="alert" class="text-sm text-destructive" data-testid="creator-delete-error">{{ deleteError }}</p>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deleteBusy">{{ t('kcs.opsCreator.confirm.cancel') }}</AlertDialogCancel>
+          <Button variant="destructive" :disabled="deleteBusy" data-testid="btn-delete-creator-confirm" @click="removeCreator">
+            <Loader2 v-if="deleteBusy" class="size-4 animate-spin" />
+            {{ t('kcs.opsCreator.danger.confirm') }}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -321,7 +362,7 @@
 </template>
 
 <script setup lang="ts">
-import { Archive, ArrowLeft, FileSearch, Loader2, Lock, RotateCcw, Save, SearchX, Send, TriangleAlert, Undo2, UserX } from 'lucide-vue-next'
+import { Archive, ArrowLeft, FileSearch, Loader2, Lock, RotateCcw, Save, SearchX, Send, Trash2, TriangleAlert, Undo2, UserX } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import {
   API,
@@ -352,7 +393,7 @@ const COOP = ['collaborated', 'never_collaborated']
 const { t, locale } = useI18n()
 const route = useRoute()
 const localePath = useLocalePath()
-const { request } = useApi()
+const { request, errorText } = useApi()
 const { user } = useSession()
 const { label } = useMetrics()
 
@@ -388,6 +429,12 @@ const canWrite = computed(() => Boolean(role.value && can(role.value, 'ops.write
 const canPublish = computed(() => Boolean(role.value && can(role.value, 'ops.publish')))
 const canReadRaw = computed(() => Boolean(role.value && can(role.value, 'ingest.read')))
 const canDecideMissing = computed(() => Boolean(role.value && can(role.value, 'ingest.write')))
+/** 删除只允许未发布（draft / review / ready）的达人，和后端约束一致；released 不显示入口。 */
+const DELETABLE = ['draft', 'review', 'ready']
+const canDelete = computed(() => Boolean(canWrite.value && creator.value && DELETABLE.includes(creator.value.status)))
+const deleteOpen = ref(false)
+const deleteBusy = ref(false)
+const deleteError = ref('')
 const dataStatus = ref<CreatorDataStatus | null>(null)
 const deciding = ref(false)
 const missCount = computed(() => Math.max(0, ...(dataStatus.value?.sources ?? []).map((s) => s.missCount)))
@@ -522,6 +569,21 @@ async function save() {
     toast.error(t('kcs.opsCreator.toast.failed'))
   } finally {
     saving.value = false
+  }
+}
+
+async function removeCreator() {
+  deleteBusy.value = true
+  deleteError.value = ''
+  try {
+    await request(apiPath('/api/ops/creators/:id', { id: String(route.params.id) }), { method: 'DELETE' })
+    toast.success(t('kcs.opsCreator.danger.deleted', { name: creator.value?.displayName ?? '' }))
+    await navigateTo(localePath('/creators'))
+  } catch (e: unknown) {
+    // 409 creator_released：errorText 会命中 kcs.apiError.creator_released，留在弹窗里提示先下架
+    deleteError.value = errorText(e)
+  } finally {
+    deleteBusy.value = false
   }
 }
 

@@ -19,6 +19,7 @@
             <TableHead>{{ t('kcs.panel.projectName') }}</TableHead>
             <TableHead class="hidden sm:table-cell">{{ t('kcs.panel.note') }}</TableHead>
             <TableHead class="w-28 text-right">{{ t('kcs.panel.members') }}</TableHead>
+            <TableHead v-if="canWrite" class="w-10"><span class="sr-only">{{ t('kcs.projectDelete.actions') }}</span></TableHead>
             <TableHead class="w-10"><span class="sr-only">{{ t('kcs.panel.detail') }}</span></TableHead>
           </TableRow>
         </TableHeader>
@@ -57,6 +58,19 @@
                 {{ formatNumber(row.memberCount) }}
               </span>
             </TableCell>
+            <TableCell v-if="canWrite" class="text-right">
+              <Button
+                variant="ghost"
+                size="icon"
+                class="size-8 text-muted-foreground hover:text-destructive"
+                :title="t('kcs.projectDelete.delete')"
+                :aria-label="t('kcs.projectDelete.delete')"
+                data-testid="btn-delete-project"
+                @click.stop="removing = row"
+              >
+                <Trash2 class="size-4" />
+              </Button>
+            </TableCell>
             <TableCell class="text-muted-foreground">
               <ChevronRight class="size-4 opacity-0 transition-opacity group-hover:opacity-100" />
             </TableCell>
@@ -73,20 +87,45 @@
         <Button variant="outline" size="sm" data-testid="btn-projects-retry" @click="load()">{{ t('kcs.panel.retry') }}</Button>
       </div>
     </TableCard>
+
+    <!-- 删除项目：409 project_not_empty 时把原因留在弹窗里 -->
+    <AlertDialog :open="Boolean(removing)" @update:open="(v: boolean) => { if (!v) { removing = null; removeError = '' } }">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('kcs.projectDelete.deleteTitle', { name: removing?.name ?? '' }) }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('kcs.projectDelete.deleteBody') }}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <p v-if="removeError" role="alert" class="text-sm text-destructive" data-testid="project-delete-error">{{ removeError }}</p>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="removeBusy">{{ t('kcs.projectDelete.cancel') }}</AlertDialogCancel>
+          <Button variant="destructive" :disabled="removeBusy" data-testid="btn-delete-project-confirm" @click="removeProject">
+            <Loader2 v-if="removeBusy" class="size-4 animate-spin" />
+            {{ t('kcs.projectDelete.confirm') }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </PanelPage>
 </template>
 
 <script setup lang="ts">
-import { API } from '@kcs/contract'
-import { ChevronRight, FolderKanban, Plus } from 'lucide-vue-next'
+import { API, apiPath, can } from '@kcs/contract'
+import { ChevronRight, FolderKanban, Loader2, Plus, Trash2 } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 
 const { t } = useI18n()
 const localePath = useLocalePath()
-const { request } = useApi()
+const { request, errorText } = useApi()
+const { user } = useSession()
 const { formatNumber } = useFormat()
 const items = ref<any[]>([])
 const loading = ref(true)
 const loadError = ref(false)
+
+const canWrite = computed(() => Boolean(user.value && can(user.value.role, 'select.write')))
+const removing = ref<any>(null)
+const removeBusy = ref(false)
+const removeError = ref('')
 
 async function load() {
   try {
@@ -94,6 +133,24 @@ async function load() {
     loadError.value = false
   } catch {
     loadError.value = true
+  }
+}
+
+async function removeProject() {
+  const row = removing.value
+  if (!row) return
+  removeBusy.value = true
+  removeError.value = ''
+  try {
+    await request(apiPath('/api/select/projects/:id', { id: row.id }), { method: 'DELETE' })
+    items.value = items.value.filter((item) => item.id !== row.id)
+    removing.value = null
+    toast.success(t('kcs.projectDelete.deleted', { name: row.name }))
+  } catch (e: unknown) {
+    // 409 project_not_empty：errorText 会命中 kcs.apiError.project_not_empty，留在弹窗里提示先移除成员
+    removeError.value = errorText(e)
+  } finally {
+    removeBusy.value = false
   }
 }
 

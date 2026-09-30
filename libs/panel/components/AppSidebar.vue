@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { Activity, ClipboardList, DatabaseZap, FileSpreadsheet, FolderKanban, Gauge, Languages, LayoutDashboard, ListChecks, LogOut, ScrollText, SlidersHorizontal, Tags, UserCog, UserPlus, Users } from 'lucide-vue-next'
+import { Activity, ClipboardCheck, ClipboardList, DatabaseZap, FileSpreadsheet, FolderKanban, Gauge, Languages, LayoutDashboard, ListChecks, LogOut, ScrollText, SlidersHorizontal, Tags, UserCog, UserPlus, Users } from 'lucide-vue-next'
 import { can, type Permission } from '@kcs/contract'
 
 type KcsNavItem = { to: string; labelKey: string; perm?: Permission }
@@ -110,6 +110,7 @@ const iconOf = (path: string) => {
   if (key === 'select/projects') return FolderKanban
   if (key === 'ops/creators/new') return UserPlus
   if (key === 'ops/creators') return Users
+  if (key === 'ops/review') return ClipboardCheck
   if (key === 'ops/sources') return DatabaseZap
   if (key === 'dev/accounts') return UserCog
   if (key === 'dev/pipeline') return Gauge

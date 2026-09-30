@@ -17,6 +17,8 @@ export const kcsConsoleZhCN = {
     not_in_pool: "该达人不在当前选人范围",
     use_ingest_fetch: "请从数据源发起采集",
     validation_failed: "提交的内容没有通过校验，请检查填写项。",
+    project_not_empty: "项目里还有成员，先把成员移出项目再删除",
+    creator_released: "这位达人已发布，先下架再删除",
   },
   console: {
     nav: {

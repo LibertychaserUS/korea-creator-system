@@ -469,7 +469,8 @@ export const enKcs = {
     select: "Select Desk",
     monitor: "Dev Desk",
     ingest: "Collection tasks",
-    accounts: "Accounts"
+    accounts: "Accounts",
+    review: "Review queue"
   },
   actions: {
     login: "Sign in",
@@ -822,6 +823,15 @@ export const enKcs = {
       count: "{n} records",
       expand: "Show original content",
       fields: "Main fields"
+    },
+    danger: {
+      title: "Delete creator",
+      lead: "Only creators that have not been published can be deleted. Deleting cannot be undone, and project assignments and shortlist entries are removed along with the creator.",
+      delete: "Delete creator",
+      deleteTitle: "Delete “{name}”?",
+      deleteBody: "This cannot be undone. Make sure none of this creator’s records are needed anymore.",
+      confirm: "Delete",
+      deleted: "Deleted “{name}”"
     }
   },
   compare: {
@@ -904,5 +914,39 @@ export const enKcs = {
   },
   exempt: {
     note: "Nickname, Xiaohongshu account, raw keywords, and handwritten notes stay in the source language."
+  },
+  opsReview: {
+    title: "Review queue",
+    lead: "Fetched and imported creators line up here first. Passing one moves it toward publishing; only accounts with the right permission can pass.",
+    count: "{n} creators",
+    cols: {
+      creator: "Creator",
+      followers: "Followers",
+      verticals: "Focus",
+      source: "Source",
+      added: "Added",
+      actions: "Actions"
+    },
+    pass: "Pass",
+    passSelected: "Pass selected ({n})",
+    passed: "Passed “{name}”",
+    passedN: "Passed {n} creators",
+    clearSelected: "Clear selection",
+    select: "Select “{name}”",
+    selectAll: "Select all",
+    open: "View details",
+    empty: "The queue is clear",
+    emptyBody: "Newly fetched creators land here and only join the publish flow once they are passed.",
+    readOnly: "Your account can view this queue but cannot pass creators.",
+    failed: "That did not work. Please try again later."
+  },
+  projectDelete: {
+    actions: "Actions",
+    delete: "Delete project",
+    deleteTitle: "Delete project “{name}”?",
+    deleteBody: "This cannot be undone. A project that still has members cannot be deleted — remove all of them first.",
+    confirm: "Delete",
+    cancel: "Cancel",
+    deleted: "Project “{name}” deleted"
   }
 } as const

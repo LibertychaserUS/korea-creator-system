@@ -17,6 +17,8 @@ export const kcsConsoleEn = {
     not_in_pool: "This creator isn't in the current selection pool",
     use_ingest_fetch: "Start collection from a data source instead",
     validation_failed: "The submission didn't pass validation; please check the fields.",
+    project_not_empty: "This project still has members. Remove them before deleting it.",
+    creator_released: "This creator is published. Withdraw it before deleting.",
   },
   console: {
     nav: {

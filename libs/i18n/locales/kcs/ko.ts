@@ -469,7 +469,8 @@ export const koKcs = {
     select: "선정 데스크",
     monitor: "인프라 데스크",
     ingest: "수집 기록",
-    accounts: "계정"
+    accounts: "계정",
+    review: "검토 대기열"
   },
   actions: {
     login: "로그인",
@@ -822,6 +823,15 @@ export const koKcs = {
       count: "총 {n}건",
       expand: "원본 내용 펼치기",
       fields: "주요 항목"
+    },
+    danger: {
+      title: "크리에이터 삭제",
+      lead: "아직 게시하지 않은 크리에이터만 삭제할 수 있습니다. 삭제하면 되돌릴 수 없고, 프로젝트 배정과 후보 명단 기록도 함께 지워집니다.",
+      delete: "크리에이터 삭제",
+      deleteTitle: "「{name}」을(를) 삭제할까요?",
+      deleteBody: "삭제하면 되돌릴 수 없습니다. 이 크리에이터의 기록이 더 이상 필요 없는지 확인하세요.",
+      confirm: "삭제",
+      deleted: "「{name}」을(를) 삭제했습니다"
     }
   },
   compare: {
@@ -904,5 +914,39 @@ export const koKcs = {
   },
   exempt: {
     note: "닉네임, 샤오홍슈 계정, 원본 키워드, 손으로 쓴 메모는 번역하지 않는다.",
+  },
+  opsReview: {
+    title: "검토 대기열",
+    lead: "수집하거나 가져온 크리에이터가 먼저 여기에 줄 섭니다. 통과하면 게시 준비로 넘어가며, 권한이 있는 계정만 통과시킬 수 있습니다.",
+    count: "총 {n}명",
+    cols: {
+      creator: "크리에이터",
+      followers: "팔로워",
+      verticals: "분야",
+      source: "출처",
+      added: "등록 시간",
+      actions: "작업"
+    },
+    pass: "통과",
+    passSelected: "선택한 {n}명 통과",
+    passed: "「{name}」을(를) 통과했습니다",
+    passedN: "{n}명을 통과했습니다",
+    clearSelected: "선택 해제",
+    select: "「{name}」 선택",
+    selectAll: "전체 선택",
+    open: "상세 보기",
+    empty: "대기열이 비었습니다",
+    emptyBody: "새로 수집된 크리에이터가 여기 들어오며, 통과해야 게시 흐름으로 넘어갑니다.",
+    readOnly: "이 계정은 대기열을 볼 수만 있고 통과시킬 수는 없습니다.",
+    failed: "처리하지 못했습니다. 잠시 후 다시 시도하세요."
+  },
+  projectDelete: {
+    actions: "작업",
+    delete: "프로젝트 삭제",
+    deleteTitle: "프로젝트 「{name}」을(를) 삭제할까요?",
+    deleteBody: "삭제하면 되돌릴 수 없습니다. 멤버가 남아 있으면 삭제할 수 없으니 먼저 모두 빼 주세요.",
+    confirm: "삭제",
+    cancel: "취소",
+    deleted: "프로젝트 「{name}」을(를) 삭제했습니다"
   },
 } as const

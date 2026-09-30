@@ -469,7 +469,8 @@ export const zhCNKcs = {
     select: "选人端",
     monitor: "运维端",
     ingest: "抓取任务",
-    accounts: "账号"
+    accounts: "账号",
+    review: "审核队列"
   },
   actions: {
     login: "登录",
@@ -822,6 +823,15 @@ export const zhCNKcs = {
       count: "共 {n} 条",
       expand: "展开原始内容",
       fields: "主要字段"
+    },
+    danger: {
+      title: "删除达人",
+      lead: "只有还没发布的达人才能删除；删除后不可恢复，项目分派和候选名单里的记录会一并清掉。",
+      delete: "删除达人",
+      deleteTitle: "删除「{name}」？",
+      deleteBody: "删除后不可恢复，请确认不再需要这位达人的任何记录。",
+      confirm: "删除",
+      deleted: "已删除「{name}」"
     }
   },
   compare: {
@@ -904,5 +914,39 @@ export const zhCNKcs = {
   },
   exempt: {
     note: "昵称、小红书号、原始关键词和手写备注保持原文，不做翻译。"
+  },
+  opsReview: {
+    title: "审核队列",
+    lead: "新抓取和批量导入的达人先在这里排队；点「通过」后进入待发布，只有有权限的账号才能通过。",
+    count: "共 {n} 位",
+    cols: {
+      creator: "达人",
+      followers: "粉丝",
+      verticals: "垂直方向",
+      source: "来源",
+      added: "录入时间",
+      actions: "操作"
+    },
+    pass: "通过",
+    passSelected: "通过所选（{n}）",
+    passed: "已通过「{name}」",
+    passedN: "已通过 {n} 位",
+    clearSelected: "取消选择",
+    select: "选中「{name}」",
+    selectAll: "全选",
+    open: "查看详情",
+    empty: "队列已清空",
+    emptyBody: "新抓取的达人会进入这里，通过后才进入发布流程。",
+    readOnly: "你的账号只能查看队列，不能通过。",
+    failed: "没有成功，请稍后再试"
+  },
+  projectDelete: {
+    actions: "操作",
+    delete: "删除项目",
+    deleteTitle: "删除项目「{name}」？",
+    deleteBody: "删除后不可恢复。项目里还有成员时删不掉，需要先把成员全部移出项目。",
+    confirm: "删除",
+    cancel: "取消",
+    deleted: "已删除项目「{name}」"
   }
 } as const

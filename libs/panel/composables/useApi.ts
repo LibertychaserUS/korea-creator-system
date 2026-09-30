@@ -89,7 +89,12 @@ export function useApi() {
       return te(key) ? t(key) : message
     }
     const key = `kcs.apiError.${message}`
-    return te(key) ? t(key) : message
+    if (te(key)) return t(key)
+    // 后端会把说明缀在错误码后面（"project_not_empty: remove its members first"）：
+    // 整句没有文案时，退而取冒号前的错误码再查一次。
+    const code = message.split(':')[0].trim()
+    const codeKey = `kcs.apiError.${code}`
+    return code && code !== message && te(codeKey) ? t(codeKey) : message
   }
 
   return { request, download, hasSession, errorText }
