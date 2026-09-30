@@ -649,7 +649,13 @@ async function fetchPage(query: SourceQuery, resolved: ResolvedGateway, context?
     const userId = String(kol.userId ?? '')
     if (!userId) continue
     try {
-      records.push(toRecord(shouldEnrich ? await enrich(resolved, userId, query.window, kol, notes) : kol, fetchedAt))
+      // Without enrich the list payload was still read under this source's
+      // configured scope: stamp it so normalize can label the record — and
+      // its silent no-coop-data fallback — instead of leaving it scope-less.
+      const payload = shouldEnrich
+        ? await enrich(resolved, userId, query.window, kol, notes)
+        : { ...kol, kcsScope: { traffic: resolved.scope.traffic, business: resolved.scope.business } }
+      records.push(toRecord(payload, fetchedAt))
     } catch (error) {
       return interrupted(records, notes, `${pageNum}:${i}`, error)
     }
@@ -918,8 +924,11 @@ export function normalizePugongying(raw: RawRecord): NormalizeResult {
     m.basis.viralCount = viral.basis
   }
 
-  m.priceImage = positive(p, ['picturePrice'])
-  m.priceVideo = positive(p, ['videoPrice'])
+  // pictureState / videoState 0 = 未开通: a quote on a channel the creator
+  // never opened is not a quote — drop it so no cpr/cpe derives from a
+  // channel that cannot be booked.
+  m.priceImage = toNumber(p.pictureState) === 0 ? null : positive(p, ['picturePrice'])
+  m.priceVideo = toNumber(p.videoState) === 0 ? null : positive(p, ['videoPrice'])
   // The platform's own unit-cost estimates are 近 30 天; a 90-day row derives them from its own medians.
   m.cpr = positive(p, cost(['pictureReadCost', 'dataSummary.picReadCost']))
   m.cpe = positive(p, cost(['estimatePictureEngageCost', 'dataSummary.estimatePictureEngageCost']))

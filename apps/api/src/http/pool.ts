@@ -210,8 +210,49 @@ async function runPage(
     row ? encodeCursor({ v: 1, f: listFingerprint, d, k: cols.map((_, i) => bytesToHex(row[`__k${i}`])), id: String(row.creator_id), page }) : null
   const hasNext = direction === 'p' ? rows.length > 0 : more
   const hasPrev = direction === 'offset' ? page > 1 : direction === 'n' ? rows.length > 0 : more
-  const nextCursor = hasNext ? cursorAt(rows.at(-1), 'n') : null
-  const prevCursor = hasPrev ? cursorAt(rows[0], 'p') : null
+  let nextCursor = hasNext ? cursorAt(rows.at(-1), 'n') : null
+  let prevCursor = hasPrev ? cursorAt(rows[0], 'p') : null
+  if (!rows.length) {
+    // An empty page must not strand the pager. A numeric jump past the end
+    // gets a prevCursor synthesized from the last row before the page (the
+    // row at offset-1 when the page starts right at the total, else the
+    // list's last row): its sort keys with an id just past the real one, so
+    // "rows before it" is exactly the list seen so far and stepping back
+    // lands on the previous page's rows. A cursor step into a gap (rows
+    // vanished mid-walk) flips the incoming cursor back the way it came.
+    // Both are signed with this list's fingerprint like any other cursor.
+    const before = Math.min(offset, counted.rows[0].total) - 1
+    if (direction === 'offset' && page > 1 && before >= 0) {
+      const boundary = await db.query(
+        `SELECT p.creator_id, ${keys} FROM creator_published p WHERE ${clause.join('\n AND ')}
+          ORDER BY ${orderSql(cols, false)} LIMIT 1 OFFSET ${params.add(before)}`,
+        [...params.values],
+      )
+      const row = boundary.rows[0]
+      if (row) {
+        prevCursor = encodeCursor({
+          v: 1,
+          f: listFingerprint,
+          d: 'p',
+          k: cols.map((_, i) => bytesToHex(row[`__k${i}`])),
+          id: `${row.creator_id}\u0001`,
+          page,
+        })
+      }
+    } else if (paging.cursor) {
+      const cursor = decodeCursor(paging.cursor, listFingerprint)
+      if (direction === 'n') {
+        // The boundary is the last row of the page we came from; an id just
+        // past it makes "rows before" end exactly there, so stepping back
+        // returns that page whole.
+        prevCursor = encodeCursor({ ...cursor, d: 'p', id: `${cursor.id}\u0001`, page })
+      } else {
+        // Nothing before the boundary anymore; stepping forward lands just
+        // past the gap instead of stranding the walk.
+        nextCursor = encodeCursor({ ...cursor, d: 'n', page })
+      }
+    }
+  }
   for (const row of rows) for (let i = 0; i < cols.length; i += 1) delete row[`__k${i}`]
   return { rows, total: counted.rows[0].total, page, nextCursor, prevCursor }
 }

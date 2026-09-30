@@ -365,6 +365,37 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
     return context.json({ ok: true, status: 'ready' })
   })
 
+  // Unreleased-only cleanup: everything a draft / review / ready creator has
+  // cascades (categories, prices, raw, sources, history, published, reviews)
+  // except assignments and shortlist items, which have no ON DELETE CASCADE —
+  // those two are cleared here, inside the same transaction. A released
+  // creator must be unpublished first: their pool row is other orgs' data.
+  app.delete('/api/ops/creators/:id', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'ops.write')
+    if (denied) return denied
+    const id = context.req.param('id')
+    const removed = await inTransaction(env.db, async (client) => {
+      const found = await client.query(
+        'SELECT id, display_name, status FROM creators WHERE id = $1 FOR UPDATE',
+        [id],
+      )
+      if (!found.rowCount) return null
+      if (!['draft', 'review', 'ready'].includes(found.rows[0].status)) {
+        return { blocked: true, name: found.rows[0].display_name as string }
+      }
+      await client.query('DELETE FROM assignments WHERE creator_id = $1', [id])
+      await client.query('DELETE FROM shortlist_items WHERE creator_id = $1', [id])
+      await client.query('DELETE FROM creators WHERE id = $1', [id])
+      return { blocked: false, name: found.rows[0].display_name as string }
+    })
+    if (!removed) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    if (removed.blocked) {
+      return jsonError(context, 409, 'CONFLICT', 'creator_released: unpublish it first')
+    }
+    await audit(env.db, user!.id, 'creator.delete', 'creator', id, removed.name)
+    return context.json({ ok: true })
+  })
+
   app.get('/api/ops/categories', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
@@ -408,25 +439,40 @@ export function registerOpsRoutes(app: KcsApp, env: AppEnv, helpers: RouteHelper
   app.get('/api/ops/review', async (context) => {
     const { denied } = await helpers.requireAuth(context, 'ops.read')
     if (denied) return denied
+    // The queue is the creators themselves: ingest and sheet rows set
+    // needs_review, while a reviews row exists only for sheet deliveries —
+    // so the reviews table is not who is waiting. `status` guards the
+    // defensive 'review' value too; anything released left the queue.
     const { rows } = await env.db.query(
-      `SELECT r.*, c.display_name FROM reviews r JOIN creators c ON c.id = r.creator_id
-       WHERE r.status = 'pending' ORDER BY r.created_at DESC`,
+      `SELECT c.id, c.display_name, c.source, c.followers, c.verticals, c.needs_review, c.created_at,
+              EXISTS (SELECT 1 FROM creator_raw cr WHERE cr.creator_id = c.id) AS has_raw
+       FROM creators c
+       WHERE c.needs_review AND c.status IN ('draft', 'review')
+       ORDER BY c.updated_at DESC, c.id COLLATE "C"`,
     )
     return context.json({ items: rows.map(reviewView) })
   })
 
+  // `id` is the creator id from the review list. Same pass semantics as
+  // always — clear the flag, move the creator to 'ready' — but it now works
+  // for everyone the queue shows, not just sheet rows with a reviews entry.
   app.post('/api/ops/review/:id/pass', async (context) => {
     const { user, denied } = await helpers.requireAuth(context, 'ops.write')
     if (denied) return denied
     const id = context.req.param('id')
-    const { rows } = await env.db.query('SELECT * FROM reviews WHERE id = $1', [id])
-    if (!rows[0]) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
-    await env.db.query("UPDATE reviews SET status = 'passed' WHERE id = $1", [id])
-    await env.db.query("UPDATE creators SET needs_review = false, status = 'ready' WHERE id = $1", [
-      rows[0].creator_id,
-    ])
-    await republish(env.db, [String(rows[0].creator_id)])
-    await audit(env.db, user!.id, 'review.pass', 'review', id, 'pass')
+    const passed = await inTransaction(env.db, async (client) => {
+      const result = await client.query(
+        `UPDATE creators SET needs_review = false, status = 'ready', updated_at = now()
+         WHERE id = $1 AND needs_review AND status IN ('draft', 'review') RETURNING id`,
+        [id],
+      )
+      if (!result.rowCount) return null
+      await client.query("UPDATE reviews SET status = 'passed' WHERE creator_id = $1 AND status = 'pending'", [id])
+      return result.rows[0]
+    })
+    if (!passed) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    await republish(env.db, [id])
+    await audit(env.db, user!.id, 'review.pass', 'creator', id, 'pass')
     return context.json({ ok: true })
   })
 

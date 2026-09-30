@@ -34,6 +34,7 @@ describe('response keys are camelCase', () => {
     }
 
     const released = (await context.db.query("SELECT id FROM creators WHERE status = 'released' ORDER BY id LIMIT 1")).rows[0].id
+    const draft = (await context.db.query("SELECT id FROM creators WHERE status = 'draft' AND needs_review ORDER BY id LIMIT 1")).rows[0].id
     const job = (await context.db.query('SELECT id FROM ingest_jobs ORDER BY id LIMIT 1')).rows[0].id
     await context.db.query(
       `INSERT INTO reviews (id, creator_id, risk_level, conclusion, status) VALUES ('rv_naming', $1, 'low', 'ok', 'pending')`,
@@ -69,11 +70,19 @@ describe('response keys are camelCase', () => {
     }
 
     expect(overview.recentJobs[0]).toEqual(expect.objectContaining({ writtenCount: expect.any(Number), createdAt: expect.any(String) }))
-    expect(review.items.find((row: { id: string }) => row.id === 'rv_naming')).toMatchObject({
-      creatorId: released,
-      riskLevel: 'low',
+    // The queue is needs_review creators, not reviews rows: the pending
+    // rv_naming row hangs on a released creator and must not surface, while
+    // a genuinely waiting draft shows the creator's own fields.
+    expect(review.items.find((row: { id: string }) => row.id === 'rv_naming')).toBeUndefined()
+    const waiting = review.items.find((row: { id: string }) => row.id === draft)
+    expect(waiting).toEqual(expect.objectContaining({
       displayName: expect.any(String),
-    })
+      needsReview: true,
+      followers: expect.anything(),
+      verticals: expect.any(Array),
+      createdAt: expect.any(String),
+      hasRaw: expect.any(Boolean),
+    }))
     expect(batches.items[0]).toEqual(expect.objectContaining({ sourceId: expect.any(String), sourceName: expect.any(String) }))
     expect(categories.items.find((row: { slug: string }) => row.slug === 'collaborated')).toMatchObject({
       nameZh: expect.any(String),

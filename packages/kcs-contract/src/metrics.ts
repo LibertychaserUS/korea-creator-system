@@ -463,6 +463,20 @@ export function deriveMetrics(input: CreatorMetrics): CreatorMetrics {
       m.basis[d.key] = result!.basis
     } else delete m.basis[d.key]
   }
+  // A record claiming 合作笔记 scope whose cost metrics ALL priced on the
+  // natural (日常) denominators had no 合作数据 to price against — the same
+  // fallback the 蒲公英 enrich path records in `basis.costFallback`, which
+  // the refresh scheduler counts on. A single coop cost value (source-given
+  // or coop-median-derived) means the vendor did have 合作数据, so only the
+  // per-key basis says the rest fell back.
+  if (m.basis.businessScope === 'coop') {
+    const costKeys = ['cpr', 'cpe', 'cpeVideo', 'cpmRead'] as const
+    const onCoop = costKeys.some((key) =>
+      derived.includes(key) ? (m.basis[key] ?? '').includes('coop') : m[key] != null)
+    const onNatural = costKeys.some((key) => derived.includes(key) && !(m.basis[key] ?? '').includes('coop'))
+    if (!onCoop && onNatural) m.basis.costFallback = 'noCoopData'
+    else delete m.basis.costFallback
+  }
   m.derived = derived
   return m
 }

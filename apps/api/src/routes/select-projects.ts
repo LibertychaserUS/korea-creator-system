@@ -100,6 +100,35 @@ export function registerSelectProjectRoutes(app: KcsApp, env: AppEnv, helpers: R
     })
   })
 
+  app.delete('/api/select/projects/:id', async (context) => {
+    const { user, denied } = await helpers.requireAuth(context, 'select.write')
+    if (denied) return denied
+    const projectId = context.req.param('id')
+    const removed = await inTransaction(env.db, async (client) => {
+      const found = await client.query(
+        'SELECT id, name FROM projects WHERE id = $1 AND org_id = $2 FOR UPDATE',
+        [projectId, user!.orgId],
+      )
+      if (!found.rowCount) return null
+      // shortlist_items never points at a project; assignments is the only
+      // child, and it cascades — but a project with members is a mistake to
+      // silently empty, so the delete stops here and says so.
+      const members = await client.query(
+        'SELECT count(*)::int AS n FROM assignments WHERE project_id = $1',
+        [projectId],
+      )
+      if (members.rows[0].n > 0) return { blocked: true, name: found.rows[0].name as string }
+      await client.query('DELETE FROM projects WHERE id = $1', [projectId])
+      return { blocked: false, name: found.rows[0].name as string }
+    })
+    if (!removed) return jsonError(context, 404, 'NOT-FOUND', 'not_found')
+    if (removed.blocked) {
+      return jsonError(context, 409, 'CONFLICT', 'project_not_empty: remove its members first')
+    }
+    await audit(env.db, user!.id, 'project.delete', 'project', projectId, removed.name)
+    return context.json({ ok: true })
+  })
+
   type AssignBody = { projectId: string; creatorIds: string[]; creatorKey?: string }
 
   async function ownProject(projectId: string, orgId: string) {

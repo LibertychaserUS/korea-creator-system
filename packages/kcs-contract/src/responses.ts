@@ -41,15 +41,21 @@ export type OpsOverview = {
   recentJobs: OverviewJob[]
 }
 
-/** `GET /api/ops/review` rows. */
+/**
+ * `GET /api/ops/review` rows — the queue is the creators themselves
+ * (`needs_review` on a not-yet-released creator), not the reviews table.
+ */
 export type ReviewView = {
+  /** The creator id; `/api/ops/review/:id/pass` takes it. */
   id: string
-  creatorId: string
   displayName: string
-  riskLevel: string
-  conclusion: string
-  status: string
+  source: string | null
+  followers: number | null
+  verticals: string[]
+  needsReview: boolean
   createdAt: string
+  /** A raw vendor payload is on file (creator_raw). */
+  hasRaw: boolean
 }
 
 /** `GET /api/dev/audit` rows. */

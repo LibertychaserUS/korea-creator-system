@@ -23,12 +23,13 @@ export const overviewJobView = (row: Row): OverviewJob => ({
 
 export const reviewView = (row: Row): ReviewView => ({
   id: row.id,
-  creatorId: row.creator_id,
   displayName: row.display_name,
-  riskLevel: row.risk_level,
-  conclusion: row.conclusion,
-  status: row.status,
+  source: row.source ?? null,
+  followers: row.followers == null ? null : Number(row.followers),
+  verticals: row.verticals ?? [],
+  needsReview: Boolean(row.needs_review),
   createdAt: iso(row.created_at)!,
+  hasRaw: Boolean(row.has_raw),
 })
 
 export const auditLogView = (row: Row): AuditLogView => ({
