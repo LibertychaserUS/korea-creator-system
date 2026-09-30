@@ -1,10 +1,4 @@
 /* TinyShip UI Styles */
-@import './themes/default.css';
-@import './themes/claude.css';
-@import './themes/cosmic-night.css';
-@import './themes/modern-minimal.css';
-@import './themes/ocean-breeze.css';
-@import './themes/perplexity.css';
 @import './themes/tide.css';
 
 /* Typography / Prose overrides for @tailwindcss/typography */

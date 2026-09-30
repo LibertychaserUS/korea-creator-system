@@ -152,7 +152,11 @@
           <p class="text-[11px] tabular-nums text-muted-foreground">{{ formatDateTime(job.createdAt) }}</p>
         </li>
       </ul>
-      <EmptyState v-if="!loading && !items.length" :title="t('kcs.console.batches.empty')" :icon="FileSpreadsheet" />
+      <EmptyState v-if="!loading && !loadError && !items.length" :title="t('kcs.console.batches.empty')" :icon="FileSpreadsheet" />
+      <div v-else-if="loadError && !loading" class="flex flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-5" role="alert" data-testid="batches-error">
+        <p class="text-sm text-muted-foreground">{{ t('kcs.states.error') }}</p>
+        <Button variant="outline" size="sm" data-testid="btn-batches-retry" @click="load()">{{ t('kcs.panel.retry') }}</Button>
+      </div>
       <template v-if="pages > 1" #footer>
         <ListPager
           v-model:page="page"
@@ -203,6 +207,7 @@ const items = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
 const loading = ref(true)
+const loadError = ref(false)
 const pages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 
 function pick(chosen: File | undefined | null) {
@@ -267,8 +272,10 @@ async function load() {
     )
     items.value = res.items ?? []
     total.value = res.total ?? 0
+    loadError.value = false
   } catch {
     items.value = []
+    loadError.value = true
   } finally {
     loading.value = false
   }

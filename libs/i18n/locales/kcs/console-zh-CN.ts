@@ -6,6 +6,17 @@ export const kcsConsoleZhCN = {
   },
   apiError: {
     owner_only: "只有建这个方案的人能改谁能看到",
+    unauthenticated: "请重新登录",
+    not_found: "没有找到这条记录",
+    forbidden: "没有权限做这个操作",
+    "no role assigned": "这个账号还没有分工，请联系管理员",
+    cursor_mismatch: "列表已变化，请刷新重试",
+    cursor_invalid: "列表已变化，请刷新重试",
+    version_conflict: "内容已被更新，请刷新",
+    already_assigned: "已在项目中",
+    not_in_pool: "该达人不在当前选人范围",
+    use_ingest_fetch: "请从数据源发起采集",
+    validation_failed: "提交的内容没有通过校验，请检查填写项。",
   },
   console: {
     nav: {

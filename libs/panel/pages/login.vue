@@ -7,7 +7,7 @@
         <AppLogo size="md" :show-text="false" icon-class-name="bg-white/10 ring-1 ring-white/15" />
         <div class="leading-tight">
           <p class="text-sm font-semibold text-white">{{ t('kcs.brand.title') }}</p>
-          <p class="text-[11px] uppercase tracking-[0.16em] text-white/55">{{ t('kcs.brand.eyebrow') }}</p>
+          <p class="text-[11px] uppercase tracking-[0.16em] text-white/70">{{ t('kcs.brand.eyebrow') }}</p>
         </div>
       </div>
 
@@ -35,7 +35,7 @@
         <h1 class="text-xl font-semibold tracking-tight text-foreground">{{ t('kcs.panel.signIn') }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">{{ t('kcs.panel.signInLead') }}</p>
       </div>
-      <form method="post" :action="loginAction" class="grid gap-4" enctype="application/x-www-form-urlencoded">
+      <form method="post" :action="loginAction" class="grid gap-4" enctype="application/x-www-form-urlencoded" @submit="submitting = true">
         <input type="hidden" name="locale" :value="locale" />
         <input type="hidden" name="app" :value="appKey" />
         <div class="grid gap-2">
@@ -62,11 +62,22 @@
               id="password"
               v-model="password"
               name="password"
-              type="password"
+              :type="showPassword ? 'text' : 'password'"
               data-testid="login-password"
               autocomplete="current-password"
-              class="h-10 pl-9"
+              class="h-10 pl-9 pr-10"
             />
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              :aria-label="showPassword ? t('kcs.panel.hidePassword') : t('kcs.panel.showPassword')"
+              :aria-pressed="showPassword"
+              data-testid="login-toggle-password"
+              @click="showPassword = !showPassword"
+            >
+              <EyeOff v-if="showPassword" class="size-4" aria-hidden="true" />
+              <Eye v-else class="size-4" aria-hidden="true" />
+            </button>
           </div>
         </div>
         <p
@@ -77,18 +88,30 @@
           <AlertCircle class="size-4 shrink-0" />
           {{ error }}
         </p>
-        <Button data-testid="login-submit" type="submit" class="mt-1 h-10 w-full">
-          {{ t('kcs.panel.enter') }}
+        <Button data-testid="login-submit" type="submit" class="mt-1 h-10 w-full" :disabled="submitting">
+          {{ submitting ? t('kcs.panel.signingIn') : t('kcs.panel.enter') }}
           <ArrowRight class="size-4" />
         </Button>
       </form>
-      <p class="mt-8 text-center font-mono text-[11px] tracking-[0.2em] text-muted-foreground/80">{{ t('kcs.brand.pillars') }}</p>
+      <!-- 移动端：品牌区看不到，在表单下方补一行三个工作台简介 -->
+      <ul class="mt-8 grid gap-2 lg:hidden">
+        <li v-for="ws in workspaces" :key="ws.key" class="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5">
+          <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary" aria-hidden="true">
+            <component :is="ws.icon" class="size-4" />
+          </span>
+          <div class="min-w-0 leading-tight">
+            <p class="text-sm font-medium text-foreground">{{ t(ws.label) }}</p>
+            <p class="truncate text-xs text-muted-foreground">{{ t(ws.desc) }}</p>
+          </div>
+        </li>
+      </ul>
+      <p class="mt-8 text-center font-mono text-[11px] tracking-[0.2em] text-muted-foreground">{{ t('kcs.brand.pillars') }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Activity, AlertCircle, ArrowRight, ClipboardList, LockKeyhole, Mail, Users } from 'lucide-vue-next'
+import { Activity, AlertCircle, ArrowRight, ClipboardList, Eye, EyeOff, LockKeyhole, Mail, Users } from 'lucide-vue-next'
 
 definePageMeta({ layout: 'auth' })
 
@@ -98,6 +121,8 @@ const req = useRequestURL()
 const appKey = computed(() => String((useAppConfig().kcs as { key?: string } | undefined)?.key ?? ''))
 const loginAction = computed(() => `${req.origin}/__login`)
 const error = computed(() => (route.query.error ? t('kcs.panel.loginError') : ''))
+const showPassword = ref(false)
+const submitting = ref(false)
 
 // The form is usable before hydration; v-model would reset whatever was typed (or autofilled) by then.
 const hydrating = import.meta.client && useNuxtApp().isHydrating

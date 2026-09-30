@@ -1,7 +1,7 @@
 <template>
   <nav class="flex items-center justify-between gap-3 text-xs text-muted-foreground" :data-testid="testid">
     <span class="tabular-nums">{{ info }}</span>
-    <div class="flex gap-1.5">
+    <div class="flex items-center gap-1.5">
       <Button variant="outline" size="sm" :disabled="page <= 1" :aria-label="prevLabel" @click="emit('update:page', page - 1)">
         <ChevronLeft class="size-4" />
         <span class="hidden sm:inline">{{ prevLabel }}</span>

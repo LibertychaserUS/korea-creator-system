@@ -10,20 +10,19 @@
     </template>
 
     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <div class="inline-flex w-full rounded-lg border border-border bg-muted/40 p-0.5 sm:w-auto" role="tablist" :aria-label="t('kcs.opsCreators.cols.status')">
+      <div class="inline-flex w-full rounded-lg border border-border bg-muted/40 p-0.5 sm:w-auto" role="group" :aria-label="t('kcs.opsCreators.cols.status')">
         <button
           v-for="tab in tabs"
           :key="tab.stage"
           type="button"
-          role="tab"
           class="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium transition-colors sm:flex-none"
           :class="stage === tab.stage ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-          :aria-selected="stage === tab.stage"
+          :aria-pressed="stage === tab.stage"
           :data-testid="tab.testid"
           @click="setStage(tab.stage)"
         >
           {{ t(`kcs.opsCreators.tabs.${tab.stage}`) }}
-          <span class="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">{{ formatNumber(counts[tab.stage]) }}</span>
+          <span class="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">{{ countsReady ? formatNumber(counts[tab.stage]) : '—' }}</span>
         </button>
       </div>
 
@@ -229,6 +228,7 @@ const isStage = (v: unknown): v is CreatorStage => v === 'review' || v === 'rele
 const items = ref<Row[]>([])
 const total = ref(0)
 const counts = ref<Record<CreatorStage, number>>({ review: 0, released: 0, withdrawn: 0 })
+const countsReady = ref(false)
 const loading = ref(true)
 const error = ref('')
 const stage = ref<CreatorStage>(isStage(route.query.tab) ? route.query.tab : 'review')
@@ -258,6 +258,7 @@ async function load() {
     loadStatuses(mine)
     total.value = res.total ?? 0
     counts.value = res.counts ?? counts.value
+    countsReady.value = true
     error.value = ''
     if (page.value > pages.value) page.value = pages.value
   } catch {

@@ -136,7 +136,11 @@
           </template>
         </TableBody>
       </Table>
-      <EmptyState v-if="!loading && !items.length" :title="t('kcs.console.categories.empty')" :icon="Tags" />
+      <EmptyState v-if="!loading && !loadError && !items.length" :title="t('kcs.console.categories.empty')" :icon="Tags" />
+      <div v-else-if="loadError && !loading" class="flex flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-5" role="alert" data-testid="categories-error">
+        <p class="text-sm text-muted-foreground">{{ t('kcs.states.error') }}</p>
+        <Button variant="outline" size="sm" data-testid="btn-categories-retry" @click="load()">{{ t('kcs.panel.retry') }}</Button>
+      </div>
       <template v-if="items.some(isCoop)" #footer>
         <p class="text-xs text-muted-foreground">{{ t('kcs.console.categories.coopLocked') }}</p>
       </template>
@@ -167,6 +171,7 @@ const { formatNumber } = useFormat()
 const items = ref<CategoryView[]>([])
 const usage = ref<Record<string, number>>({})
 const loading = ref(true)
+const loadError = ref(false)
 const saving = ref<string | null>(null)
 const editing = ref<string | null>(null)
 const names = reactive<Record<NameKey, string>>({ 'zh-CN': '', en: '', ko: '' })
@@ -191,12 +196,17 @@ function otherNames(c: CategoryView) {
 }
 
 async function load() {
-  const [list, counts] = await Promise.all([
-    request<{ items: CategoryView[] }>(API.opsCategories.path),
-    request<CategoryUsage>(API.opsCategoryUsage.path).catch(() => ({ items: [] })),
-  ])
-  items.value = list.items ?? []
-  usage.value = Object.fromEntries(counts.items.map((u) => [u.slug, u.creators]))
+  try {
+    const [list, counts] = await Promise.all([
+      request<{ items: CategoryView[] }>(API.opsCategories.path),
+      request<CategoryUsage>(API.opsCategoryUsage.path).catch(() => ({ items: [] })),
+    ])
+    items.value = list.items ?? []
+    usage.value = Object.fromEntries(counts.items.map((u) => [u.slug, u.creators]))
+    loadError.value = false
+  } catch {
+    loadError.value = true
+  }
 }
 
 async function patch(c: CategoryView, body: Partial<Pick<CategoryView, 'enabled' | 'frontendVisible'>> | { names: Record<NameKey, string> }) {

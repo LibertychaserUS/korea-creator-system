@@ -13,7 +13,7 @@
 
     <SidebarContent class="px-2 pt-2">
       <SidebarGroup>
-        <SidebarGroupLabel class="text-[11px] uppercase tracking-[0.12em] text-muted-foreground/80">
+        <SidebarGroupLabel class="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
           {{ t(labelKey) }}
         </SidebarGroupLabel>
         <SidebarGroupContent>
@@ -36,7 +36,7 @@
     </SidebarContent>
 
     <SidebarFooter class="gap-3 p-3">
-      <p class="px-1 text-[11px] leading-relaxed text-muted-foreground/80">{{ t('kcs.brand.tagline') }}</p>
+      <p class="px-1 text-[11px] leading-relaxed text-muted-foreground">{{ t('kcs.brand.tagline') }}</p>
       <div v-if="user" class="flex items-center gap-2.5 rounded-lg border border-sidebar-border bg-background/60 p-2">
         <Avatar class="h-8 w-8 border border-border">
           <AvatarFallback class="bg-primary/10 text-xs font-medium text-primary">

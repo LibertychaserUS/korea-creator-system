@@ -63,11 +63,15 @@
           </TableRow>
         </TableBody>
       </Table>
-      <EmptyState v-if="!loading && !items.length" :title="t('kcs.panel.emptyProjects')" :icon="FolderKanban">
+      <EmptyState v-if="!loading && !loadError && !items.length" :title="t('kcs.panel.emptyProjects')" :icon="FolderKanban">
         <Button as-child size="sm">
           <NuxtLink :to="localePath('/projects/new')">{{ t('kcs.panel.createProject') }}</NuxtLink>
         </Button>
       </EmptyState>
+      <div v-else-if="loadError && !loading" class="flex flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-5" role="alert" data-testid="projects-error">
+        <p class="text-sm text-muted-foreground">{{ t('kcs.states.error') }}</p>
+        <Button variant="outline" size="sm" data-testid="btn-projects-retry" @click="load()">{{ t('kcs.panel.retry') }}</Button>
+      </div>
     </TableCard>
   </PanelPage>
 </template>
@@ -82,10 +86,20 @@ const { request } = useApi()
 const { formatNumber } = useFormat()
 const items = ref<any[]>([])
 const loading = ref(true)
+const loadError = ref(false)
+
+async function load() {
+  try {
+    items.value = (await request<any>(API.projects.path)).items
+    loadError.value = false
+  } catch {
+    loadError.value = true
+  }
+}
 
 onMounted(async () => {
   try {
-    items.value = (await request<any>(API.projects.path)).items
+    await load()
   } finally {
     loading.value = false
   }

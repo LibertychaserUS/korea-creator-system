@@ -26,11 +26,11 @@ defineProps<{
 </script>
 
 <style scoped>
-/* 空态图标外圈：两道极浅的同心涟漪 */
+/* 空态图标外圈：两道极浅的同心涟漪，颜色从主题 token 派生 */
 .tide-empty {
-  background: oklch(0.45 0.085 235 / 0.08);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
   box-shadow:
-    0 0 0 8px oklch(0.45 0.085 235 / 0.05),
-    0 0 0 16px oklch(0.45 0.085 235 / 0.025);
+    0 0 0 8px color-mix(in srgb, var(--primary) 5%, transparent),
+    0 0 0 16px color-mix(in srgb, var(--primary) 2.5%, transparent);
 }
 </style>

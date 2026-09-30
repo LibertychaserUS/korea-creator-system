@@ -11,7 +11,7 @@
     </span>
     <span
       v-if="lowActive"
-      class="inline-flex h-6 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+      class="inline-flex h-6 items-center rounded-md border border-(--warning)/30 bg-(--warning)/10 px-2 text-[11px] font-medium text-(--warning)"
       data-low-active="true"
       :title="t('kcs.health.lowActiveHint')"
     >
@@ -47,7 +47,7 @@ const grade = computed(() => {
 const cls = computed(() => {
   switch (grade.value) {
     case 'healthy':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+      return 'border-(--success)/30 bg-(--success)/10 text-(--success)'
     case 'abnormal':
       return 'border-destructive/30 bg-destructive/10 text-destructive'
     default:

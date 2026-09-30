@@ -28,6 +28,13 @@
         </div>
       </header>
 
+      <!-- 移动端锚点：顶栏导航 md 以下收起，hero 上方补一排直达链接 -->
+      <nav class="relative z-10 mx-auto flex w-full max-w-6xl flex-wrap items-center justify-center gap-2 px-6 pb-1 text-sm text-muted-foreground md:hidden" aria-label="sections">
+        <a href="#workspaces" class="rounded-md border border-border/60 bg-background/60 px-3 py-1.5 backdrop-blur-sm transition-colors hover:text-foreground">{{ t('kcs.landing.navWorkspaces') }}</a>
+        <a href="#flow" class="rounded-md border border-border/60 bg-background/60 px-3 py-1.5 backdrop-blur-sm transition-colors hover:text-foreground">{{ t('kcs.landing.navFlow') }}</a>
+        <a href="#data" class="rounded-md border border-border/60 bg-background/60 px-3 py-1.5 backdrop-blur-sm transition-colors hover:text-foreground">{{ t('kcs.landing.navScoring') }}</a>
+      </nav>
+
       <section
         class="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-12 px-6 pb-20 pt-12 md:px-8 md:pt-20 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pb-28"
         data-testid="marketing-hero"
@@ -53,7 +60,10 @@
                 <ArrowRight class="size-4" />
               </NuxtLink>
             </Button>
-            <Button as-child size="lg" variant="outline" class="h-11 bg-background/60 px-6 backdrop-blur-sm">
+            <Button as-child size="lg" variant="outline" data-testid="cta-request" class="h-11 bg-background/60 px-6 backdrop-blur-sm">
+              <a href="mailto:admin@kcs.local">{{ t('kcs.landing.requestAccess') }}</a>
+            </Button>
+            <Button as-child size="lg" variant="ghost" class="h-11 px-6">
               <a href="#workspaces">{{ t('kcs.panel.learnMore') }}</a>
             </Button>
           </div>
@@ -74,10 +84,9 @@
                   <p class="text-[11px] text-muted-foreground">{{ t('kcs.landing.previewMeta') }}</p>
                 </div>
               </div>
-              <span class="flex gap-1.5">
-                <span class="size-2 rounded-full bg-border" />
-                <span class="size-2 rounded-full bg-border" />
-                <span class="size-2 rounded-full bg-primary/60" />
+              <span class="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span class="size-1.5 rounded-full bg-primary/70" aria-hidden="true" />
+                {{ t('kcs.health.healthy') }}
               </span>
             </div>
             <table class="w-full text-sm">
@@ -90,7 +99,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-border/60">
-                <tr v-for="row in preview" :key="row.name" class="[&:nth-child(2)]:bg-primary/5">
+                <tr v-for="row in preview" :key="row.name">
                   <td class="px-4 py-2.5">
                     <div class="flex items-center gap-2.5">
                       <span class="flex size-8 items-center justify-center rounded-full border border-border bg-muted text-xs text-muted-foreground">{{ row.name.charAt(0) }}</span>
@@ -131,7 +140,7 @@
             <span class="flex size-11 items-center justify-center rounded-lg" :class="ws.iconWrap" aria-hidden="true">
               <component :is="ws.icon" class="size-5" />
             </span>
-            <span class="font-mono text-xs text-muted-foreground/70">0{{ index + 1 }}</span>
+            <span class="text-xs tabular-nums text-muted-foreground/70">0{{ index + 1 }}</span>
           </div>
           <div>
             <h3 class="text-lg font-semibold tracking-tight">{{ t(ws.label) }}</h3>
@@ -158,7 +167,7 @@
         <ol class="mt-12 grid gap-8 md:grid-cols-4 md:gap-6">
           <li v-for="(step, i) in steps" :key="i" class="relative">
             <div class="flex items-center gap-3 md:block">
-              <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background font-mono text-sm font-semibold text-primary">
+              <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background text-sm font-semibold text-primary">
                 {{ i + 1 }}
               </span>
               <span v-if="i < steps.length - 1" class="absolute left-[calc(2.25rem+0.5rem)] right-[-1.5rem] top-[1.1rem] hidden h-px bg-gradient-to-r from-primary/40 to-border md:block" aria-hidden="true" />
@@ -177,7 +186,7 @@
       <h3 class="mt-10 text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{{ t('kcs.landing.sourcesTitle') }}</h3>
       <div class="mt-4 grid gap-4 md:grid-cols-3">
         <div v-for="src in sources" :key="src.id" class="relative overflow-hidden rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-          <span class="absolute inset-x-0 top-0 h-0.5" :class="src.route === 'official' ? 'bg-primary' : 'bg-amber-500/70'" aria-hidden="true" />
+          <span class="absolute inset-x-0 top-0 h-0.5" :class="src.route === 'official' ? 'bg-primary' : 'bg-(--warning)/70'" aria-hidden="true" />
           <span class="inline-flex rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">{{ t(`kcs.source.${src.route}`) }}</span>
           <h4 class="mt-3 text-base font-semibold">{{ t(`kcs.landing.sources.${src.id}.label`) }}</h4>
           <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t(`kcs.landing.sources.${src.id}.body`) }}</p>
@@ -191,7 +200,7 @@
             <li v-for="group in groups" :key="group" class="rounded-lg border border-border/50 bg-muted/30 p-4">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium">{{ groupLabel(group) }}</span>
-                <span class="font-mono text-[11px] tabular-nums text-muted-foreground">{{ fieldsIn(group).length }}</span>
+                <span class="text-[11px] tabular-nums text-muted-foreground">{{ fieldsIn(group).length }}</span>
               </div>
               <p class="mt-1.5 text-xs leading-relaxed text-muted-foreground">{{ t(`kcs.landing.groups.${group}`) }}</p>
               <div class="mt-3 flex flex-wrap gap-1">
@@ -243,12 +252,15 @@
         <div class="tide-cta-glow" aria-hidden="true" />
         <h2 class="relative text-3xl font-semibold tracking-tight md:text-4xl">{{ t('kcs.landing.ctaTitle') }}</h2>
         <p class="relative mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/75 md:text-base">{{ t('kcs.landing.ctaLead') }}</p>
-        <div class="relative mt-8 flex justify-center">
+        <div class="relative mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button as-child size="lg" variant="secondary" class="h-11 px-7">
             <NuxtLink :to="localePath('/login')">
               {{ t('kcs.panel.signIn') }}
               <ArrowRight class="size-4" />
             </NuxtLink>
+          </Button>
+          <Button as-child size="lg" variant="outline" data-testid="cta-request-bottom" class="h-11 border-white/40 bg-white/5 px-7 text-white backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-white">
+            <a href="mailto:admin@kcs.local">{{ t('kcs.landing.requestAccess') }}</a>
           </Button>
         </div>
       </div>
@@ -264,7 +276,7 @@
           <a v-for="ws in workspaces" :key="ws.key" :href="ws.url" class="transition-colors hover:text-foreground">{{ t(ws.label) }}</a>
           <NuxtLink :to="localePath('/login')" class="transition-colors hover:text-foreground">{{ t('kcs.panel.signIn') }}</NuxtLink>
         </nav>
-        <p class="text-xs text-muted-foreground">{{ t('kcs.panel.homeLead') }}</p>
+        <p class="text-xs text-muted-foreground">{{ t('kcs.landing.footerTagline') }}</p>
       </div>
     </footer>
   </main>
@@ -290,12 +302,15 @@ const { label, groupLabel, groups, fieldsIn } = useMetrics()
 const sources = SOURCE_IDS.map((id) => ({ id, route: SOURCE_ROUTE[id] }))
 const tiers = CREATOR_TIERS.map((x) => x.id).filter((x) => x !== 'unknown') as CreatorTier[]
 
-const preview = [
-  { name: '清潭洞护肤', tags: 'beauty · 护肤 · 时尚', tier: 'mid' as const, cpe: '¥1.8', fans: '375K', top: true },
-  { name: '서울살림노트', tags: 'home · 생활 · 韩系家居', tier: 'mid' as const, cpe: '¥2.4', fans: '428K', top: true },
-  { name: '济州咖啡日记', tags: 'food · 探店 · 咖啡', tier: 'mid' as const, cpe: '¥3.1', fans: '61K', top: false },
-  { name: '明洞开箱Leo', tags: 'unbox · 开箱 · vlog', tier: 'head' as const, cpe: '¥5.6', fans: '910K', top: false },
+// 预览表四条达人昵称走 i18n（zh 保留原名，en/ko 给本地化示例名），避免非中文页面穿帮。
+const previewRows = [
+  { tags: 'beauty · 护肤 · 时尚', tier: 'mid' as const, cpe: '¥1.8', fans: '375K', top: true },
+  { tags: 'home · 생활 · 韩系家居', tier: 'mid' as const, cpe: '¥2.4', fans: '428K', top: true },
+  { tags: 'food · 探店 · 咖啡', tier: 'mid' as const, cpe: '¥3.1', fans: '61K', top: false },
+  { tags: 'unbox · 开箱 · vlog', tier: 'head' as const, cpe: '¥5.6', fans: '910K', top: false },
 ]
+const previewNames = computed(() => (tm('kcs.landing.previewNames') as string[]) || [])
+const preview = computed(() => previewRows.map((row, i) => ({ ...row, name: rt(previewNames.value[i] ?? '') })))
 
 const workspaces = computed(() => [
   {
@@ -316,8 +331,8 @@ const workspaces = computed(() => [
     cta: 'kcs.panel.openOps',
     url: `${config.public.opsUrl}/${locale.value}/`,
     icon: ClipboardList,
-    iconWrap: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    bar: 'bg-amber-500',
+    iconWrap: 'bg-(--warning)/10 text-(--warning)',
+    bar: 'bg-(--warning)',
     points: ['kcs.panel.createCreator', 'kcs.panel.review', 'kcs.panel.publish'],
   },
   {
@@ -327,8 +342,8 @@ const workspaces = computed(() => [
     cta: 'kcs.panel.openDev',
     url: `${config.public.devUrl}/${locale.value}/`,
     icon: Activity,
-    iconWrap: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-    bar: 'bg-emerald-500',
+    iconWrap: 'bg-(--success)/10 text-(--success)',
+    bar: 'bg-(--success)',
     points: ['kcs.panel.jobs', 'kcs.panel.failures', 'kcs.panel.retry'],
   },
 ])

@@ -94,11 +94,15 @@
             </TableRow>
           </TableBody>
         </Table>
-        <EmptyState v-if="!loading && !items.length" :title="t('kcs.console.shortlist.empty')" :body="t('kcs.console.shortlist.emptyHint')" :icon="ListChecks">
+        <EmptyState v-if="!loading && !loadError && !items.length" :title="t('kcs.console.shortlist.empty')" :body="t('kcs.console.shortlist.emptyHint')" :icon="ListChecks">
           <Button as-child size="sm" variant="outline">
             <NuxtLink :to="localePath('/')">{{ t('kcs.panel.pool') }}</NuxtLink>
           </Button>
         </EmptyState>
+        <div v-else-if="loadError && !loading" class="flex flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-5" role="alert" data-testid="shortlist-error">
+          <p class="text-sm text-muted-foreground">{{ t('kcs.states.error') }}</p>
+          <Button variant="outline" size="sm" data-testid="btn-shortlist-retry" @click="load()">{{ t('kcs.panel.retry') }}</Button>
+        </div>
         <template v-if="items.length" #footer>
           <p class="text-xs text-muted-foreground">{{ t('kcs.console.shortlist.order') }}</p>
         </template>
@@ -171,6 +175,7 @@ const projects = ref<ProjectView[]>([])
 const selected = ref<string[]>([])
 const projectId = ref('')
 const loading = ref(true)
+const loadError = ref(false)
 const removing = ref<string | null>(null)
 const assigning = ref(false)
 const assignError = ref('')
@@ -189,8 +194,14 @@ function toggleAll() {
 }
 
 async function load() {
-  const res = await request<{ items: any[] }>(API.shortlist.path)
-  items.value = res.items ?? []
+  try {
+    const res = await request<{ items: any[] }>(API.shortlist.path)
+    items.value = res.items ?? []
+    loadError.value = false
+  } catch {
+    loadError.value = true
+    return
+  }
   const present = new Set(items.value.map((row) => row.creatorId))
   selected.value = selected.value.filter((id) => present.has(id))
 }

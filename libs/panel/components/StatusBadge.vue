@@ -33,15 +33,17 @@ const tone = computed<{ variant: 'default' | 'secondary' | 'destructive' | 'outl
     case 'ok':
     case 'assigned':
     case 'released':
-      return { variant: 'outline', class: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' }
+      return { variant: 'outline', class: 'border-(--success)/30 bg-(--success)/10 text-(--success)' }
     case 'running':
     case 'ready':
       return { variant: 'outline', class: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300' }
     case 'queued':
     case 'review':
-      return { variant: 'outline', class: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' }
+      return { variant: 'outline', class: 'border-(--warning)/30 bg-(--warning)/10 text-(--warning)' }
     case 'partial':
-      return { variant: 'outline', class: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' }
+      return { variant: 'outline', class: 'border-(--warning)/30 bg-(--warning)/10 text-(--warning)' }
+    case 'degraded':
+      return { variant: 'outline', class: 'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300' }
     case 'withdrawn':
       return { variant: 'outline', class: 'border-border bg-muted text-muted-foreground' }
     case 'failed':

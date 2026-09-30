@@ -31,7 +31,7 @@
       <div class="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3 sm:px-5">
         <Bookmark class="size-4 text-primary" aria-hidden="true" />
         <span class="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{{ t('kcs.query.title') }}</span>
-        <div class="flex flex-wrap items-center gap-1.5" role="tablist" :aria-label="t('kcs.query.title')">
+        <div class="flex flex-wrap items-center gap-1.5" role="group" :aria-label="t('kcs.query.title')">
           <template v-for="shelf in shelves" :key="shelf.id">
             <span
               v-if="shelf.items.length"
@@ -42,10 +42,9 @@
               v-for="q in shelf.items"
               :key="q.id"
               type="button"
-              role="tab"
               class="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs font-medium transition-colors"
               :class="activeId === q.id && !dirty ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground hover:bg-muted'"
-              :aria-selected="activeId === q.id && !dirty"
+              :aria-pressed="activeId === q.id && !dirty"
               :title="q.visibility === 'private' ? t('kcs.query.privateTag') : q.ownerName ? t('kcs.query.byOwner', { name: q.ownerName }) : undefined"
               :data-testid="`query-tab-${q.id}`"
               :data-visibility="q.visibility"
@@ -651,7 +650,12 @@
         </Table>
       </div>
 
-      <EmptyState v-if="!loading && !visible.length" :title="t('kcs.query.noResult')" :body="t('kcs.query.lead')">
+      <div v-if="loadError && !loading" class="flex flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-5" role="alert" data-testid="pool-error">
+        <p class="text-sm text-muted-foreground">{{ t('kcs.states.error') }}</p>
+        <Button variant="outline" size="sm" data-testid="btn-pool-retry" @click="run()">{{ t('kcs.panel.retry') }}</Button>
+      </div>
+
+      <EmptyState v-if="!loading && !loadError && !visible.length" :title="t('kcs.query.noResult')" :body="t('kcs.query.lead')">
         <Button variant="outline" size="sm" @click="resetSpec">{{ t('kcs.query.reset') }}</Button>
       </EmptyState>
 
@@ -707,10 +711,27 @@
         </div>
       </template>
     </TableCard>
+
+    <!-- 删除方案：收起来而不是真删，修改记录保留，可撤销 -->
+    <AlertDialog :open="confirmRemove" @update:open="(v: boolean) => { confirmRemove = v }">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('kcs.query.deleteTitle') }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('kcs.query.confirmDelete') }}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{{ t('kcs.query.deleteCancel') }}</AlertDialogCancel>
+          <Button variant="destructive" data-testid="btn-query-delete-confirm" @click="doRemove">
+            {{ t('kcs.query.deleteConfirm') }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </PanelPage>
 </template>
 
 <script setup lang="ts">
+import { toast } from 'vue-sonner'
 import {
   ArrowDownWideNarrow,
   ArrowLeft,
@@ -816,6 +837,7 @@ const picked = ref<string[]>([])
 const confirming = ref(false)
 const assigning = ref(false)
 const loading = ref(true)
+const loadError = ref(false)
 const projectName = ref('')
 
 const projectId = computed(() => String(route.query.project || ''))
@@ -999,10 +1021,13 @@ async function run() {
     items.value = res.items ?? []
     total.value = res.total ?? items.value.length
     Object.assign(cursors, { page: res.page ?? page.value, next: res.nextCursor ?? null, prev: res.prevCursor ?? null })
+    loadError.value = false
     if (page.value > pages.value) page.value = pages.value
-  } catch (e) {
-    if (mine === loadSeq) lastRunKey = ''
-    throw e
+  } catch {
+    if (mine === loadSeq) {
+      lastRunKey = ''
+      loadError.value = true
+    }
   } finally {
     if (mine === loadSeq) loading.value = false
   }
@@ -1067,14 +1092,24 @@ async function save(asNew: boolean) {
 }
 
 /** 删除只是收起来：列表里看不到，修改记录都在，可以撤销。 */
-async function remove() {
-  if (!activeId.value || !confirm(t('kcs.query.confirmDelete'))) return
+const confirmRemove = ref(false)
+function remove() {
+  if (!activeId.value) return
+  confirmRemove.value = true
+}
+async function doRemove() {
   const id = activeId.value
-  await request(apiPath(API.queryDelete, { id }), { method: 'DELETE' })
-  activeId.value = ''
-  await loadQueries()
-  notice.value = t('kcs.query.deleted')
-  undoId.value = id
+  confirmRemove.value = false
+  if (!id) return
+  try {
+    await request(apiPath(API.queryDelete, { id }), { method: 'DELETE' })
+    activeId.value = ''
+    await loadQueries()
+    notice.value = t('kcs.query.deleted')
+    undoId.value = id
+  } catch (e) {
+    toast.error(errorText(e))
+  }
 }
 
 async function restore(id: string) {
@@ -1130,6 +1165,8 @@ async function assign() {
     })
     confirming.value = false
     await navigateTo(localePath(`/projects/${projectId.value}`))
+  } catch (e) {
+    toast.error(errorText(e))
   } finally {
     assigning.value = false
   }

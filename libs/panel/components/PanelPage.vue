@@ -1,6 +1,6 @@
 <template>
   <div
-    class="min-h-[calc(100svh-3.5rem)] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+    class="min-h-[calc(100svh-4rem)] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
     :data-testid="testid"
     v-bind="extraAttrs"
   >

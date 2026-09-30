@@ -20,14 +20,7 @@ export const enCommon = {
     system: "System Theme",
     toggle: "Toggle Theme",
     appearance: "Appearance",
-    colorScheme: "Color Scheme",
-    themes: {
-      default: "Default",
-      claude: "Claude",
-      "cosmic-night": "Cosmic Night",
-      "modern-minimal": "Modern Minimal",
-      "ocean-breeze": "Ocean Breeze"
-    }
+    colorScheme: "Color Scheme"
   }
 } as const
 

@@ -6,6 +6,17 @@ export const kcsConsoleKo = {
   },
   apiError: {
     owner_only: "공개 범위는 이 기준을 만든 사람만 바꿀 수 있습니다",
+    unauthenticated: "다시 로그인해 주세요",
+    not_found: "해당 기록을 찾을 수 없습니다",
+    forbidden: "이 작업을 수행할 권한이 없습니다",
+    "no role assigned": "이 계정에는 아직 역할이 없습니다. 관리자에게 문의해 주세요",
+    cursor_mismatch: "목록이 변경되었습니다. 새로고침 후 다시 시도해 주세요",
+    cursor_invalid: "목록이 변경되었습니다. 새로고침 후 다시 시도해 주세요",
+    version_conflict: "내용이 이미 수정되었습니다. 새로고침해 주세요",
+    already_assigned: "이미 이 프로젝트에 있습니다",
+    not_in_pool: "이 크리에이터는 현재 선정 범위에 없습니다",
+    use_ingest_fetch: "데이터 소스에서 수집을 시작해 주세요",
+    validation_failed: "제출한 내용이 유효성 검사를 통과하지 못했습니다. 입력 항목을 확인해 주세요.",
   },
   console: {
     nav: {

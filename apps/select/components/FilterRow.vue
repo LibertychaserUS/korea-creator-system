@@ -1,9 +1,9 @@
 <template>
   <div class="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-1.5" :data-testid="testid">
-    <select v-model="filter.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.metricPick')">
+    <select v-model="filter.key" class="border-input h-8 min-w-0 rounded-md border bg-background px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" :aria-label="t('kcs.query.metricPick')">
       <option v-for="key in VISIBLE_METRIC_KEYS" :key="key" :value="key">{{ label(key) }}</option>
     </select>
-    <select v-model="filter.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none" :aria-label="t('kcs.query.opPick')" @change="onOpChange">
+    <select v-model="filter.op" class="border-input h-8 rounded-md border bg-background px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" :aria-label="t('kcs.query.opPick')" @change="onOpChange">
       <option value="gte">{{ t('kcs.query.op.gte') }}</option>
       <option value="lte">{{ t('kcs.query.op.lte') }}</option>
       <option value="between">{{ t('kcs.query.op.between') }}</option>

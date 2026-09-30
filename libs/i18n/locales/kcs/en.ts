@@ -217,6 +217,9 @@ export const enKcs = {
     saved: "Saved",
     deleted: "Deleted",
     confirmDelete: "Delete this plan? It leaves the list, but its history is kept and you can restore it at any time.",
+    deleteTitle: "Delete this plan?",
+    deleteCancel: "Keep it",
+    deleteConfirm: "Delete",
     deletedUndo: "Undo",
     restored: "Restored",
     mine: "My plans",
@@ -394,6 +397,7 @@ export const enKcs = {
     previewTitle: "Creator pool",
     previewMeta: "Published · CPE ascending",
     previewCols: { creator: "Creator", tier: "Follower tier", cpe: "CPE", fans: "Followers" },
+    previewNames: ["Cheongdam Skin Notes", "Seoul Living Notes", "Jeju Coffee Diary", "Leo Unboxes Myeongdong"],
     workspacesEyebrow: "Workspaces",
     workspacesTitle: "Four desks. One objective data line.",
     workspacesLead: "Ops intakes and manages creators, Select filters by plans, Dev tracks records. Distinct roles, unified underlying data.",
@@ -437,8 +441,10 @@ export const enKcs = {
     ],
     ctaTitle: "Establish an objective creator selection pipeline.",
     ctaLead: "Sign in with your work email. The system routes you directly to your assigned workspace.",
+    requestAccess: "Request access",
     footerLinks: "Workspaces",
-    footerNote: "Tide · Global Creator Intelligence"
+    footerNote: "Tide · Global Creator Intelligence",
+    footerTagline: "Tide — turning creator data into actionable selection decisions."
   },
   brand: {
     title: "听潮 (Tide)",
@@ -555,7 +561,8 @@ export const enKcs = {
       running: "In progress",
       queued: "Waiting",
       failed: "Unsuccessful",
-      partial: "Daily limit reached, continues tomorrow"
+      partial: "Daily limit reached, continues tomorrow",
+      degraded: "Partially written"
     },
     assignmentStatus: {
       assigned: "Assigned",
@@ -567,6 +574,9 @@ export const enKcs = {
     password: "Password",
     enter: "Enter",
     loginError: "Invalid email or password. Please verify your credentials.",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    signingIn: "Signing in…",
     homeLead: "Ops intake, selection filtering, and background operations share one uniform view and set of records.",
     opsDesc: "Creator intake, data collection, and category management.",
     selectDesc: "Filter creators with selection plans, manage projects, and organize shortlists.",
@@ -575,7 +585,7 @@ export const enKcs = {
     openSelect: "Go to Select Desk",
     openDev: "Go to Dev Desk",
     denied: "Access denied",
-    deniedBody: "Your account does not have access to this workspace. Contact administrator.",
+    deniedBody: "Your account does not have access to this workspace. Contact your administrator.",
     opsHome: "Ops Desk",
     createCreator: "Intake creator",
     newCreator: "Creator intake",

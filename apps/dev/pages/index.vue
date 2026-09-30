@@ -287,11 +287,11 @@ const busy = ref('')
 const jobCount = computed(() => Number(health.value.jobCount ?? 0))
 const canRetry = computed(() => Boolean(user.value && can(user.value.role, 'dev.retry')))
 
-/** 写成功但有失败行：API 状态仍是 ok，界面上标成「部分完成」。 */
+/** 写成功但有失败行：标成「部分写入」（degraded）；partial 保留给「额度用尽明天继续」。 */
 const isSource = (id: unknown) => typeof id === 'string' && (SOURCE_IDS as readonly string[]).includes(id)
 
 function jobStatus(job: { status: string; failedCount?: number | string | null }) {
-  return job.status === 'ok' && Number(job.failedCount ?? 0) > 0 ? 'partial' : job.status
+  return job.status === 'ok' && Number(job.failedCount ?? 0) > 0 ? 'degraded' : job.status
 }
 
 const ORDER = ['ok', 'running', 'queued', 'partial', 'failed']

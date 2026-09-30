@@ -1,7 +1,7 @@
 // Theme management module for consistent theme handling across the application
-// Built on shadcn/ui theme system with 5 color schemes, light/dark modes, and tweakcn.com integration
+// 听潮只保留品牌主题 tide（深海水文），不再提供第三方模板配色，避免品牌漂移。
 export type Theme = 'light' | 'dark'
-export type ColorScheme = 'default' | 'claude' | 'cosmic-night' | 'modern-minimal' | 'ocean-breeze' | 'perplexity' | 'tide'
+export type ColorScheme = 'tide'
 
 export interface ThemeState {
   theme: Theme
@@ -12,12 +12,6 @@ export interface ThemeState {
 // Add new themes here and update theme files in libs/ui/styles/themes/
 export const THEMES: readonly Theme[] = ['light', 'dark'] as const
 export const COLOR_SCHEMES: readonly ColorScheme[] = [
-  'default',
-  'claude', 
-  'cosmic-night',
-  'modern-minimal',
-  'ocean-breeze',
-  'perplexity',
   'tide'
 ] as const
 
@@ -27,58 +21,22 @@ export const THEME_CLASSES = {
   dark: 'dark',
 } as const
 
-export const COLOR_SCHEME_CLASSES = {
-  default: '',  // default doesn't need a class
-  claude: 'theme-claude',
-  'cosmic-night': 'theme-cosmic-night',
-  'modern-minimal': 'theme-modern-minimal',
-  'ocean-breeze': 'theme-ocean-breeze',
-  perplexity: 'theme-perplexity',
+export const COLOR_SCHEME_CLASSES: Record<ColorScheme, string> = {
   tide: 'theme-tide',
-} as const
+}
 
 // All possible theme-related classes for cleanup
 export const ALL_THEME_CLASSES = [
-  'light', 
+  'light',
   'dark',
-  'theme-default',
-  'theme-claude',
-  'theme-cosmic-night', 
-  'theme-modern-minimal',
-  'theme-ocean-breeze',
-  'theme-perplexity',
   'theme-tide'
 ] as const
 
 // shadcn/ui theme configuration with UI display information
 // Colors match the primary color of each theme for theme selector UI
-export const THEME_CONFIG = {
-  default: {
-    name: 'Default',
-    color: '#343434' // oklch(0.205 0 0) - Classic gray
-  },
-  claude: {
-    name: 'Claude',
-    color: '#b45309' // oklch(0.6171 0.1375 39.0427) - Warm orange
-  },
-  perplexity: {
-    name: 'Perplexity',
-    color: '#0d9488' // oklch(0.5322 0.0910 205.7465) - Teal cyan
-  },
-  'cosmic-night': {
-    name: 'Cosmic Night',
-    color: '#7c3aed' // oklch(0.5417 0.1790 288.0332) - Deep purple
-  },
-  'modern-minimal': {
-    name: 'Modern Minimal',
-    color: '#6366f1' // oklch(0.6231 0.1880 259.8145) - Modern purple-blue
-  },
-  'ocean-breeze': {
-    name: 'Ocean Breeze',
-    color: '#10b981' // oklch(0.7227 0.1920 149.5793) - Ocean teal-green
-  },
+export const THEME_CONFIG: Record<ColorScheme, { name: string, color: string }> = {
   tide: {
-    name: 'Tide',
+    name: '听潮',
     color: '#2f5f8f' // oklch(0.45 0.085 235) - Deep sea blue (听潮 product scheme)
   }
 } as const
@@ -101,10 +59,8 @@ export function applyThemeToDocument(theme: Theme, colorScheme: ColorScheme): vo
     root.classList.add(THEME_CLASSES.dark)
   }
   
-  // Apply color scheme class (default doesn't need a class)
-  if (colorScheme !== 'default') {
-    root.classList.add(COLOR_SCHEME_CLASSES[colorScheme])
-  }
+  // Apply color scheme class（听潮仅 tide 一套，恒加 theme-tide）
+  root.classList.add(COLOR_SCHEME_CLASSES[colorScheme])
 }
 
 /**

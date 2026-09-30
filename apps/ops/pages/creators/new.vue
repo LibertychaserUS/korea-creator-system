@@ -62,6 +62,20 @@
                   />
                 </div>
               </div>
+              <div class="grid gap-2 sm:col-span-2">
+                <Label for="creator-regions" class="flex items-center justify-between">
+                  <span>{{ t('kcs.opsCreator.edit.regions') }}</span>
+                  <span class="text-[11px] font-normal text-muted-foreground">{{ t('kcs.panel.optional') }}</span>
+                </Label>
+                <Input
+                  id="creator-regions"
+                  v-model="form.regions"
+                  data-testid="creator-regions"
+                  :placeholder="t('kcs.opsCreator.edit.listHint')"
+                  :disabled="Boolean(saved.id)"
+                />
+                <p class="text-[11px] leading-snug text-muted-foreground">{{ t('kcs.opsCreator.edit.listHint') }}</p>
+              </div>
             </div>
 
             <div class="grid gap-2">
@@ -286,6 +300,7 @@ const { formatPrice } = useCurrency()
 const form = reactive({
   displayName: '',
   xhsId: '',
+  regions: '',
   followers: 10000,
   category: '' as CoopSlug | '',
   priceMin: 3000,
@@ -340,13 +355,14 @@ async function save() {
   if (!form.displayName.trim()) return
   saving.value = true
   error.value = false
+  const regions = form.regions.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
   try {
     const created = await request<any>(API.opsCreatorCreate.path, {
       method: 'POST',
       body: JSON.stringify({
         displayName: form.displayName.trim(),
         xhsId: form.xhsId.trim() || undefined,
-        regions: ['서울'],
+        regions: regions.length ? regions : undefined,
         followers: form.followers,
         categories: form.category ? [form.category] : [],
         price: { amountMin: form.priceMin, currency: 'CNY' },
@@ -368,6 +384,7 @@ async function save() {
 function reset() {
   form.displayName = ''
   form.xhsId = ''
+  form.regions = ''
   form.followers = 10000
   form.category = ''
   form.priceMin = 3000

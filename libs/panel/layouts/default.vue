@@ -20,9 +20,6 @@
           </div>
           <LocaleSelect />
           <ThemeToggle />
-          <div class="hidden items-center md:flex">
-            <ColorSchemeSelector />
-          </div>
           <Separator orientation="vertical" class="mx-1 hidden h-4 sm:block" />
           <div
             v-if="user"

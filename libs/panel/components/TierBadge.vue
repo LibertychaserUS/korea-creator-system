@@ -23,7 +23,7 @@ const cls = computed(() => {
     case 'mid':
       return 'border-primary/30 bg-primary/10 text-primary'
     case 'junior':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+      return 'border-(--warning)/30 bg-(--warning)/10 text-(--warning)'
     case 'amateur':
       return 'border-border bg-muted text-muted-foreground'
     default:

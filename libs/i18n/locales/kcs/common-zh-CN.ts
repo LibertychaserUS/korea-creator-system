@@ -20,14 +20,7 @@ export const zhCNCommon = {
     system: "系统主题",
     toggle: "切换主题",
     appearance: "外观设置",
-    colorScheme: "配色方案",
-    themes: {
-      default: "默认主题",
-      claude: "Claude主题",
-      "cosmic-night": "宇宙之夜",
-      "modern-minimal": "现代简约",
-      "ocean-breeze": "海洋微风"
-    }
+    colorScheme: "配色方案"
   }
 } as const
 

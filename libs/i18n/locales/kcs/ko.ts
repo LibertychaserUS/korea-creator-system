@@ -217,6 +217,9 @@ export const koKcs = {
     saved: "저장 완료",
     deleted: "삭제 완료",
     confirmDelete: "이 선정 기준을 삭제할까요? 목록에서만 사라지고 수정 기록은 남아 있어 언제든 복구할 수 있습니다.",
+    deleteTitle: "이 기준을 삭제할까요?",
+    deleteCancel: "유지하기",
+    deleteConfirm: "삭제",
     deletedUndo: "삭제 취소",
     restored: "복구 완료",
     mine: "내 기준",
@@ -394,6 +397,7 @@ export const koKcs = {
     previewTitle: "크리에이터 풀",
     previewMeta: "발행 완료 · CPE 오름차순",
     previewCols: { creator: "크리에이터", tier: "팔로워 구간", cpe: "CPE", fans: "팔로워" },
+    previewNames: ["청담스킨노트", "서울살림노트", "제주커피일기", "명동언박싱레오"],
     workspacesEyebrow: "워크스페이스",
     workspacesTitle: "네 개의 작업 환경, 하나의 객관적 데이터 라인.",
     workspacesLead: "운영팀은 등록과 수집을 관리하고, 브랜드 선정팀은 기준에 따라 풀을 탐색하며, 인프라팀은 진행 상태를 확인합니다. 각자의 역할에 집중하면서도 동일한 기준의 데이터를 공유합니다.",
@@ -437,8 +441,10 @@ export const koKcs = {
     ],
     ctaTitle: "투명하고 객관적인 크리에이터 선정 파이프라인 구축.",
     ctaLead: "업무용 이메일로 로그인하면 권한에 맞는 전용 워크스페이스로 즉시 이동합니다.",
+    requestAccess: "신청하기",
     footerLinks: "워크스페이스",
-    footerNote: "听潮 (Tide) · 글로벌 브랜드 크리에이터 데이터 시스템"
+    footerNote: "听潮 (Tide) · 글로벌 브랜드 크리에이터 데이터 시스템",
+    footerTagline: "听潮(Tide) — 크리에이터 데이터를 실행 가능한 선정 결정으로 바꿉니다."
   },
   brand: {
     title: "听潮 (Tide)",
@@ -555,7 +561,8 @@ export const koKcs = {
       running: "진행 중",
       queued: "대기 중",
       failed: "미완료",
-      partial: "한도 도달, 내일 자동 계속"
+      partial: "한도 도달, 내일 자동 계속",
+      degraded: "일부 행만 저장됨"
     },
     assignmentStatus: {
       assigned: "배정 완료",
@@ -567,6 +574,9 @@ export const koKcs = {
     password: "비밀번호",
     enter: "접속하기",
     loginError: "이메일 또는 비밀번호가 올바르지 않습니다. 다시 확인해 주세요.",
+    showPassword: "비밀번호 표시",
+    hidePassword: "비밀번호 숨기기",
+    signingIn: "로그인 중…",
     homeLead: "운영 등록, 브랜드 선정, 백그라운드 작업은 동일한 기준의 데이터와 기록을 공유합니다.",
     opsDesc: "크리에이터 등록, 데이터 수집 및 분류 관리.",
     selectDesc: "선정 기준 기반 크리에이터 탐색, 캠페인 프로젝트 생성 및 후보 명단 배정.",

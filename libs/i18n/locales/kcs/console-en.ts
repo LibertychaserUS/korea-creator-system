@@ -6,6 +6,17 @@ export const kcsConsoleEn = {
   },
   apiError: {
     owner_only: "Only the person who created this plan can change who sees it",
+    unauthenticated: "Please sign in again",
+    not_found: "Couldn't find this record",
+    forbidden: "You don't have permission to do that",
+    "no role assigned": "This account has no role yet — please contact your administrator",
+    cursor_mismatch: "The list has changed; refresh and try again",
+    cursor_invalid: "The list has changed; refresh and try again",
+    version_conflict: "This was updated elsewhere; please refresh",
+    already_assigned: "Already in this project",
+    not_in_pool: "This creator isn't in the current selection pool",
+    use_ingest_fetch: "Start collection from a data source instead",
+    validation_failed: "The submission didn't pass validation; please check the fields.",
   },
   console: {
     nav: {

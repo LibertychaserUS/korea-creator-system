@@ -15,7 +15,7 @@
         v-for="tile in tiles"
         :key="tile.key"
         :label="tile.label"
-        :value="formatNumber(counts[tile.key])"
+        :value="countsReady ? formatNumber(counts[tile.key]) : '—'"
         :icon="tile.icon"
         :tone="tile.tone"
         :testid="`tile-${tile.key}`"
@@ -75,14 +75,15 @@
               <span class="font-semibold tabular-nums text-foreground">{{ cleanRate }}</span>
             </div>
             <div class="flex h-2 overflow-hidden rounded-full bg-muted" role="img" :aria-label="t('kcs.panel.openRate')">
-              <span class="bg-emerald-500/80 transition-[width] duration-500" :style="{ width: pct(counts.released) }" />
-              <span class="bg-sky-500/70 transition-[width] duration-500" :style="{ width: pct(counts.ready) }" />
-              <span class="bg-amber-500/70 transition-[width] duration-500" :style="{ width: pct(counts.review) }" />
+              <span class="bg-chart-2/80 transition-[width] duration-500" :style="{ width: pct(counts.released) }" />
+              <span class="bg-chart-3/70 transition-[width] duration-500" :style="{ width: pct(counts.ready) }" />
+              <span class="bg-(--warning)/70 transition-[width] duration-500" :style="{ width: pct(counts.review) }" />
+              <span class="bg-muted-foreground/40 transition-[width] duration-500" :style="{ width: pct(counts.draft) }" />
             </div>
             <ul class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-              <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-emerald-500/80" />{{ t('kcs.panel.released') }}</li>
-              <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-sky-500/70" />{{ t('kcs.panel.ready') }}</li>
-              <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-amber-500/70" />{{ t('kcs.panel.review') }}</li>
+              <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-chart-2/80" />{{ t('kcs.panel.released') }}</li>
+              <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-chart-3/70" />{{ t('kcs.panel.ready') }}</li>
+              <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-(--warning)/70" />{{ t('kcs.panel.review') }}</li>
               <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-muted-foreground/40" />{{ t('kcs.panel.draft') }}</li>
             </ul>
           </div>
@@ -108,7 +109,7 @@
               :href="`${config.public.selectUrl}/${locale}/`"
               class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-muted"
             >
-              <span class="flex size-8 items-center justify-center rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300"><Users class="size-4" /></span>
+              <span class="flex size-8 items-center justify-center rounded-md bg-(--warning)/10 text-(--warning)"><Users class="size-4" /></span>
               <span class="flex-1">
                 <span class="block font-medium text-foreground">{{ t('kcs.panel.openSelect') }}</span>
                 <span class="block text-xs text-muted-foreground">{{ t('kcs.panel.pool') }}</span>
@@ -132,13 +133,14 @@ const config = useRuntimeConfig()
 const { request } = useApi()
 const { formatNumber } = useFormat()
 const counts = ref({ draft: 0, review: 0, ready: 0, released: 0, pending: 0, withdrawn: 0 })
+const countsReady = ref(false)
 const jobs = ref<OverviewJob[]>([])
 const loading = ref(true)
 
 const creatorsTab = (tab: string) => localePath({ path: '/creators', query: { tab } })
 const tiles = computed(() => [
   { key: 'pending' as const, label: t('kcs.opsCreators.tabs.review'), icon: ClipboardCheck, tone: 'sand' as const, to: creatorsTab('review') },
-  { key: 'review' as const, label: t('kcs.opsCreators.needsReview'), icon: Search, tone: 'sea' as const, to: undefined },
+  { key: 'review' as const, label: t('kcs.opsCreators.needsReview'), icon: Search, tone: 'sea' as const, to: creatorsTab('review') },
   { key: 'released' as const, label: t('kcs.opsCreators.tabs.released'), icon: CheckCircle2, tone: 'moss' as const, to: creatorsTab('released') },
   { key: 'withdrawn' as const, label: t('kcs.opsCreators.tabs.withdrawn'), icon: Archive, tone: 'ink' as const, to: creatorsTab('withdrawn') },
 ])
@@ -152,15 +154,15 @@ const cleanRate = computed(() => {
   )
 })
 
-/** 任务写成功但有失败行：API 里状态仍是 ok，界面上标成「部分完成」。 */
+/** 任务写成功但有失败行：标成「部分写入」（degraded）；partial 保留给「额度用尽明天继续」。 */
 function jobStatus(job: OverviewJob) {
-  return job.status === 'ok' && job.failedCount > 0 ? 'partial' : job.status
+  return job.status === 'ok' && job.failedCount > 0 ? 'degraded' : job.status
 }
 
 function formatDate(value: string) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(d)
 }
 
 onMounted(async () => {
@@ -168,6 +170,7 @@ onMounted(async () => {
     const data = await request<OpsOverview>(API.opsOverview.path)
     counts.value = data.counts
     jobs.value = data.recentJobs
+    countsReady.value = true
   } finally {
     loading.value = false
   }

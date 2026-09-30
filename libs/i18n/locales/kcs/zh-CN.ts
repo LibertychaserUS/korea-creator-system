@@ -217,6 +217,9 @@ export const zhCNKcs = {
     saved: "已保存",
     deleted: "已删除",
     confirmDelete: "确认删除该方案？删除后不再出现在列表里，修改记录都保留，随时可以恢复。",
+    deleteTitle: "删除这个方案？",
+    deleteCancel: "先不删",
+    deleteConfirm: "删除",
     deletedUndo: "撤销删除",
     restored: "已恢复",
     mine: "我的方案",
@@ -394,6 +397,7 @@ export const zhCNKcs = {
     previewTitle: "博主池",
     previewMeta: "已发布 · 按 CPE 升序",
     previewCols: { creator: "博主", tier: "粉丝量级", cpe: "CPE", fans: "粉丝" },
+    previewNames: ["清潭洞护肤", "서울살림노트", "济州咖啡日记", "明洞开箱Leo"],
     workspacesEyebrow: "工作台",
     workspacesTitle: "四大工作端，同一条客观数据线。",
     workspacesLead: "运营端录入建档，选人端按方案挑库，运维端盯运行记录。各司其职，底层数据与历史记录完全一致。",
@@ -437,8 +441,10 @@ export const zhCNKcs = {
     ],
     ctaTitle: "开启客观透明的博主选人水线。",
     ctaLead: "使用工作邮箱登录，系统将根据账号权限直接进入对应工作台。",
+    requestAccess: "申请开通",
     footerLinks: "工作台",
-    footerNote: "听潮 · 品牌出海选人系统"
+    footerNote: "听潮 · 品牌出海选人系统",
+    footerTagline: "听潮——把达人数据变成可执行的选人决策。"
   },
   brand: {
     title: "听潮",
@@ -555,7 +561,8 @@ export const zhCNKcs = {
       running: "进行中",
       queued: "排队中",
       failed: "未成功",
-      partial: "额度用完，明天继续"
+      partial: "额度用完，明天继续",
+      degraded: "部分写入"
     },
     assignmentStatus: {
       assigned: "已分派",
@@ -567,6 +574,9 @@ export const zhCNKcs = {
     password: "密码",
     enter: "进入",
     loginError: "邮箱或密码错误，请核对后重试。",
+    showPassword: "显示密码",
+    hidePassword: "隐藏密码",
+    signingIn: "登录中…",
     homeLead: "运营录入、选人挑选与后台运行，底层基于同一套统一口径与数据记录。",
     opsDesc: "博主建档入库、数据抓取与分类整理。",
     selectDesc: "按筛选方案挑博主、建投放项目并整理候选名单。",

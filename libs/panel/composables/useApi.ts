@@ -78,9 +78,16 @@ export function useApi() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  /** 接口报错的人话：已知错误码有对应文案就用文案，否则原样。 */
+  /**
+   * 接口报错的人话：已知错误码有对应文案就用文案，否则原样。
+   * zod 校验直泄（"Invalid input:" / "Too big:" 开头）统一换成通用校验文案。
+   */
   function errorText(error: unknown): string {
     const message = String((error as { message?: unknown })?.message ?? error ?? '')
+    if (message.startsWith('Invalid input:') || message.startsWith('Too big:')) {
+      const key = 'kcs.apiError.validation_failed'
+      return te(key) ? t(key) : message
+    }
     const key = `kcs.apiError.${message}`
     return te(key) ? t(key) : message
   }
