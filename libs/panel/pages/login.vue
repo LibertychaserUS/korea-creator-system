@@ -81,7 +81,15 @@
           </div>
         </div>
         <p
-          v-if="error"
+          v-if="locked"
+          class="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
+          data-testid="login-locked"
+        >
+          <AlertCircle class="size-4 shrink-0" />
+          {{ t('kcs.panel.loginLocked') }}
+        </p>
+        <p
+          v-else-if="error"
           class="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           data-testid="login-error"
         >
@@ -121,6 +129,7 @@ const req = useRequestURL()
 const appKey = computed(() => String((useAppConfig().kcs as { key?: string } | undefined)?.key ?? ''))
 const loginAction = computed(() => `${req.origin}/__login`)
 const error = computed(() => (route.query.error ? t('kcs.panel.loginError') : ''))
+const locked = computed(() => route.query.locked === '1')
 const showPassword = ref(false)
 const submitting = ref(false)
 

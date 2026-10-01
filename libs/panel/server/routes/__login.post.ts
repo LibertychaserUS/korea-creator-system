@@ -1,6 +1,32 @@
+import type { H3Event } from 'h3'
 import { auth } from '@libs/auth'
 import { defaultLocale, isValidLocale } from '@libs/i18n'
 import { can, roleFromIdentity, type Role } from '@kcs/contract'
+import {
+  isLoginLocked,
+  loginRateLimitStore,
+  recordLoginFailure,
+  recordLoginSuccess,
+  startLoginRateLimitSweeper,
+} from '../utils/login-rate-limit'
+import { isSameOriginRequest } from '../utils/same-origin'
+
+/**
+ * First hop of the proxy-normalized X-Forwarded-For (the client-ip middleware
+ * guarantees the header is present, falling back to the socket address).
+ */
+function clientIp(event: H3Event): string {
+  const forwarded = getHeader(event, 'x-forwarded-for')
+  const first = forwarded?.split(',')[0]?.trim()
+  return first || event.node.req.socket?.remoteAddress || 'unknown'
+}
+
+let sweeperStarted = false
+function ensureLoginRateLimitSweeper() {
+  if (sweeperStarted) return
+  sweeperStarted = true
+  startLoginRateLimitSweeper(loginRateLimitStore)
+}
 
 /** Workspaces a role may open, in product order: 前台选人 / 后台录入 / 监控. */
 function workspacesFor(role: Role): string[] {
@@ -28,6 +54,11 @@ function safeLocale(raw: unknown): string {
  *   多工作区角色优先尊重 kcs_last_ws（受同意门控写入）。
  */
 export default defineEventHandler(async (event) => {
+  // M-1: the form carries ambient credentials — refuse cross-origin submissions.
+  if (!isSameOriginRequest(event)) {
+    throw createError({ statusCode: 403, statusMessage: 'origin_not_allowed' })
+  }
+  ensureLoginRateLimitSweeper()
   const contentType = getHeader(event, 'content-type') || ''
   let email = ''
   let password = ''
@@ -48,9 +79,15 @@ export default defineEventHandler(async (event) => {
       appKey = String(form.get('app') || '')
     }
   } catch {
+    recordLoginFailure(loginRateLimitStore, clientIp(event), Date.now())
     return sendRedirect(event, `/${defaultLocale}/login?error=1`)
   }
   const locale = safeLocale(rawLocale)
+  // H-1: a locked IP is refused before the password is even checked.
+  const ip = clientIp(event)
+  if (isLoginLocked(loginRateLimitStore, ip, Date.now())) {
+    return sendRedirect(event, `/${locale}/login?error=1&locked=1`)
+  }
   let response: Response
   try {
     response = await auth.api.signInEmail({
@@ -62,6 +99,7 @@ export default defineEventHandler(async (event) => {
       asResponse: true,
     })
   } catch {
+    recordLoginFailure(loginRateLimitStore, ip, Date.now())
     return sendRedirect(event, `/${locale}/login?error=1`)
   }
   const data = await response.clone().json().catch(() => null) as {
@@ -70,8 +108,10 @@ export default defineEventHandler(async (event) => {
   } | null
   const token = data?.token || response.headers.get('set-auth-token')
   if (!response.ok || !token || !data?.user) {
+    recordLoginFailure(loginRateLimitStore, ip, Date.now())
     return sendRedirect(event, `/${locale}/login?error=1`)
   }
+  recordLoginSuccess(loginRateLimitStore, ip)
   for (const cookie of response.headers.getSetCookie()) {
     appendResponseHeader(event, 'set-cookie', cookie)
   }

@@ -1,6 +1,11 @@
 import { auth } from '@libs/auth'
+import { isSameOriginRequest } from '../utils/same-origin'
 
 export default defineEventHandler(async (event) => {
+  // M-1: logout mutates the session state — refuse cross-origin triggers.
+  if (!isSameOriginRequest(event)) {
+    throw createError({ statusCode: 403, statusMessage: 'origin_not_allowed' })
+  }
   let ok = false
   try {
     const response = await auth.api.signOut({

@@ -22,7 +22,10 @@ async function ensureUser(identity: { email: string; name: string; role: string 
     await auth.api.createUser({
       body: {
         email: identity.email,
-        password: SEED_PASSWORD,
+        // 演示口令可用 KCS_DEMO_PASSWORD 覆盖，缺省回退内置常量。生产模式的
+        // init（deploy/tools/init.ts）会删掉全部演示账号，所以这个回退值只会
+        // 出现在开发/测试库，不会进入生产身份库。
+        password: process.env.KCS_DEMO_PASSWORD || SEED_PASSWORD,
         name: identity.name,
         role: identity.role as 'user' | 'admin',
       },

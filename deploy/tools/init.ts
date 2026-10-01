@@ -158,15 +158,27 @@ async function ensureAdmin(url: URL) {
   process.env.DB_DIALECT = 'pg'
   process.env.BETTER_AUTH_URL ||= 'http://localhost'
   const { SEED_PASSWORD, SEED_USERS } = await import('@kcs/contract')
-  const { db, pool, user } = await import('../../libs/database/index')
+  const { db, pool, user, account, session, verification } = await import('../../libs/database/index')
   const { eq, inArray } = await import('drizzle-orm')
   try {
-    const demo = await db.select({ email: user.email }).from(user)
+    const demo = await db.select({ id: user.id, email: user.email }).from(user)
       .where(inArray(user.email, SEED_USERS.map((u) => u.email)))
     if (demo.length) {
-      log('WARNING demo accounts present in the identity database — remove them before go-live', {
-        emails: demo.map((row) => row.email),
-      })
+      const ids = demo.map((row) => row.id)
+      const emails = demo.map((row) => row.email)
+      if (process.env.NODE_ENV === 'production') {
+        // H-2: demo accounts must never survive into a production identity
+        // database. account/session rows carry ON DELETE CASCADE in the pushed
+        // schema; delete them explicitly anyway so this stays correct even if
+        // the foreign keys are ever changed.
+        await db.delete(session).where(inArray(session.userId, ids))
+        await db.delete(account).where(inArray(account.userId, ids))
+        await db.delete(verification).where(inArray(verification.identifier, emails))
+        await db.delete(user).where(inArray(user.id, ids))
+        log('demo accounts removed from the identity database', { emails })
+      } else {
+        log('WARNING demo accounts present in the identity database — remove them before go-live', { emails })
+      }
     }
 
     const email = process.env.KCS_ADMIN_EMAIL?.trim().toLowerCase()

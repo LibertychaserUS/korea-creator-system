@@ -579,6 +579,7 @@ export const enKcs = {
     password: "Password",
     enter: "Enter",
     loginError: "Invalid email or password. Please verify your credentials.",
+    loginLocked: "Too many failed attempts. This account is locked for 15 minutes — please try again later.",
     showPassword: "Show password",
     hidePassword: "Hide password",
     signingIn: "Signing in…",

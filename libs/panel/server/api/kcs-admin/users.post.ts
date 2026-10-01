@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { auth } from '@libs/auth'
 import { db, user } from '@libs/database'
 import { accountError, MIN_PASSWORD_LENGTH, parseRole, requireAccountAdmin } from '../../utils/kcs-admin'
+import { reportAccountAudit } from '../../utils/admin-audit'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -31,5 +32,6 @@ export default defineEventHandler(async (event) => {
     .set({ role, emailVerified: true, updatedAt: new Date() })
     .where(eq(user.id, created.user.id))
   setResponseStatus(event, 201)
+  await reportAccountAudit(event, { action: 'account.create', target: email, summary: `role=${role}` })
   return { id: created.user.id, email, name, role, disabled: false }
 })

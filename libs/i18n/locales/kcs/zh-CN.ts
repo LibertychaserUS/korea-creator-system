@@ -579,6 +579,7 @@ export const zhCNKcs = {
     password: "密码",
     enter: "进入",
     loginError: "邮箱或密码错误，请核对后重试。",
+    loginLocked: "失败次数过多，已锁定 15 分钟，请稍后再试。",
     showPassword: "显示密码",
     hidePassword: "隐藏密码",
     signingIn: "登录中…",

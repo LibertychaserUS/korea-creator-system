@@ -17,6 +17,7 @@ export const kcsConsoleKo = {
     not_in_pool: "이 크리에이터는 현재 선정 범위에 없습니다",
     use_ingest_fetch: "데이터 소스에서 수집을 시작해 주세요",
     validation_failed: "제출한 내용이 유효성 검사를 통과하지 못했습니다. 입력 항목을 확인해 주세요.",
+    last_admin: "마지막 플랫폼 관리자는 비활성화하거나 권한을 낮출 수 없습니다",
     project_not_empty: "프로젝트에 아직 멤버가 있습니다. 삭제하기 전에 멤버를 모두 빼 주세요.",
     creator_released: "이 크리에이터는 게시 중입니다. 삭제하려면 먼저 게시를 중단하세요.",
   },

@@ -579,6 +579,7 @@ export const koKcs = {
     password: "비밀번호",
     enter: "접속하기",
     loginError: "이메일 또는 비밀번호가 올바르지 않습니다. 다시 확인해 주세요.",
+    loginLocked: "실패 횟수가 너무 많아 15분 동안 잠겼습니다. 잠시 후 다시 시도해 주세요.",
     showPassword: "비밀번호 표시",
     hidePassword: "비밀번호 숨기기",
     signingIn: "로그인 중…",

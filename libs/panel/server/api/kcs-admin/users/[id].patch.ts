@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { db, session, user } from '@libs/database'
 import { roleFromIdentity } from '@kcs/contract'
 import { accountError, parseRole, requireAccountAdmin } from '../../../utils/kcs-admin'
+import { reportAccountAudit } from '../../../utils/admin-audit'
 
 /**
  * 改角色 / 停用 / 恢复。停用会删掉这个账号现有的全部会话，已经打开的页面
@@ -21,6 +22,20 @@ export default defineEventHandler(async (event) => {
   const [target] = await db.select({ id: user.id }).from(user).where(eq(user.id, id)).limit(1)
   if (!target) accountError(404, 'not_found')
 
+  // Last-admin guard: demoting or disabling an account must never leave the
+  // identity database without a platform_admin — count the admins excluding
+  // the target; zero left means this change would lock everyone out.
+  const demotingAdmin = (role !== null && role !== 'platform_admin') || Boolean(wantsDisabled && body!.disabled)
+  if (demotingAdmin) {
+    const adminsLeft = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(and(eq(user.role, 'platform_admin'), ne(user.id, id)))
+    if (!adminsLeft.length) {
+      accountError(409, 'last_admin: removing the last platform_admin would lock everyone out')
+    }
+  }
+
   const changes: Partial<typeof user.$inferInsert> = { updatedAt: new Date() }
   if (role) changes.role = role
   if (wantsDisabled) {
@@ -34,6 +49,10 @@ export default defineEventHandler(async (event) => {
     .where(eq(user.id, id))
     .returning({ id: user.id, email: user.email, name: user.name, role: user.role, banned: user.banned })
   if (wantsDisabled && body!.disabled) await db.delete(session).where(eq(session.userId, id))
+  const summaryParts: string[] = []
+  if (role) summaryParts.push(`role=${role}`)
+  if (wantsDisabled) summaryParts.push(`disabled=${body!.disabled}`)
+  await reportAccountAudit(event, { action: 'account.update', target: updated.email, summary: summaryParts.join(', ') })
   return {
     id: updated.id,
     email: updated.email,
