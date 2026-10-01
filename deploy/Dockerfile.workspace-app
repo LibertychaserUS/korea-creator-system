@@ -30,11 +30,13 @@ COPY apps/dev apps/dev
 COPY apps/select apps/select
 
 ARG APP
+ARG NODE_HEAP_MB=4096
 # BUILD_TIME: TinyShip's build switch — skips the in-build vue-tsc pass (CI's
 # `apps` job type-checks with the full workspace; unused shadcn components here
 # import packages only other workspace apps install) and lets config getters
 # return placeholders instead of demanding runtime secrets.
-ENV NODE_OPTIONS=--max-old-space-size=4096 \
+# NODE_HEAP_MB: 内存紧张的小机器构建时传 1024 左右，避免 V8 按默认 4G 堆顶触发 OOM。
+ENV NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB} \
     BUILD_TIME=true
 RUN test -n "$APP" \
   && pnpm --filter "@kcs/app-${APP}" exec nuxt prepare \
