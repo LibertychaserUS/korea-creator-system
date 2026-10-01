@@ -395,6 +395,8 @@ export const zhCNKcs = {
     navFlow: "流程",
     navScoring: "数据",
     navValues: "主张",
+    heroTitlePre: "把 ",
+    heroTitlePost: " 变成选人决策",
     scrollHint: "向下 · 听潮",
     previewTitle: "博主池",
     previewMeta: "已发布 · 按 CPE 升序",

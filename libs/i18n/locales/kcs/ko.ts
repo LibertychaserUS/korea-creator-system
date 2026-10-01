@@ -395,6 +395,8 @@ export const koKcs = {
     navFlow: "프로세스",
     navScoring: "데이터 기준",
     navValues: "원칙",
+    heroTitlePre: "객관적인 ",
+    heroTitlePost: "를 선정 결정으로.",
     scrollHint: "스크롤 · 물결에 귀 기울이기",
     previewTitle: "크리에이터 풀",
     previewMeta: "발행 완료 · CPE 오름차순",

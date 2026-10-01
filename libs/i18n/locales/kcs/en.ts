@@ -395,6 +395,8 @@ export const enKcs = {
     navFlow: "Flow",
     navScoring: "Data",
     navValues: "Principles",
+    heroTitlePre: "Turn ",
+    heroTitlePost: " into selection decisions.",
     scrollHint: "Scroll · listen",
     previewTitle: "Creator pool",
     previewMeta: "Published · CPE ascending",
