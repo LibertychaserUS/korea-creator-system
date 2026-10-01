@@ -65,6 +65,7 @@ export const projectView = (row: Row): ProjectView => ({
   name: row.name,
   note: row.note ?? null,
   status: row.status,
+  brief: row.brief ?? null,
   createdAt: iso(row.created_at)!,
   updatedAt: iso(row.updated_at)!,
   memberCount: Number(row.member_count ?? 0),

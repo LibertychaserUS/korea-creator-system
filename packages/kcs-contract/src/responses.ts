@@ -91,6 +91,8 @@ export type ProjectView = {
   name: string
   note: string | null
   status: string
+  /** 选人任务的数字化需求说明（0091）；未填时是 null。 */
+  brief: Record<string, unknown> | null
   createdAt: string
   updatedAt: string
   memberCount: number

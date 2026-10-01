@@ -145,6 +145,15 @@ export const categoryPatchBody = z.looseObject({
 export const projectCreateBody = z.looseObject({
   name: text.min(1, 'required').max(200),
   note: optionalText,
+  /** 选人任务 brief（白名单校验见 http/brief.ts）；不带就是传统项目。 */
+  brief: z.unknown().optional(),
+})
+
+export const projectPatchBody = z.looseObject({
+  name: text.min(1, 'required').max(200).optional(),
+  note: optionalText,
+  /** `null` 清空 brief；对象按白名单校验后整体覆盖。 */
+  brief: z.unknown().optional(),
 })
 
 export const assignmentsBody = z.looseObject({

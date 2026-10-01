@@ -76,12 +76,28 @@ export async function ensurePublishedSnapshots(db: Db, options: { full?: boolean
 const EXPONENT_SQL = `(CASE p.price_currency ${CURRENCIES.map((code) => `WHEN '${code}' THEN ${10 ** currencyExponent(code)}`).join(' ')} ELSE 100 END)`
 const TO_CNY_SQL = `(CASE WHEN p.price_currency = 'CNY' THEN 1 ELSE p.price_fx END)`
 
-class Params {
+export class Params {
   readonly values: unknown[] = []
   add(value: unknown): string {
     this.values.push(value)
     return `$${this.values.length}`
   }
+}
+
+/** The one predicate every pool count/list shares: blacklisted rows are not in the pool. */
+const POOL_BASE = 'NOT p.blacklisted'
+
+/**
+ * `SELECT count(*)` over the pool with extra `where` clauses (built with the
+ * same `Params` so placeholders line up). What `/explain` reports per
+ * condition and what the workspace calls the pool total, both through this.
+ */
+export async function countPoolRows(db: Queryable, where: string[], values: unknown[]): Promise<number> {
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS total FROM creator_published p WHERE ${[POOL_BASE, ...where].join('\n AND ')}`,
+    values,
+  )
+  return Number(rows[0].total)
 }
 
 /**
@@ -175,7 +191,7 @@ async function runPage(
   paging: Paging & { cursor: string | null },
   listFingerprint: string,
 ): Promise<{ rows: Array<Record<string, any>>; total: number; page: number; nextCursor: string | null; prevCursor: string | null }> {
-  const base = ['NOT p.blacklisted', ...where]
+  const base = [POOL_BASE, ...where]
   const countSql = `SELECT count(*)::int AS total FROM creator_published p WHERE ${base.join('\n AND ')}`
   const countValues = [...params.values]
   let page = paging.page
@@ -441,18 +457,12 @@ export function savedQueryKeys(spec: SavedQuery): NumericMetricKey[] {
 }
 
 /**
- * POST /api/select/queries/run — `applySavedQuery` over the pool table, plus
- * the page's free-text `q` (name / creator key / 小红书号, on top of the spec's
- * own saved `search`). Order: the spec's sort (nulls last), then CPE
- * ascending, then followers descending, then id.
+ * The saved query's own conditions as pool `where` clauses, in spec order —
+ * the exact SQL `savedQueryPage` pages with, so `/explain` can apply any
+ * single condition alone (one clause per count) without re-inventing the
+ * filter syntax. Callers share one `Params` and pass `values` to countPoolRows.
  */
-export async function savedQueryPage(
-  db: Db,
-  spec: SavedQuery,
-  query: Record<string, string | undefined>,
-  now = new Date(),
-): Promise<PageResult<Record<string, any>>> {
-  const params = new Params()
+export function savedQueryClauses(spec: SavedQuery, params: Params, now: Date): string[] {
   const where: string[] = []
 
   if (spec.sources.length) where.push(`p.source = ANY(${params.add(spec.sources)}::text[])`)
@@ -495,8 +505,28 @@ export async function savedQueryPage(
     return `(strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${value})) > 0 OR ${nameMatches(value)})`
   }
   if (spec.search?.trim()) where.push(searchSql(spec.search.trim()))
+  return where
+}
+
+/**
+ * POST /api/select/queries/run — `applySavedQuery` over the pool table, plus
+ * the page's free-text `q` (name / creator key / 小红书号, on top of the spec's
+ * own saved `search`). Order: the spec's sort (nulls last), then CPE
+ * ascending, then followers descending, then id.
+ */
+export async function savedQueryPage(
+  db: Db,
+  spec: SavedQuery,
+  query: Record<string, string | undefined>,
+  now = new Date(),
+): Promise<PageResult<Record<string, any>>> {
+  const params = new Params()
+  const where = savedQueryClauses(spec, params, now)
   const search = (query.q ?? '').trim()
-  if (search) where.push(searchSql(search))
+  if (search) {
+    const value = params.add(search)
+    where.push(`(strpos(lower(concat_ws(' ', p.display_name, p.creator_key, p.xhs_id)), lower(${value})) > 0 OR ${nameMatches(value)})`)
+  }
 
   const paging = parseCursorPaging(query)
   const cols = orderCols(spec.sort.key, spec.sort.dir === 'asc' ? 'ASC' : 'DESC', [
@@ -508,7 +538,7 @@ export async function savedQueryPage(
   )
   const keys = savedQueryKeys(spec)
   const items = (await hydrate(db, rows, now)).map((item) => {
-    const metrics = withServiceFee(item.metrics as CreatorMetrics, fee)
+    const metrics = withServiceFee(item.metrics as CreatorMetrics, spec.serviceFee ?? 0)
     const percentiles: MetricPercentiles = {}
     for (const key of keys) if (item.percentiles[key]) percentiles[key] = item.percentiles[key]
     return {
