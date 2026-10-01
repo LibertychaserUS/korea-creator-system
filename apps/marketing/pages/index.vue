@@ -1,291 +1,245 @@
 <template>
-  <main class="bg-background text-foreground">
-    <!-- 首屏：潮声背景 + 顶栏 + 主张 + 产品预览 -->
-    <div class="tide-landing relative overflow-hidden">
-      <div class="tide-bg" aria-hidden="true">
-        <div class="tide-swell tide-swell--warm" />
-        <div class="tide-swell tide-swell--sea" />
-        <div class="tide-swell tide-swell--sand" />
-        <div class="tide-shore" />
-        <TideCanvas />
+  <main class="scroll" :class="{ 'scroll--intro': playIntro }">
+    <!-- 书脊式竖轨：桌面固定左侧，深青整面；移动端收为顶部横条 -->
+    <aside class="rail">
+      <div class="rail-head">
+        <AppLogo size="sm" variant="icon-only" />
       </div>
 
-      <header class="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 md:px-8">
-        <AppLogo size="md" />
-        <nav class="hidden items-center gap-7 text-sm text-muted-foreground md:flex" aria-label="sections">
-          <a href="#workspaces" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navWorkspaces') }}</a>
-          <a href="#flow" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navFlow') }}</a>
-          <a href="#data" class="transition-colors hover:text-foreground">{{ t('kcs.landing.navScoring') }}</a>
-        </nav>
-        <div class="flex items-center gap-2">
-          <div class="flex items-center gap-1 rounded-md border border-border/60 bg-background/70 p-1 backdrop-blur-sm">
-            <LocaleSelect />
-            <ThemeToggle />
-          </div>
-          <Button as-child size="sm" class="hidden sm:inline-flex">
-            <NuxtLink :to="localePath('/login')">{{ t('kcs.panel.signIn') }}</NuxtLink>
-          </Button>
-        </div>
-      </header>
+      <p class="rail-title" :class="{ 'rail-title--v': isZh }" aria-hidden="true">
+        <span v-for="(ch, i) in titleChars" :key="i" class="rail-title-ch" :style="{ '--i': i }">{{ ch }}</span>
+      </p>
 
-      <!-- 移动端锚点：顶栏导航 md 以下收起，hero 上方补一排直达链接 -->
-      <nav class="relative z-10 mx-auto flex w-full max-w-6xl flex-wrap items-center justify-center gap-2 px-6 pb-1 text-sm text-muted-foreground md:hidden" aria-label="sections">
-        <a href="#workspaces" class="rounded-md border border-border/60 bg-background/60 px-3 py-1.5 backdrop-blur-sm transition-colors hover:text-foreground">{{ t('kcs.landing.navWorkspaces') }}</a>
-        <a href="#flow" class="rounded-md border border-border/60 bg-background/60 px-3 py-1.5 backdrop-blur-sm transition-colors hover:text-foreground">{{ t('kcs.landing.navFlow') }}</a>
-        <a href="#data" class="rounded-md border border-border/60 bg-background/60 px-3 py-1.5 backdrop-blur-sm transition-colors hover:text-foreground">{{ t('kcs.landing.navScoring') }}</a>
+      <nav class="rail-nav" :class="{ 'rail-nav--v': isZh }" aria-label="sections">
+        <a v-for="item in railNav" :key="item.href" :href="item.href" class="lnk lnk--rail">{{ t(item.label) }}</a>
       </nav>
 
-      <section
-        class="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-12 px-6 pb-20 pt-12 md:px-8 md:pt-20 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pb-28"
-        data-testid="marketing-hero"
-      >
-        <div class="flex flex-col items-start gap-6 text-left">
-          <p
-            class="tide-line inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-primary backdrop-blur-sm"
-            style="--line: 0"
-          >
-            <span class="size-1.5 rounded-full bg-primary" aria-hidden="true" />
-            {{ t('kcs.brand.eyebrow') }}
-          </p>
-          <h1 class="tide-line text-4xl font-semibold leading-[1.12] tracking-tight md:text-6xl" style="--line: 1">
-            {{ t('kcs.brand.tagline') }}
-          </h1>
-          <p class="tide-line max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg" style="--line: 2">
-            {{ t('kcs.brand.story') }}
-          </p>
-          <div class="tide-line flex flex-wrap items-center gap-3" style="--line: 3">
-            <Button as-child size="lg" data-testid="cta-enter" class="h-11 px-6 shadow-md shadow-primary/20">
-              <NuxtLink :to="localePath('/login')">
-                {{ t('kcs.panel.signIn') }}
-                <ArrowRight class="size-4" />
-              </NuxtLink>
-            </Button>
-            <Button as-child size="lg" variant="outline" data-testid="cta-request" class="h-11 bg-background/60 px-6 backdrop-blur-sm">
-              <a href="mailto:admin@kcs.local">{{ t('kcs.landing.requestAccess') }}</a>
-            </Button>
-            <Button as-child size="lg" variant="ghost" class="h-11 px-6">
-              <a href="#workspaces">{{ t('kcs.panel.learnMore') }}</a>
-            </Button>
+      <div class="rail-foot">
+        <LocaleSelect />
+        <ThemeToggle />
+        <NuxtLink :to="localePath('/login')" class="lnk lnk--rail lnk--foot">{{ t('kcs.panel.signIn') }}</NuxtLink>
+      </div>
+    </aside>
+
+    <!-- 内容书页 -->
+    <div class="sheet">
+      <!-- Hero：sticky 钉住，滚动时渐隐上移，像翻过一页 -->
+      <div ref="heroStretch" class="hero-stretch">
+        <section class="hero" data-testid="marketing-hero" :style="heroStyle">
+          <div class="hero-tide" aria-hidden="true">
+            <TideField :seed="3" :amplitude="18" :opacity="0.85" />
           </div>
-          <p class="tide-line font-mono text-xs tracking-[0.2em] text-muted-foreground/80" style="--line: 4">
-            {{ t('kcs.brand.pillars') }}
-          </p>
+          <TideCanvas class="hero-ripples" aria-hidden="true" />
+
+          <div class="hero-inner">
+            <div class="hero-copy">
+              <p class="eyebrow">{{ t('kcs.brand.eyebrow') }}</p>
+              <h1 class="hero-title">{{ t('kcs.brand.tagline') }}</h1>
+              <p class="hero-story">{{ t('kcs.brand.story') }}</p>
+              <div class="hero-cta">
+                <NuxtLink :to="localePath('/login')" class="lnk lnk--cta" data-testid="cta-enter">
+                  {{ t('kcs.panel.signIn') }}
+                </NuxtLink>
+                <a href="mailto:admin@kcs.local" class="lnk lnk--cta" data-testid="cta-request">
+                  {{ t('kcs.landing.requestAccess') }}
+                </a>
+                <a href="#workspaces" class="lnk">{{ t('kcs.panel.learnMore') }}</a>
+              </div>
+              <p class="hero-pillars">{{ t('kcs.brand.pillars') }}</p>
+            </div>
+
+            <!-- 产品缩影：去阴影、发丝线框的标本面板 -->
+            <div class="specimen" aria-label="product preview">
+              <div class="specimen-head">
+                <p class="specimen-title">{{ t('kcs.landing.previewTitle') }}</p>
+                <p class="specimen-meta">{{ t('kcs.landing.previewMeta') }}</p>
+              </div>
+              <table class="specimen-table">
+                <thead>
+                  <tr>
+                    <th class="text-left">{{ t('kcs.landing.previewCols.creator') }}</th>
+                    <th class="text-left">{{ t('kcs.landing.previewCols.tier') }}</th>
+                    <th class="text-right">{{ t('kcs.landing.previewCols.cpe') }}</th>
+                    <th class="text-right hide-sm">{{ t('kcs.landing.previewCols.fans') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in preview" :key="row.name">
+                    <td>
+                      <p class="specimen-name">{{ row.name }}</p>
+                      <p class="specimen-tags">{{ row.tags }}</p>
+                    </td>
+                    <td><TierBadge :tier="row.tier" /></td>
+                    <td class="num" :class="{ 'num--top': row.top }">{{ row.cpe }}</td>
+                    <td class="num num--dim hide-sm">{{ row.fans }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="specimen-foot">
+                <span class="inline-flex items-center gap-1.5">
+                  <ShieldCheck class="size-3.5 text-primary" />
+                  {{ t('kcs.health.label') }} · {{ t('kcs.health.healthy') }}
+                </span>
+                <span class="specimen-assign">{{ t('kcs.actions.assign') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="hero-hint" aria-hidden="true">{{ t('kcs.landing.scrollHint') }}</p>
+        </section>
+      </div>
+
+      <!-- 呼吸区：节间气口，只有潮汐线 -->
+      <div class="breath" aria-hidden="true"><TideField :seed="11" :amplitude="12" :opacity="0.6" /></div>
+
+      <!-- 工作台 -->
+      <section id="workspaces" class="section">
+        <header class="section-head">
+          <p class="eyebrow">{{ t('kcs.landing.workspacesEyebrow') }}</p>
+          <h2>{{ t('kcs.landing.workspacesTitle') }}</h2>
+          <p class="lead">{{ t('kcs.landing.workspacesLead') }}</p>
+        </header>
+        <div class="ws-grid">
+          <article v-for="(ws, index) in workspaces" :key="ws.key" class="ws-cell">
+            <p class="ws-index">0{{ index + 1 }}</p>
+            <component :is="ws.icon" class="ws-icon" aria-hidden="true" />
+            <h3>{{ t(ws.label) }}</h3>
+            <p class="ws-desc">{{ t(ws.desc) }}</p>
+            <ul class="ws-points">
+              <li v-for="point in ws.points" :key="point">
+                <Check class="size-3.5 shrink-0" aria-hidden="true" />
+                {{ t(point) }}
+              </li>
+            </ul>
+            <a :href="ws.url" class="lnk" :data-testid="`cta-${ws.key}`">{{ t(ws.cta) }}</a>
+          </article>
+        </div>
+      </section>
+
+      <!-- 流程 -->
+      <section id="flow" class="section">
+        <header class="section-head">
+          <p class="eyebrow">{{ t('kcs.landing.flowEyebrow') }}</p>
+          <h2>{{ t('kcs.landing.flowTitle') }}</h2>
+        </header>
+        <ol class="flow-grid">
+          <li v-for="(step, i) in steps" :key="i" class="flow-cell">
+            <p class="flow-num">0{{ i + 1 }}</p>
+            <h3>{{ rt(step.title) }}</h3>
+            <p>{{ rt(step.body) }}</p>
+          </li>
+        </ol>
+      </section>
+
+      <div class="breath" aria-hidden="true"><TideField :seed="29" :amplitude="10" :opacity="0.5" /></div>
+
+      <!-- 数据 -->
+      <section id="data" class="section" data-testid="marketing-data">
+        <header class="section-head">
+          <p class="eyebrow">{{ t('kcs.landing.dataEyebrow') }}</p>
+          <h2>{{ t('kcs.landing.dataTitle') }}</h2>
+          <p class="lead">{{ t('kcs.landing.dataLead') }}</p>
+        </header>
+
+        <h3 class="block-label">{{ t('kcs.landing.sourcesTitle') }}</h3>
+        <div class="src-grid">
+          <article v-for="src in sources" :key="src.id" class="src-cell">
+            <p class="src-route">{{ t(`kcs.source.${src.route}`) }}</p>
+            <h4>{{ t(`kcs.landing.sources.${src.id}.label`) }}</h4>
+            <p>{{ t(`kcs.landing.sources.${src.id}.body`) }}</p>
+          </article>
         </div>
 
-        <!-- 产品预览：静态的达人库缩影 -->
-        <div class="tide-line relative" style="--line: 2.5" aria-hidden="true">
-          <div class="absolute -inset-6 -z-10 rounded-[2rem] bg-primary/10 blur-3xl" />
-          <div class="overflow-hidden rounded-xl border border-border/70 bg-card/90 shadow-2xl shadow-primary/10 backdrop-blur">
-            <div class="flex items-center justify-between border-b border-border/60 px-4 py-3">
-              <div class="flex items-center gap-2">
-                <span class="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary"><Users class="size-4" /></span>
-                <div class="leading-tight">
-                  <p class="text-sm font-semibold">{{ t('kcs.landing.previewTitle') }}</p>
-                  <p class="text-[11px] text-muted-foreground">{{ t('kcs.landing.previewMeta') }}</p>
+        <div class="data-grid">
+          <div class="groups-panel">
+            <h3 class="block-label">{{ t('kcs.landing.groupsTitle') }}</h3>
+            <ul class="groups-list">
+              <li v-for="group in groups" :key="group">
+                <div class="groups-row">
+                  <span class="groups-name">{{ groupLabel(group) }}</span>
+                  <span class="groups-count">{{ fieldsIn(group).length }}</span>
                 </div>
-              </div>
-              <span class="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span class="size-1.5 rounded-full bg-primary/70" aria-hidden="true" />
-                {{ t('kcs.health.healthy') }}
-              </span>
+                <p>{{ t(`kcs.landing.groups.${group}`) }}</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="side-stack">
+            <div class="side-cell">
+              <h3 class="block-label">{{ t('kcs.landing.tierTitle') }}</h3>
+              <p class="side-body">{{ t('kcs.landing.tierBody') }}</p>
+              <div class="badge-row"><TierBadge v-for="tier in tiers" :key="tier" :tier="tier" /></div>
             </div>
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th class="px-4 py-2 text-left font-medium">{{ t('kcs.landing.previewCols.creator') }}</th>
-                  <th class="px-2 py-2 text-left font-medium">{{ t('kcs.landing.previewCols.tier') }}</th>
-                  <th class="px-2 py-2 text-right font-medium">{{ t('kcs.landing.previewCols.cpe') }}</th>
-                  <th class="hidden px-4 py-2 text-right font-medium sm:table-cell">{{ t('kcs.landing.previewCols.fans') }}</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-border/60">
-                <tr v-for="row in preview" :key="row.name">
-                  <td class="px-4 py-2.5">
-                    <div class="flex items-center gap-2.5">
-                      <span class="flex size-8 items-center justify-center rounded-full border border-border bg-muted text-xs text-muted-foreground">{{ row.name.charAt(0) }}</span>
-                      <div class="min-w-0 leading-tight">
-                        <p class="truncate font-medium">{{ row.name }}</p>
-                        <p class="truncate text-[11px] text-muted-foreground">{{ row.tags }}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-2 py-2.5"><TierBadge :tier="row.tier" /></td>
-                  <td class="px-2 py-2.5 text-right font-semibold tabular-nums" :class="row.top ? 'text-primary' : ''">{{ row.cpe }}</td>
-                  <td class="hidden px-4 py-2.5 text-right tabular-nums text-muted-foreground sm:table-cell">{{ row.fans }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="flex items-center justify-between border-t border-border/60 bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
-              <span class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3.5 text-primary" />{{ t('kcs.health.label') }} · {{ t('kcs.health.healthy') }}</span>
-              <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground"><UserPlus class="size-3.5" />{{ t('kcs.actions.assign') }}</span>
+            <div class="side-cell">
+              <h3 class="block-label">{{ t('kcs.landing.gateTitle') }}</h3>
+              <p class="side-body">{{ t('kcs.landing.gateBody') }}</p>
+              <div class="badge-row">
+                <HealthBadge health="healthy" />
+                <HealthBadge health="abnormal" />
+                <HealthBadge health="healthy" low-active />
+              </div>
+            </div>
+            <div class="side-cell side-cell--rule">
+              <h3 class="block-label">{{ t('kcs.landing.transformTitle') }}</h3>
+              <p class="transform-line">{{ t('kcs.landing.transformLine') }}</p>
+              <p class="side-body">{{ t('kcs.landing.transformBody') }}</p>
             </div>
           </div>
         </div>
       </section>
+
+      <!-- 主张 -->
+      <section id="values" class="section">
+        <div class="values-grid">
+          <div v-for="(v, i) in values" :key="i" class="value-cell">
+            <p class="ws-index">0{{ i + 1 }}</p>
+            <h3>{{ rt(v.title) }}</h3>
+            <p>{{ rt(v.body) }}</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="breath" aria-hidden="true"><TideField :seed="47" :amplitude="9" :opacity="0.45" /></div>
+
+      <!-- CTA -->
+      <section class="section cta">
+        <h2 class="cta-title">{{ t('kcs.landing.ctaTitle') }}</h2>
+        <p class="lead">{{ t('kcs.landing.ctaLead') }}</p>
+        <div class="cta-links">
+          <NuxtLink :to="localePath('/login')" class="lnk lnk--cta" data-testid="cta-enter-bottom">
+            {{ t('kcs.panel.signIn') }}
+          </NuxtLink>
+          <a href="mailto:admin@kcs.local" class="lnk lnk--cta" data-testid="cta-request-bottom">
+            {{ t('kcs.landing.requestAccess') }}
+          </a>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <div class="foot-brand">
+          <AppLogo size="sm" />
+          <p>{{ t('kcs.landing.footerNote') }}</p>
+        </div>
+        <nav class="foot-nav" :aria-label="t('kcs.landing.footerLinks')">
+          <a v-for="ws in workspaces" :key="ws.key" :href="ws.url" class="lnk">{{ t(ws.label) }}</a>
+          <NuxtLink :to="localePath('/login')" class="lnk">{{ t('kcs.panel.signIn') }}</NuxtLink>
+        </nav>
+        <p class="foot-tag">{{ t('kcs.landing.footerTagline') }}</p>
+      </footer>
     </div>
 
-    <!-- 工作台 -->
-    <section id="workspaces" class="mx-auto w-full max-w-6xl scroll-mt-16 px-6 py-20 md:px-8">
-      <SectionHead :eyebrow="t('kcs.landing.workspacesEyebrow')" :title="t('kcs.landing.workspacesTitle')" :lead="t('kcs.landing.workspacesLead')" />
-      <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <a
-          v-for="(ws, index) in workspaces"
-          :key="ws.key"
-          :href="ws.url"
-          :data-testid="`cta-${ws.key}`"
-          class="group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-border/60 bg-card p-6 shadow-xs transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
-          <span class="absolute inset-x-0 top-0 h-0.5 opacity-80" :class="ws.bar" aria-hidden="true" />
-          <div class="flex items-center justify-between">
-            <span class="flex size-11 items-center justify-center rounded-lg" :class="ws.iconWrap" aria-hidden="true">
-              <component :is="ws.icon" class="size-5" />
-            </span>
-            <span class="text-xs tabular-nums text-muted-foreground/70">0{{ index + 1 }}</span>
-          </div>
-          <div>
-            <h3 class="text-lg font-semibold tracking-tight">{{ t(ws.label) }}</h3>
-            <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{{ t(ws.desc) }}</p>
-          </div>
-          <ul class="space-y-1.5 text-sm text-muted-foreground">
-            <li v-for="point in ws.points" :key="point" class="flex items-center gap-2">
-              <Check class="size-3.5 shrink-0 text-primary" />
-              {{ t(point) }}
-            </li>
-          </ul>
-          <span class="mt-auto inline-flex items-center gap-1 pt-2 text-sm font-medium">
-            {{ t(ws.cta) }}
-            <ArrowRight class="size-4 transition-transform group-hover:translate-x-0.5" />
-          </span>
-        </a>
-      </div>
-    </section>
-
-    <!-- 流程 -->
-    <section id="flow" class="scroll-mt-16 border-y border-border/60 bg-muted/30">
-      <div class="mx-auto w-full max-w-6xl px-6 py-20 md:px-8">
-        <SectionHead :eyebrow="t('kcs.landing.flowEyebrow')" :title="t('kcs.landing.flowTitle')" />
-        <ol class="mt-12 grid gap-8 md:grid-cols-4 md:gap-6">
-          <li v-for="(step, i) in steps" :key="i" class="relative">
-            <div class="flex items-center gap-3 md:block">
-              <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background text-sm font-semibold text-primary">
-                {{ i + 1 }}
-              </span>
-              <span v-if="i < steps.length - 1" class="absolute left-[calc(2.25rem+0.5rem)] right-[-1.5rem] top-[1.1rem] hidden h-px bg-gradient-to-r from-primary/40 to-border md:block" aria-hidden="true" />
-              <h3 class="text-base font-semibold md:mt-4">{{ rt(step.title) }}</h3>
-            </div>
-            <p class="mt-2 text-sm leading-relaxed text-muted-foreground md:mt-2">{{ rt(step.body) }}</p>
-          </li>
-        </ol>
-      </div>
-    </section>
-
-    <!-- 数据：平台给什么，我们看什么 -->
-    <section id="data" class="mx-auto w-full max-w-6xl scroll-mt-16 px-6 py-20 md:px-8" data-testid="marketing-data">
-      <SectionHead :eyebrow="t('kcs.landing.dataEyebrow')" :title="t('kcs.landing.dataTitle')" :lead="t('kcs.landing.dataLead')" />
-
-      <h3 class="mt-10 text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{{ t('kcs.landing.sourcesTitle') }}</h3>
-      <div class="mt-4 grid gap-4 md:grid-cols-3">
-        <div v-for="src in sources" :key="src.id" class="relative overflow-hidden rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-          <span class="absolute inset-x-0 top-0 h-0.5" :class="src.route === 'official' ? 'bg-primary' : 'bg-(--warning)/70'" aria-hidden="true" />
-          <span class="inline-flex rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">{{ t(`kcs.source.${src.route}`) }}</span>
-          <h4 class="mt-3 text-base font-semibold">{{ t(`kcs.landing.sources.${src.id}.label`) }}</h4>
-          <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t(`kcs.landing.sources.${src.id}.body`) }}</p>
-        </div>
-      </div>
-
-      <div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-        <div class="rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-          <h3 class="text-sm font-semibold">{{ t('kcs.landing.groupsTitle') }}</h3>
-          <ul class="mt-4 grid gap-4 sm:grid-cols-2">
-            <li v-for="group in groups" :key="group" class="rounded-lg border border-border/50 bg-muted/30 p-4">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium">{{ groupLabel(group) }}</span>
-                <span class="text-[11px] tabular-nums text-muted-foreground">{{ fieldsIn(group).length }}</span>
-              </div>
-              <p class="mt-1.5 text-xs leading-relaxed text-muted-foreground">{{ t(`kcs.landing.groups.${group}`) }}</p>
-              <div class="mt-3 flex flex-wrap gap-1">
-                <span v-for="f in fieldsIn(group).slice(0, 5)" :key="f.key" class="rounded-sm bg-background px-1.5 py-0.5 text-[11px] text-foreground/80 ring-1 ring-border/60">{{ label(f.key) }}</span>
-              </div>
-            </li>
-          </ul>
-        </div>
-        <div class="flex flex-col gap-4">
-          <div class="rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-            <h3 class="text-sm font-semibold">{{ t('kcs.landing.tierTitle') }}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('kcs.landing.tierBody') }}</p>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <TierBadge v-for="tier in tiers" :key="tier" :tier="tier" />
-            </div>
-          </div>
-          <div class="rounded-xl border border-border/60 bg-card p-6 shadow-xs">
-            <h3 class="text-sm font-semibold">{{ t('kcs.landing.gateTitle') }}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('kcs.landing.gateBody') }}</p>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <HealthBadge health="healthy" />
-              <HealthBadge health="abnormal" />
-              <HealthBadge health="healthy" low-active />
-            </div>
-          </div>
-          <div class="tide-rule-card relative overflow-hidden rounded-xl p-6 text-white">
-            <p class="text-xs uppercase tracking-[0.16em] text-white/60">{{ t('kcs.landing.transformTitle') }}</p>
-            <p class="mt-2 text-lg font-semibold leading-snug text-white">{{ t('kcs.landing.transformLine') }}</p>
-            <p class="mt-3 text-sm leading-relaxed text-white/75">{{ t('kcs.landing.transformBody') }}</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 主张 -->
-    <section class="border-t border-border/60 bg-muted/30">
-      <div class="mx-auto grid w-full max-w-6xl gap-8 px-6 py-16 md:grid-cols-3 md:px-8">
-        <div v-for="(v, i) in values" :key="i" class="space-y-2">
-          <div class="h-px w-8 bg-primary/60" aria-hidden="true" />
-          <h3 class="text-base font-semibold">{{ rt(v.title) }}</h3>
-          <p class="text-sm leading-relaxed text-muted-foreground">{{ rt(v.body) }}</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA -->
-    <section class="mx-auto w-full max-w-6xl px-6 py-20 md:px-8">
-      <div class="tide-cta relative overflow-hidden rounded-2xl px-6 py-14 text-center text-white md:px-12">
-        <div class="tide-cta-glow" aria-hidden="true" />
-        <h2 class="relative text-3xl font-semibold tracking-tight md:text-4xl">{{ t('kcs.landing.ctaTitle') }}</h2>
-        <p class="relative mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/75 md:text-base">{{ t('kcs.landing.ctaLead') }}</p>
-        <div class="relative mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Button as-child size="lg" variant="secondary" class="h-11 px-7">
-            <NuxtLink :to="localePath('/login')">
-              {{ t('kcs.panel.signIn') }}
-              <ArrowRight class="size-4" />
-            </NuxtLink>
-          </Button>
-          <Button as-child size="lg" variant="outline" data-testid="cta-request-bottom" class="h-11 border-white/40 bg-white/5 px-7 text-white backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-white">
-            <a href="mailto:admin@kcs.local">{{ t('kcs.landing.requestAccess') }}</a>
-          </Button>
-        </div>
-      </div>
-    </section>
-
-    <footer class="border-t border-border/60">
-      <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10 md:flex-row md:items-center md:justify-between md:px-8">
-        <div class="flex items-center gap-3">
-          <AppLogo size="sm" />
-          <span class="text-xs text-muted-foreground">{{ t('kcs.landing.footerNote') }}</span>
-        </div>
-        <nav class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground" :aria-label="t('kcs.landing.footerLinks')">
-          <a v-for="ws in workspaces" :key="ws.key" :href="ws.url" class="transition-colors hover:text-foreground">{{ t(ws.label) }}</a>
-          <NuxtLink :to="localePath('/login')" class="transition-colors hover:text-foreground">{{ t('kcs.panel.signIn') }}</NuxtLink>
-        </nav>
-        <p class="text-xs text-muted-foreground">{{ t('kcs.landing.footerTagline') }}</p>
-      </div>
-    </footer>
+    <!-- 移动端锚点排 -->
+    <nav class="mobile-nav" aria-label="sections">
+      <a v-for="item in railNav" :key="item.href" :href="item.href" class="lnk">{{ t(item.label) }}</a>
+      <NuxtLink :to="localePath('/login')" class="lnk">{{ t('kcs.panel.signIn') }}</NuxtLink>
+    </nav>
   </main>
 </template>
 
 <script setup lang="ts">
-// 听潮 · 宣传页：公开落地页，无工作台侧栏；语言/主题与登录页同一套潮声。
-import { h, type FunctionalComponent } from 'vue'
-import { Activity, ArrowRight, Check, ClipboardList, ShieldCheck, UserPlus, Users } from 'lucide-vue-next'
+// 听潮 · 宣传页「潮汐志」：书卷式竖轨 + 画廊式滚动叙事 + 生成式潮汐画布。
+// 对外门面，无工作台侧栏；语言/主题与登录页同一套。
+import { Activity, Check, ClipboardList, ShieldCheck, Users } from 'lucide-vue-next'
 import { CREATOR_TIERS, SOURCE_IDS, SOURCE_ROUTE, type CreatorTier } from '@kcs/contract'
 
 definePageMeta({ layout: false })
@@ -294,11 +248,91 @@ const { t, tm, rt, locale } = useI18n()
 const localePath = useLocalePath()
 const config = useRuntimeConfig()
 
+const isZh = computed(() => locale.value === 'zh-CN')
+
+const railNav = [
+  { href: '#workspaces', label: 'kcs.landing.navWorkspaces' },
+  { href: '#flow', label: 'kcs.landing.navFlow' },
+  { href: '#data', label: 'kcs.landing.navScoring' },
+  { href: '#values', label: 'kcs.landing.navValues' },
+]
+
+// 竖排大字：zh 逐字（竖排），en/ko 用品牌短名横排小字。
+const titleChars = computed(() => (isZh.value ? ['听', '潮'] : [t('kcs.brand.short')]))
+
+// 开场动效：首访只播一次（sessionStorage 记录）。SSR 输出终态，客户端首访才挂 intro 类。
+const playIntro = ref(false)
+if (import.meta.client) {
+  try {
+    playIntro.value = !sessionStorage.getItem('kcs.scroll.opened')
+  } catch {
+    playIntro.value = true
+  }
+}
+onMounted(() => {
+  if (!playIntro.value) return
+  const timer = window.setTimeout(() => {
+    try {
+      sessionStorage.setItem('kcs.scroll.opened', '1')
+    } catch {
+      /* 私密模式等场景忽略 */
+    }
+  }, 3200)
+  onBeforeUnmount(() => window.clearTimeout(timer))
+})
+
+// Hero 钉住渐隐：progress 0→1，opacity 渐隐 + 轻微上移（翻页过渡）。
+const heroStretch = ref<HTMLElement | null>(null)
+const scrollY = ref(0)
+const wide = ref(false)
+const reduceMotion = ref(false)
+
+const heroProgress = computed(() => {
+  if (!wide.value || reduceMotion.value) return 0
+  const el = heroStretch.value
+  if (!el) return 0
+  const range = Math.max(el.offsetHeight - window.innerHeight, 1)
+  return Math.min(1, Math.max(0, scrollY.value / range))
+})
+
+const heroStyle = computed(() => {
+  const p = heroProgress.value
+  return {
+    opacity: String(1 - p * 0.92),
+    transform: `translateY(${(-36 * p).toFixed(1)}px)`,
+  }
+})
+
+let onScroll: (() => void) | null = null
+onMounted(() => {
+  reduceMotion.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const mq = window.matchMedia('(min-width: 1024px)')
+  wide.value = mq.matches
+  const syncWide = (e: MediaQueryListEvent) => {
+    wide.value = e.matches
+  }
+  let raf = 0
+  onScroll = () => {
+    if (raf) return
+    raf = requestAnimationFrame(() => {
+      raf = 0
+      scrollY.value = window.scrollY
+    })
+  }
+  mq.addEventListener('change', syncWide)
+  window.addEventListener('scroll', onScroll, { passive: true })
+  onBeforeUnmount(() => {
+    mq.removeEventListener('change', syncWide)
+    window.removeEventListener('scroll', onScroll!)
+    if (raf) cancelAnimationFrame(raf)
+  })
+})
+
 type Msg = { title: string; body: string }
 const steps = computed(() => (tm('kcs.landing.steps') as Msg[]) || [])
 const values = computed(() => (tm('kcs.landing.values') as Msg[]) || [])
 
-const { label, groupLabel, groups, fieldsIn } = useMetrics()
+const { label: _label, groupLabel, groups, fieldsIn } = useMetrics()
 const sources = SOURCE_IDS.map((id) => ({ id, route: SOURCE_ROUTE[id] }))
 const tiers = CREATOR_TIERS.map((x) => x.id).filter((x) => x !== 'unknown') as CreatorTier[]
 
@@ -320,8 +354,6 @@ const workspaces = computed(() => [
     cta: 'kcs.panel.openSelect',
     url: `${config.public.selectUrl}/${locale.value}/`,
     icon: Users,
-    iconWrap: 'bg-primary/10 text-primary',
-    bar: 'bg-primary',
     points: ['kcs.panel.pool', 'kcs.panel.projects', 'kcs.panel.assign'],
   },
   {
@@ -331,8 +363,6 @@ const workspaces = computed(() => [
     cta: 'kcs.panel.openOps',
     url: `${config.public.opsUrl}/${locale.value}/`,
     icon: ClipboardList,
-    iconWrap: 'bg-(--warning)/10 text-(--warning)',
-    bar: 'bg-(--warning)',
     points: ['kcs.panel.createCreator', 'kcs.panel.review', 'kcs.panel.publish'],
   },
   {
@@ -342,23 +372,9 @@ const workspaces = computed(() => [
     cta: 'kcs.panel.openDev',
     url: `${config.public.devUrl}/${locale.value}/`,
     icon: Activity,
-    iconWrap: 'bg-(--success)/10 text-(--success)',
-    bar: 'bg-(--success)',
     points: ['kcs.panel.jobs', 'kcs.panel.failures', 'kcs.panel.retry'],
   },
 ])
-
-/** 区块标题：眉题 + 标题 + 引言，三个区块共用。 */
-const SectionHead: FunctionalComponent<{ eyebrow: string; title: string; lead?: string }> = (props) =>
-  h('div', { class: 'max-w-2xl' }, [
-    h('p', { class: 'flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-primary' }, [
-      h('span', { class: 'h-px w-5 bg-primary/60', 'aria-hidden': 'true' }),
-      props.eyebrow,
-    ]),
-    h('h2', { class: 'mt-3 text-2xl font-semibold tracking-tight md:text-4xl' }, props.title),
-    props.lead ? h('p', { class: 'mt-3 text-base leading-relaxed text-muted-foreground' }, props.lead) : null,
-  ])
-SectionHead.props = ['eyebrow', 'title', 'lead']
 
 useHead({
   title: () => t('kcs.brand.title'),
@@ -367,149 +383,786 @@ useHead({
 </script>
 
 <style scoped>
-/* Warm tide background — same language as layouts/auth.vue in libs/panel. */
-.tide-landing {
-  background: linear-gradient(
-    168deg,
-    oklch(0.975 0.012 85) 0%,
-    oklch(0.955 0.015 130) 42%,
-    oklch(0.94 0.02 220) 100%
-  );
+/* ============ 设计令牌 ============ */
+.scroll {
+  --paper: #faf9f7;
+  --paper-dim: #f1eee8;
+  --ink: #1a1a1a;
+  --ink-65: rgba(26, 26, 26, 0.65);
+  --ink-45: rgba(26, 26, 26, 0.45);
+  --tide: #093753;
+  --sea: #2f5f8f;
+  --hairline: rgba(9, 55, 83, 0.16);
+  --rail-w: 260px;
+  --gutter: clamp(20px, 4vw, 56px);
+  --section-gap: clamp(72px, 10vw, 128px);
+  --ease: cubic-bezier(0.33, 0, 0.66, 1);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+  font-feature-settings: "palt";
+  font-size: clamp(15px, 0.6vw + 12px, 16px);
+  line-height: 1.7;
 }
 
-.tide-bg {
+:global(.dark) .scroll {
+  --paper: #12181d;
+  --paper-dim: #182028;
+  --ink: #e8e6e1;
+  --ink-65: rgba(232, 230, 225, 0.65);
+  --ink-45: rgba(232, 230, 225, 0.45);
+  --hairline: rgba(151, 199, 214, 0.2);
+}
+
+/* 自定义滚动条：6px、深色青拇指 */
+:global(html) {
+  scrollbar-width: thin;
+  scrollbar-color: #093753 rgba(9, 55, 83, 0.08);
+  scroll-behavior: smooth;
+}
+:global(::-webkit-scrollbar) {
+  width: 6px;
+  height: 6px;
+}
+:global(::-webkit-scrollbar-thumb) {
+  background: #093753;
+}
+:global(::-webkit-scrollbar-track) {
+  background: transparent;
+}
+
+/* ============ 去 chrome 链接按钮：文字 + 下划线生长 ============ */
+.lnk {
+  color: var(--tide);
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-repeat: no-repeat;
+  background-position: left calc(100% - 0.09em);
+  padding-bottom: 0.18em;
+  transition: background-size 0.25s var(--ease), color 0.25s var(--ease);
+  cursor: pointer;
+}
+.lnk:hover,
+.lnk:focus-visible {
+  background-size: 100% 1px;
+}
+.lnk--rail {
+  color: rgba(250, 249, 247, 0.78);
+}
+.lnk--rail:hover,
+.lnk--rail:focus-visible {
+  color: var(--paper);
+}
+.lnk--cta {
+  font-size: clamp(16px, 1.1vw + 12px, 18px);
+  font-weight: 500;
+}
+
+/* ============ 竖轨（书脊） ============ */
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: var(--rail-w);
+  padding: calc(var(--gutter) * 0.8) calc(var(--gutter) * 0.7);
+  background: var(--tide);
+  color: var(--paper);
+}
+/* 10px 竖条：轨与书页的分界，开场时从下往上长出 */
+.rail::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -10px;
+  bottom: 0;
+  width: 10px;
+  background: var(--tide);
+  transform: scaleY(1);
+  transform-origin: bottom;
+}
+
+.rail-head {
+  display: flex;
+  align-items: center;
+}
+
+.rail-title {
+  display: flex;
+  gap: 0.4em;
+  margin: var(--section-gap) 0 0;
+  font-size: clamp(40px, 4vw, 56px);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.28em;
+  color: var(--paper);
+}
+.rail-title--v {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.32em;
+}
+.rail-title-ch {
+  display: inline-block;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6em;
+  margin-top: calc(var(--section-gap) * 0.8);
+  font-size: 14px;
+}
+.rail-nav--v {
+  writing-mode: vertical-rl;
+  gap: 2.2em;
+  letter-spacing: 0.18em;
+}
+
+.rail-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-top: auto;
+  font-size: 13px;
+}
+.lnk--foot {
+  margin-left: auto;
+}
+/* 共享层按钮去 chrome（语言/主题切换） */
+.rail-foot :deep(button) {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: rgba(250, 249, 247, 0.78);
+  height: auto;
+  padding: 0.2em 0.3em;
+}
+.rail-foot :deep(button:hover) {
+  background: transparent;
+  color: var(--paper);
+}
+
+/* ============ 书页 ============ */
+.sheet {
+  margin-left: var(--rail-w);
+}
+
+/* Hero：sticky 钉住 + 滚动渐隐 */
+.hero-stretch {
+  height: 170vh;
+}
+.hero {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100svh;
+  overflow: hidden;
+  padding: calc(var(--gutter) * 1.2) var(--gutter);
+  will-change: opacity, transform;
+}
+.hero-tide {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 42%;
+  pointer-events: none;
+}
+.hero-ripples {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  opacity: 0.55;
   pointer-events: none;
 }
 
-.tide-swell {
+.hero-inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: calc(var(--gutter) * 1.4);
+  align-items: center;
+  max-width: 1180px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sea);
+}
+.hero-title {
+  margin: 0.35em 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+.hero-story {
+  max-width: 34em;
+  margin: 1.2em 0 0;
+  color: var(--ink-65);
+  font-size: clamp(15px, 0.6vw + 12px, 17px);
+}
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6em;
+  margin-top: 2.2em;
+  align-items: baseline;
+}
+.hero-pillars {
+  margin: 2.6em 0 0;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--ink-45);
+}
+.hero-hint {
   position: absolute;
-  border-radius: 9999px;
-  filter: blur(72px);
-  will-change: transform;
+  right: var(--gutter);
+  bottom: calc(var(--gutter) * 0.7);
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--ink-45);
+  writing-mode: vertical-rl;
 }
 
-.tide-swell--warm {
-  width: 55vmax;
-  height: 55vmax;
-  left: -12vmax;
-  top: -18vmax;
-  background: radial-gradient(circle, oklch(0.88 0.07 75 / 0.55) 0%, transparent 65%);
-  animation: tide-drift-a 26s ease-in-out infinite alternate;
+/* 标本面板：发丝线框，无阴影 */
+.specimen {
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+}
+.specimen-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 0.9em 0;
+}
+.specimen-title {
+  margin: 0;
+  font-weight: 500;
+}
+.specimen-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-45);
+}
+.specimen-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.specimen-table th {
+  padding: 0.6em 0;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  border-top: 1px solid var(--hairline);
+}
+.specimen-table td {
+  padding: 0.75em 0;
+  border-top: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+.specimen-table th + th,
+.specimen-table td + td {
+  padding-left: 0.8em;
+}
+.specimen-name {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.specimen-tags {
+  margin: 0.15em 0 0;
+  font-size: 11px;
+  color: var(--ink-45);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.num--top {
+  color: var(--sea);
+}
+.num--dim {
+  color: var(--ink-45);
+  font-weight: 400;
+}
+.specimen-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8em 0;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--ink-65);
+}
+.specimen-assign {
+  color: var(--tide);
+  font-weight: 500;
 }
 
-.tide-swell--sea {
-  width: 60vmax;
-  height: 60vmax;
-  right: -15vmax;
-  bottom: -22vmax;
-  background: radial-gradient(circle, oklch(0.8 0.06 225 / 0.5) 0%, transparent 65%);
-  animation: tide-drift-b 32s ease-in-out infinite alternate;
+/* 呼吸区 */
+.breath {
+  height: 34vh;
+  min-height: 200px;
 }
 
-.tide-swell--sand {
-  width: 38vmax;
-  height: 38vmax;
-  right: 8vmax;
-  top: -10vmax;
-  background: radial-gradient(circle, oklch(0.9 0.05 95 / 0.45) 0%, transparent 65%);
-  animation: tide-drift-a 38s ease-in-out infinite alternate-reverse;
+/* 节 */
+.section {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--section-gap) var(--gutter) 0;
+  scroll-margin-top: 24px;
+}
+.section-head {
+  max-width: 40em;
+}
+.section-head h2 {
+  margin: 0.4em 0 0;
+  font-size: clamp(28px, 3.2vw, 40px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+.lead {
+  margin: 1em 0 0;
+  color: var(--ink-65);
+}
+.block-label {
+  margin: calc(var(--section-gap) * 0.7) 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sea);
 }
 
-.tide-shore {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 34%;
-  background: linear-gradient(to top, oklch(0.86 0.04 215 / 0.28) 0%, transparent 100%);
-  animation: tide-breathe 14s ease-in-out infinite alternate;
+/* 工作台：非对称分数列 */
+.ws-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1.1fr 0.9fr;
+  gap: calc(var(--gutter) * 1.1);
+  margin-top: calc(var(--section-gap) * 0.55);
+}
+.ws-cell {
+  border-top: 1px solid var(--tide);
+  padding-top: 1.1em;
+}
+.ws-index {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--sea);
+}
+.ws-icon {
+  width: 20px;
+  height: 20px;
+  margin-top: 1.6em;
+  color: var(--tide);
+}
+.ws-cell h3 {
+  margin: 0.7em 0 0;
+  font-size: clamp(18px, 1.4vw, 21px);
+  font-weight: 500;
+}
+.ws-desc {
+  margin: 0.5em 0 0;
+  font-size: 14px;
+  color: var(--ink-65);
+}
+.ws-points {
+  margin: 1em 0 1.4em;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--ink-65);
+  display: grid;
+  gap: 0.45em;
+}
+.ws-points li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+}
+.ws-points svg {
+  color: var(--sea);
+  transform: translateY(1px);
 }
 
-@keyframes tide-drift-a {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
+/* 流程 */
+.flow-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1.25fr 1fr;
+  gap: calc(var(--gutter) * 1.1);
+  margin: calc(var(--section-gap) * 0.55) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.flow-cell {
+  border-top: 1px solid var(--hairline);
+  padding-top: 1.1em;
+}
+.flow-num {
+  margin: 0;
+  font-size: clamp(24px, 2.2vw, 32px);
+  font-weight: 400;
+  line-height: 1;
+  color: var(--tide);
+  font-variant-numeric: tabular-nums;
+}
+.flow-cell h3 {
+  margin: 1.2em 0 0;
+  font-size: clamp(16px, 1.2vw, 18px);
+  font-weight: 500;
+}
+.flow-cell p:last-child {
+  margin: 0.5em 0 0;
+  font-size: 14px;
+  color: var(--ink-65);
 }
 
-@keyframes tide-drift-b {
-  from { transform: translate3d(0, 0, 0) scale(1.05); }
-  to { transform: translate3d(-5vmax, -4vmax, 0) scale(0.96); }
+/* 数据 */
+.src-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: calc(var(--gutter) * 1.1);
+  margin-top: 1.4em;
+}
+.src-cell {
+  border-top: 1px solid var(--tide);
+  padding-top: 1em;
+}
+.src-route {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+.src-cell h4 {
+  margin: 0.8em 0 0;
+  font-size: clamp(15px, 1.1vw, 17px);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.src-cell p:last-child {
+  margin: 0.6em 0 0;
+  font-size: 13px;
+  color: var(--ink-65);
 }
 
-@keyframes tide-breathe {
-  from { opacity: 0.55; transform: translateY(0); }
-  to { opacity: 0.9; transform: translateY(-1.5%); }
+.data-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: calc(var(--gutter) * 1.4);
+  margin-top: calc(var(--section-gap) * 0.7);
+}
+.groups-list {
+  margin: 1.2em 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1.3em;
+}
+.groups-list li {
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.9em;
+}
+.groups-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.groups-name {
+  font-weight: 500;
+  font-size: 15px;
+}
+.groups-count {
+  font-size: 12px;
+  color: var(--sea);
+  font-variant-numeric: tabular-nums;
+}
+.groups-list p {
+  margin: 0.3em 0 0;
+  font-size: 13px;
+  color: var(--ink-65);
 }
 
-/* 深色：整个选择器必须放进 :global()，`:global(.dark) .x` 会被 scoped 编译成裸 `.dark` */
-:global(.dark .tide-landing) {
-  background: linear-gradient(
-    168deg,
-    oklch(0.2 0.014 70) 0%,
-    oklch(0.18 0.012 200) 45%,
-    oklch(0.17 0.018 250) 100%
-  );
+.side-stack {
+  display: flex;
+  flex-direction: column;
+}
+.side-cell {
+  border-top: 1px solid var(--tide);
+  padding: 1.1em 0 1.4em;
+}
+.side-cell .block-label {
+  margin: 0;
+}
+.side-body {
+  margin: 0.7em 0 0;
+  font-size: 13px;
+  color: var(--ink-65);
+}
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.9em;
+}
+.side-cell--rule {
+  border-top: 2px solid var(--tide);
+}
+.transform-line {
+  margin: 0.8em 0 0;
+  font-size: clamp(17px, 1.5vw, 20px);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
-:global(.dark .tide-landing .tide-swell--warm) {
-  background: radial-gradient(circle, oklch(0.5 0.08 70 / 0.28) 0%, transparent 65%);
+/* 主张 */
+.values-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.3fr;
+  gap: calc(var(--gutter) * 1.1);
+}
+.value-cell {
+  border-top: 1px solid var(--tide);
+  padding-top: 1.1em;
+}
+.value-cell h3 {
+  margin: 1em 0 0;
+  font-size: clamp(16px, 1.3vw, 19px);
+  font-weight: 500;
+}
+.value-cell p:last-child {
+  margin: 0.5em 0 0;
+  font-size: 14px;
+  color: var(--ink-65);
 }
 
-:global(.dark .tide-landing .tide-swell--sea) {
-  background: radial-gradient(circle, oklch(0.45 0.07 230 / 0.3) 0%, transparent 65%);
+/* CTA */
+.cta {
+  padding-bottom: 0;
+}
+.cta-title {
+  max-width: 18em;
+  margin: 0;
+  font-size: clamp(30px, 3.6vw, 52px);
+  font-weight: 500;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+.cta-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.8em;
+  margin-top: 2em;
 }
 
-:global(.dark .tide-landing .tide-swell--sand) {
-  background: radial-gradient(circle, oklch(0.48 0.05 90 / 0.22) 0%, transparent 65%);
+/* 页脚 */
+.foot {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.1fr;
+  gap: calc(var(--gutter) * 1.1);
+  max-width: 1180px;
+  margin: var(--section-gap) auto 0;
+  padding: 2.2em var(--gutter) 3em;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+  color: var(--ink-45);
+}
+.foot-brand p {
+  margin: 0.6em 0 0;
+}
+.foot-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1.4em;
+  align-content: start;
+}
+.foot-tag {
+  margin: 0;
+  text-align: right;
 }
 
-:global(.dark .tide-landing .tide-shore) {
-  background: linear-gradient(to top, oklch(0.35 0.05 225 / 0.25) 0%, transparent 100%);
+/* 移动端锚点排：默认隐藏，<1024px 显示 */
+.mobile-nav {
+  display: none;
 }
 
-/* 深海色块：规则版本卡 + 底部 CTA，亮暗两态同色，白字。 */
-.tide-rule-card,
-.tide-cta {
-  background: linear-gradient(160deg, oklch(0.36 0.06 215) 0%, oklch(0.26 0.05 235) 55%, oklch(0.2 0.04 250) 100%);
+/* ============ 开场动效（仅首访） ============ */
+.scroll--intro .rail::after {
+  animation: bar-grow 1s var(--ease) 0.05s both;
+  transform: scaleY(0);
 }
-
-.tide-cta-glow {
-  position: absolute;
-  inset: auto -20% -60% auto;
-  width: 60%;
-  aspect-ratio: 1;
-  border-radius: 9999px;
-  background: radial-gradient(circle, oklch(0.75 0.1 200 / 0.4) 0%, transparent 65%);
-  filter: blur(40px);
-  pointer-events: none;
-}
-
-/* Opening lines rise in with the tide — staggered, calm, no layout shift. */
-.tide-line {
+.scroll--intro .rail-title-ch {
   opacity: 0;
-  transform: translateY(10px);
-  animation: tide-line-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: calc(0.35s + var(--line, 0) * 0.45s);
+  animation: ch-in 0.7s var(--ease) both;
+  animation-delay: calc(1.05s + var(--i) * 50ms);
 }
-
-@keyframes tide-line-in {
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes ch-in {
+  from {
+    opacity: 0;
+    transform: scale(1.25);
+  }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: scale(1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tide-swell,
-  .tide-shore {
-    animation: none;
-  }
-  .tide-line {
+  .scroll--intro .rail::after,
+  .scroll--intro .rail-title-ch {
     animation: none;
     opacity: 1;
     transform: none;
+  }
+  .lnk {
+    transition: none;
+  }
+}
+
+/* ============ 移动端（<1024px）：竖轨收为顶部横条 ============ */
+@media (max-width: 1023.98px) {
+  .rail {
+    position: static;
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 1em;
+    padding: 0.9em var(--gutter);
+  }
+  .rail::after {
+    top: auto;
+    right: 0;
+    bottom: -10px;
+    left: 0;
+    width: auto;
+    height: 10px;
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+  .scroll--intro .rail::after {
+    animation-name: bar-grow-x;
+  }
+  .rail-title {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: 0.2em;
+    gap: 0.25em;
+  }
+  .rail-title--v {
+    writing-mode: horizontal-tb;
+  }
+  .rail-nav {
+    display: none;
+  }
+  .rail-foot {
+    margin: 0 0 0 auto;
+  }
+  .lnk--foot {
+    display: none;
+  }
+
+  .sheet {
+    margin-left: 0;
+  }
+
+  .hero-stretch {
+    height: auto;
+  }
+  .hero {
+    position: relative;
+    min-height: 0;
+    padding-top: calc(var(--gutter) * 1.6);
+    padding-bottom: calc(var(--gutter) * 1.6);
+  }
+  .hero-tide {
+    height: 30%;
+    opacity: 0.7;
+  }
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: calc(var(--gutter) * 1.2);
+  }
+  .hero-hint {
+    display: none;
+  }
+
+  .breath {
+    height: 17vh;
+    min-height: 110px;
+  }
+
+  .ws-grid,
+  .src-grid,
+  .values-grid,
+  .data-grid,
+  .foot {
+    grid-template-columns: 1fr;
+  }
+  .flow-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .foot-tag {
+    text-align: left;
+  }
+
+  .mobile-nav {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.4em 1.3em;
+    padding: 0.8em var(--gutter);
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    border-top: 1px solid var(--hairline);
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 640px) {
+  .flow-grid {
+    grid-template-columns: 1fr;
+  }
+  .hide-sm {
+    display: none;
+  }
+}
+
+@keyframes bar-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 </style>
