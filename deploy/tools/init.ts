@@ -161,8 +161,12 @@ async function ensureAdmin(url: URL) {
   const { db, pool, user, account, session, verification } = await import('../../libs/database/index')
   const { eq, inArray } = await import('drizzle-orm')
   try {
+    // 生产管理员的邮箱与种子演示账号相同（init 复用该邮箱），绝不能删——
+    // 否则每次 init 都会删掉再重建线上管理员（会话全失效、user id 变动）。
+    const protectedEmail = (process.env.KCS_ADMIN_EMAIL?.trim().toLowerCase() || 'admin@kcs.local')
+    const demoEmails = SEED_USERS.map((u) => u.email).filter((e) => e !== protectedEmail)
     const demo = await db.select({ id: user.id, email: user.email }).from(user)
-      .where(inArray(user.email, SEED_USERS.map((u) => u.email)))
+      .where(inArray(user.email, demoEmails))
     if (demo.length) {
       const ids = demo.map((row) => row.id)
       const emails = demo.map((row) => row.email)
