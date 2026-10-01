@@ -1,0 +1,6 @@
+[Unit]
+Description=KCS daily health check
+
+[Service]
+Type=oneshot
+ExecStart=/opt/kcs/deploy/ecs/health-check.sh

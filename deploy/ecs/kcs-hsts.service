@@ -1,0 +1,13 @@
+[Unit]
+Description=KCS HSTS alignment with the IP certificate lifetime
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/opt/kcs/deploy/ecs/update-hsts.sh --watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

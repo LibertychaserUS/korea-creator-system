@@ -35,9 +35,11 @@ x-web-env: &web-env
   NUXT_PUBLIC_API_BASE: https://${API_HOST:?API_HOST is required}${PUBLIC_PORT_SUFFIX:-}
   NUXT_API_INTERNAL_BASE: http://api:7100
   NUXT_PUBLIC_MARKETING_URL: https://${MARKETING_HOST:?MARKETING_HOST is required}${PUBLIC_PORT_SUFFIX:-}
-  NUXT_PUBLIC_SELECT_URL: https://${SELECT_HOST:?SELECT_HOST is required}${PUBLIC_PORT_SUFFIX:-}
-  NUXT_PUBLIC_OPS_URL: https://${OPS_HOST:?OPS_HOST is required}${PUBLIC_PORT_SUFFIX:-}
-  NUXT_PUBLIC_DEV_URL: https://${DEV_HOST:?DEV_HOST is required}${PUBLIC_PORT_SUFFIX:-}
+  # SELECT_PATH/OPS_PATH/DEV_PATH：path 拓扑（KCS_TOPOLOGY=path）下工作端挂在主机的路径前缀，
+  # 如 /select /ops /dev；hosts 拓扑留空。只影响「登录后落点」这类页面间跳转的 URL 拼装。
+  NUXT_PUBLIC_SELECT_URL: https://${SELECT_HOST:?SELECT_HOST is required}${PUBLIC_PORT_SUFFIX:-}${SELECT_PATH:-}
+  NUXT_PUBLIC_OPS_URL: https://${OPS_HOST:?OPS_HOST is required}${PUBLIC_PORT_SUFFIX:-}${OPS_PATH:-}
+  NUXT_PUBLIC_DEV_URL: https://${DEV_HOST:?DEV_HOST is required}${PUBLIC_PORT_SUFFIX:-}${DEV_PATH:-}
   AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-}
   # Email for password reset (optional; TinyShip providers, see env.example at the repo root)
   RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -282,6 +284,10 @@ services:
     environment:
       ACME_EMAIL: ${ACME_EMAIL:-}
       CADDY_EXTRA_GLOBAL: ${CADDY_EXTRA_GLOBAL:-}
+      # KCS_TOPOLOGY=hosts|path：选择 Caddyfile 站点块（见 deploy/ecs/caddy-sites/）
+      KCS_TOPOLOGY: ${KCS_TOPOLOGY:-hosts}
+      # path 拓扑的公网 IP（同时是 default_sni 与站点地址）
+      KCS_PUBLIC_IP: ${KCS_PUBLIC_IP:-}
       MARKETING_HOST: ${MARKETING_HOST}
       SELECT_HOST: ${SELECT_HOST}
       OPS_HOST: ${OPS_HOST}
@@ -290,6 +296,7 @@ services:
       HSTS_VALUE: ${HSTS_VALUE:-max-age=31536000}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-sites:/etc/caddy/caddy-sites:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [api, marketing, select, ops, dev]
@@ -421,6 +428,17 @@ services:
           memory: 512m
     networks: [backend, edge]
     logging: *logging
+
+  # Restart any container stuck "unhealthy" (restart: policies only cover
+  # crashed/exited processes). Watches all containers; only ones with a
+  # healthcheck can ever report unhealthy.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_INTERVAL: "30"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   edge: {}

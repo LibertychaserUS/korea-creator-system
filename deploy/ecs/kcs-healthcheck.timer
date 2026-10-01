@@ -1,0 +1,9 @@
+[Unit]
+Description=KCS daily health check timer
+
+[Timer]
+OnCalendar=*-*-* 19:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

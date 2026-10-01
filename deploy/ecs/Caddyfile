@@ -1,7 +1,7 @@
-# 全球达人情报系统 — edge proxy. Hosts come from .env via compose.
-# Automatic HTTPS (Let's Encrypt / ZeroSSL) needs DNS for every host pointing at
-# this ECS and ports 80 + 443 open. Local verification sets
-# CADDY_EXTRA_GLOBAL=local_certs (Caddy's internal CA).
+# 听潮边缘代理。拓扑由 KCS_TOPOLOGY 决定（见 caddy-sites/ 目录）：
+#   hosts — 正式五主机名（多域名部署，MARKETING/SELECT/OPS/DEV/API_HOST 各不相同）
+#   path  — 单机单 IP 按路径分流（四端共享同一 IP，SELECT_PATH 等提供路径前缀）
+# 本文件只含两拓扑共用的全局块、安全头与上游片段；站点块在 caddy-sites/<拓扑>.caddy。
 {
 	email {$ACME_EMAIL}
 	{$CADDY_EXTRA_GLOBAL}
@@ -22,6 +22,10 @@
 		-Server
 		-X-Powered-By
 	}
+}
+
+# log 是站点级指令，不能出现在 handle 内；两个拓扑的站点块各自引入
+(sitelog) {
 	log {
 		output stdout
 		format json
@@ -58,27 +62,4 @@
 	import upstream {args[0]}
 }
 
-{$MARKETING_HOST} {
-	import app marketing:3000
-}
-
-{$SELECT_HOST} {
-	import app select:3000
-}
-
-{$OPS_HOST} {
-	import app ops:3000
-}
-
-{$DEV_HOST} {
-	import app dev:3000
-}
-
-{$API_HOST} {
-	import common
-	# Workbook uploads are capped at 20 MB by the API itself; leave room for multipart.
-	request_body {
-		max_size 25MB
-	}
-	import upstream api:7100
-}
+import /etc/caddy/caddy-sites/{$KCS_TOPOLOGY:-hosts}.caddy

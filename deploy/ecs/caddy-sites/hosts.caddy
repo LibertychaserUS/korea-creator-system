@@ -1,0 +1,30 @@
+# 拓扑 hosts：正式五主机名。每个 HOST 指向本机的公网地址，80/443 对全网开放。
+{$MARKETING_HOST} {
+	import sitelog
+	import app marketing:3000
+}
+
+{$SELECT_HOST} {
+	import sitelog
+	import app select:3000
+}
+
+{$OPS_HOST} {
+	import sitelog
+	import app ops:3000
+}
+
+{$DEV_HOST} {
+	import sitelog
+	import app dev:3000
+}
+
+{$API_HOST} {
+	import sitelog
+	import common
+	# Workbook uploads are capped at 20 MB by the API itself; leave room for multipart.
+	request_body {
+		max_size 25MB
+	}
+	import upstream api:7100
+}

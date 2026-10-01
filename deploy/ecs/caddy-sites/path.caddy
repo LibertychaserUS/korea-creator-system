@@ -1,0 +1,58 @@
+# 拓扑 path：单机单 IP，按路径分流四端（无域名演示/内部形态）。
+# 要求 .env：KCS_TOPOLOGY=path、KCS_PUBLIC_IP=<IP>、SELECT_PATH=/select、OPS_PATH=/ops、DEV_PATH=/dev，
+# 以及 CADDY_EXTRA_GLOBAL="default_sni <IP>"（全局块唯一，default_sni 从这里注入）。
+# 登录落点、308 与 HSTS 对齐（update-hsts.sh）都与拓扑无关，共用同一套机制。
+
+{$KCS_PUBLIC_IP} {
+	import sitelog
+	redir /select /select/ 308
+	redir /ops /ops/ 308
+	redir /dev /dev/ 308
+
+	# 认证身份（kcs_session / Bearer 的内省端点）走业务 API
+	handle /api/auth/me* {
+		import common
+		request_body {
+			max_size 25MB
+		}
+		import upstream api:7100
+	}
+	# 其余业务 API 走 Hono
+	handle /api/* {
+		import common
+		request_body {
+			max_size 25MB
+		}
+		import upstream api:7100
+	}
+	# 账号管理在宿主身份层（marketing 容器的 Nitro server routes）
+	handle /api/kcs-admin/* {
+		import common
+		import upstream marketing:3000
+	}
+	# better-auth 自身的端点统一由 marketing 源站服务
+	handle /api/auth/* {
+		import common
+		import upstream marketing:3000
+	}
+	# 工作端：剥掉路径前缀再代理（handle_path），应用内部仍按根路径路由
+	handle_path /select/* {
+		import app select:3000
+	}
+	handle_path /ops/* {
+		import app ops:3000
+	}
+	handle_path /dev/* {
+		import app dev:3000
+	}
+	handle {
+		import app marketing:3000
+	}
+
+	tls {
+		issuer acme {
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+}
