@@ -15,6 +15,7 @@ branches:
   main:
     # Job names in .github/workflows/kcs.yml, exactly as the PR page shows them.
     required_checks:
+      - unit
       - contract
       - api
       - apps (select)
