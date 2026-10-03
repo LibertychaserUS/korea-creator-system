@@ -17,6 +17,18 @@ permissions:
   contents: read
 
 jobs:
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      # postinstall runs `nuxt prepare`, which generates the .nuxt tsconfig the
+      # libs/panel/server imports (login rate limit, same-origin) need under vitest.
+      - uses: ./.github/actions/setup-kcs
+      - name: Unit suites (locales parity / panel imports / tide / login rate limit)
+        run: npx vitest run tests/unit
+
   i18n:
     name: i18n
     runs-on: ubuntu-latest
