@@ -1049,6 +1049,7 @@ export const zhCNKcs = {
       basketTitle: "候选篮",
       basketEmpty: "候选篮还是空的",
       basketEmptyBody: "去「找人」里挑几位合适的博主进来。",
+      basketEmptyGo: "去找人",
       compare: "对比",
       compareHint: "勾选 2–4 位进行对比",
       compareTitle: "并排对比",

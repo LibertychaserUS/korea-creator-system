@@ -59,7 +59,7 @@
     </div>
 
     <!-- 找人 -->
-    <TableCard :title="t('kcs.missions.ws.findTitle')" :description="t('kcs.missions.ws.findLead')" testid="card-find">
+    <TableCard id="find-anchor" :title="t('kcs.missions.ws.findTitle')" :description="t('kcs.missions.ws.findLead')" testid="card-find">
       <template #meta>
         <span class="tabular-nums">{{ t('kcs.missions.ws.results', { n: formatNumber(poolTotal) }) }}</span>
       </template>
@@ -99,7 +99,7 @@
               <TableCell><Skeleton class="ml-auto h-4 w-12" /></TableCell>
               <TableCell><Skeleton class="h-4 w-16" /></TableCell>
               <TableCell><Skeleton class="ml-auto h-4 w-14" /></TableCell>
-              <TableCell class="hidden sm:table-cell"><Skeleton class="h-2 w-20" /></TableCell>
+              <TableCell class="hidden sm:table-cell"><Skeleton class="mt-[3px] h-[2px] w-20" /></TableCell>
               <TableCell v-if="canWrite" />
             </TableRow>
           </template>
@@ -133,7 +133,10 @@
                 <Plus v-else class="size-3.5" aria-hidden="true" />
                 {{ t('kcs.missions.ws.add') }}
               </Button>
-              <Badge v-else variant="secondary" data-testid="badge-in-basket">{{ t('kcs.missions.ws.inBasket') }}</Badge>
+              <Badge v-else variant="secondary" data-testid="badge-in-basket" :class="justAdded.has(row.id) ? 'select-pop-in gap-1 pl-1.5' : ''">
+                <Check v-if="justAdded.has(row.id)" class="size-3 text-primary" aria-hidden="true" />
+                {{ t('kcs.missions.ws.inBasket') }}
+              </Badge>
             </TableCell>
           </TableRow>
         </TableBody>
@@ -145,7 +148,7 @@
       <div v-if="showExplain" class="border-t border-border/60 px-4 py-4 sm:px-5" data-testid="find-explain">
         <p class="text-sm font-medium text-foreground">{{ t('kcs.missions.ws.explainTitle') }}</p>
         <ul class="mt-2.5 space-y-1.5">
-          <li v-for="(clause, i) in explainClauses" :key="i" class="flex flex-wrap items-center gap-2 text-sm" :data-testid="`explain-clause-${i}`">
+          <li v-for="(clause, i) in explainClauses" :key="i" class="select-stagger-in flex flex-wrap items-center gap-2 text-sm" :style="{ animationDelay: `${i * 80}ms` }" :data-testid="`explain-clause-${i}`">
             <span class="text-muted-foreground">{{ clause.label }}</span>
             <span class="tabular-nums" :class="clause.count === 0 ? 'font-medium text-primary' : 'text-foreground'">
               {{ clause.count == null ? t('kcs.missions.ws.explainUnknown') : t('kcs.missions.ws.explainHits', { n: formatNumber(clause.count) }) }}
@@ -201,7 +204,7 @@
               <TableCell><Skeleton class="h-4 w-14" /></TableCell>
               <TableCell><Skeleton class="ml-auto h-4 w-10" /></TableCell>
               <TableCell><Skeleton class="ml-auto h-4 w-10" /></TableCell>
-              <TableCell class="hidden sm:table-cell"><Skeleton class="h-2 w-16" /></TableCell>
+              <TableCell class="hidden sm:table-cell"><Skeleton class="mt-[3px] h-[2px] w-16" /></TableCell>
               <TableCell class="hidden md:table-cell"><Skeleton class="h-4 w-20" /></TableCell>
               <TableCell><Skeleton class="h-5 w-14" /></TableCell>
               <TableCell v-if="canWrite" />
@@ -253,10 +256,15 @@
           </TableRow>
         </TableBody>
       </Table>
-      <EmptyState v-if="!loading && !basket.length" :title="t('kcs.missions.ws.basketEmpty')" :body="t('kcs.missions.ws.basketEmptyBody')" :icon="Users" testid="basket-empty" />
+      <EmptyState v-if="!loading && !basket.length" :title="t('kcs.missions.ws.basketEmpty')" :body="t('kcs.missions.ws.basketEmptyBody')" :icon="Users" testid="basket-empty">
+        <Button v-if="canWrite" size="sm" variant="outline" data-testid="btn-basket-go-find" @click="scrollToFind">
+          <Plus class="size-4" />
+          {{ t('kcs.missions.ws.basketEmptyGo') }}
+        </Button>
+      </EmptyState>
 
       <!-- 并排对比面板 -->
-      <div v-if="compareOpen && compareRows.length" class="border-t border-border/60 px-4 py-4 sm:px-5" data-testid="compare-panel">
+      <div v-if="compareOpen && compareRows.length" class="select-slide-in border-t border-border/60 px-4 py-4 sm:px-5" data-testid="compare-panel">
         <div class="mb-3 flex items-center justify-between gap-2">
           <h3 class="text-sm font-semibold tracking-tight">{{ t('kcs.missions.ws.compareTitle') }}</h3>
           <Button variant="ghost" size="sm" data-testid="btn-compare-close" @click="compareOpen = false">{{ t('kcs.missions.ws.compareClose') }}</Button>
@@ -305,24 +313,28 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Columns2, Download, ListChecks, Loader2, Pencil, Plus, Radar, SearchX, UserMinus, Users } from 'lucide-vue-next'
+import { ArrowLeft, Check, Columns2, Download, ListChecks, Loader2, Pencil, Plus, Radar, SearchX, UserMinus, Users } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { API, apiPath, can, CREATOR_TIERS, defaultSavedQuery, type CreatorTier } from '@kcs/contract'
 import MissionFormDialog from '~/components/MissionFormDialog.vue'
 
-/** 0–100 的同类排位条：池行与篮行共用。 */
+/** 0–100 的同类排位条：池行与篮行共用。细线型——2px 轨道 + 青色填充 + 端点微光。 */
 const PercentileBar = defineComponent({
   props: { value: { type: Number as PropType<number | null>, default: null } },
   setup(props) {
     const { t } = useI18n()
-    return () =>
-      h('span', { class: 'inline-flex w-24 items-center gap-1.5', 'data-percentile': props.value ?? undefined }, [
-        h('span', { class: 'h-1.5 flex-1 overflow-hidden rounded-full bg-muted', 'aria-hidden': 'true' }, [
-          h('span', { class: 'block h-full rounded-full bg-primary/70', style: { width: `${Math.max(0, Math.min(100, props.value ?? 0))}%` } }),
+    return () => {
+      const empty = props.value == null
+      const pct = Math.max(0, Math.min(100, props.value ?? 0))
+      return h('span', { class: 'inline-flex w-24 items-center gap-1.5', 'data-percentile': props.value ?? undefined }, [
+        h('span', { class: 'select-pct-track', 'aria-hidden': 'true', role: 'presentation' }, [
+          empty ? null : h('span', { class: 'select-pct-fill', style: { width: `${pct}%` } }),
+          empty ? null : h('span', { class: 'select-pct-dot', style: { left: `${pct}%` } }),
         ]),
         h('span', { class: 'w-8 text-right text-[11px] tabular-nums text-muted-foreground', title: t('kcs.missions.ws.percentileLabel') },
-          props.value == null ? '—' : String(Math.round(props.value))),
+          empty ? '—' : String(Math.round(props.value!))),
       ])
+    }
   },
 })
 
@@ -470,6 +482,7 @@ async function addToBasket(row: any) {
   try {
     await request(apiPath(API.assign, { id: id.value }), { method: 'POST', body: JSON.stringify({ creatorIds: [row.id] }) })
     toast.success(t('kcs.missions.ws.added', { name: row.displayName }))
+    markAdded(row.id)
     await load()
   } catch (e: unknown) {
     // 409 already_assigned：幂等入篮，提示已在篮中并刷新一次篮
@@ -479,6 +492,35 @@ async function addToBasket(row: any) {
   } finally {
     addingId.value = ''
   }
+}
+
+/* ---------- 微交互状态 ---------- */
+/** 刚入篮成功的创作者：badge 上的对勾弹跳 1.4s 后撤掉。 */
+const justAdded = ref<Set<string>>(new Set())
+const addedTimers = new Map<string, ReturnType<typeof setTimeout>>()
+function markAdded(creatorId: string) {
+  const next = new Set(justAdded.value)
+  next.add(creatorId)
+  justAdded.value = next
+  clearTimeout(addedTimers.get(creatorId))
+  addedTimers.set(creatorId, setTimeout(() => {
+    const rest = new Set(justAdded.value)
+    rest.delete(creatorId)
+    justAdded.value = rest
+    addedTimers.delete(creatorId)
+  }, 1400))
+}
+onBeforeUnmount(() => {
+  for (const timer of addedTimers.values()) clearTimeout(timer)
+  addedTimers.clear()
+})
+
+/** 空篮空态的「去找人」：锚点跳回筛选区；尊重 prefers-reduced-motion。 */
+function scrollToFind() {
+  const el = document.getElementById('find-anchor')
+  if (!el) return
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
 }
 
 /* ---------- 候选篮 ---------- */

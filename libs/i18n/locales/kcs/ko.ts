@@ -1049,6 +1049,7 @@ export const koKcs = {
       basketTitle: "바스킷",
       basketEmpty: "바스킷이 비어 있습니다",
       basketEmptyBody: "「사람 찾기」에서 적합한 크리에이터를 몇 명 담아 보세요.",
+      basketEmptyGo: "사람 찾기로",
       compare: "비교",
       compareHint: "2~4명을 선택하면 비교할 수 있습니다",
       compareTitle: "나란히 비교",

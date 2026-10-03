@@ -1,0 +1,134 @@
+/* 听潮 · 挑选端工作面精修（仅 apps/select 加载）。
+ *
+ * 视觉语言与营销站 ABYSS 版同源（深海墨黑 + 声纳青），但表达收敛：
+ * 这里是每天盯几个小时的工作工具，动效只做「确认感」，不做炫技。
+ * 全部动效挂在 prefers-reduced-motion: no-preference 之下。
+ */
+
+/* ---------- 排版：四级字阶流体化 ---------- */
+/* 页面标题：clamp 流体式放大，跟踪收紧；节标题保持 14px/600，辅助 12px 灰阶 */
+[data-testid^="screen-c-"] h1 {
+  font-size: clamp(1.375rem, 1.05rem + 1.1vw, 1.75rem);
+  letter-spacing: -0.02em;
+}
+
+/* ---------- 数据表行 hover 语言（与营销站数据表同语系） ----------
+ * 整行微亮 + 左缘 2px 声纳青条；只作用于真实数据行（data-testid^="row-"），
+ * 骨架行与表头不受影响。亮暗两套主题下都用 --ring（亮=深海蓝，暗=声纳青）。*/
+[data-testid^="table-"] tbody tr[data-testid^="row-"] {
+  transition: background-color 160ms ease;
+}
+[data-testid^="table-"] tbody tr[data-testid^="row-"]:hover {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+}
+.dark [data-testid^="table-"] tbody tr[data-testid^="row-"]:hover {
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+}
+[data-testid^="table-"] tbody tr[data-testid^="row-"]:hover td:first-child {
+  position: relative;
+}
+[data-testid^="table-"] tbody tr[data-testid^="row-"]:hover td:first-child::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  background: var(--ring);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--ring) 65%, transparent);
+}
+
+/* 行高舒展到 44–48px：选人池 dense 表补足纵向留白（其余表 py-3 已达标） */
+[data-testid="table-pool"] td {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+/* ---------- 排位细线型进度条 ---------- */
+/* 2px 轨道 + 青色填充 + 端点微光；页面里用 .select-pct-* class 渲染 */
+.select-pct-track {
+  position: relative;
+  display: block;
+  height: 2px;
+  flex: 1;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--muted-foreground) 22%, transparent);
+}
+.select-pct-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--primary) 55%, transparent),
+    var(--primary)
+  );
+}
+.select-pct-dot {
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--primary);
+  box-shadow: 0 0 6px var(--ring);
+  transform: translate(-50%, -50%);
+}
+
+/* ---------- 动效（全部尊重 prefers-reduced-motion） ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .select-pct-fill {
+    transition: width 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .select-pct-dot {
+    transition: left 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 对比面板滑入 */
+  .select-slide-in {
+    animation: select-rise 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  /* 归因条逐条显现（页面配 80ms stagger 的 animation-delay） */
+  .select-stagger-in {
+    animation: select-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  /* 入篮成功的对勾弹跳 */
+  .select-pop-in {
+    animation: select-pop 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes select-rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes select-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.55);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.12);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+/* 动效关闭时保证终态可见（无动画即无 both 填充问题，这里兜底透明度） */
+@media (prefers-reduced-motion: reduce) {
+  .select-slide-in,
+  .select-stagger-in,
+  .select-pop-in {
+    opacity: 1;
+  }
+}

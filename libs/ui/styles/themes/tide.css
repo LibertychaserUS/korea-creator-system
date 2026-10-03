@@ -68,8 +68,8 @@
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.74 0.14 160);
   --warning: oklch(0.78 0.12 75);
-  --border: oklch(0.27 0.012 255);
-  --input: oklch(0.27 0.012 255);
+  --border: oklch(0.3 0.012 255);
+  --input: oklch(0.32 0.013 255);
   --ring: oklch(0.78 0.08 220);
   --chart-1: oklch(0.78 0.08 220);
   --chart-2: oklch(0.7 0.09 200);
@@ -82,7 +82,7 @@
   --sidebar-primary-foreground: oklch(0.17 0.02 240);
   --sidebar-accent: oklch(0.28 0.02 240);
   --sidebar-accent-foreground: oklch(0.85 0.05 220);
-  --sidebar-border: oklch(0.27 0.012 255);
+  --sidebar-border: oklch(0.3 0.012 255);
   --sidebar-ring: oklch(0.78 0.08 220);
 
   /* Chart color utilities - Dark mode */

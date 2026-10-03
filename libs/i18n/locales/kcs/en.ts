@@ -1049,6 +1049,7 @@ export const enKcs = {
       basketTitle: "Basket",
       basketEmpty: "The basket is empty",
       basketEmptyBody: "Head to “Find creators” and add a few who fit.",
+      basketEmptyGo: "Find creators",
       compare: "Compare",
       compareHint: "Select 2–4 creators to compare",
       compareTitle: "Side-by-side",

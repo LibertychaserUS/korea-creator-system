@@ -576,14 +576,15 @@
                 v-for="key in spec.columns"
                 :key="key"
                 class="text-right"
-                :class="spec.sort.key === key ? 'text-foreground' : ''"
+                :class="spec.sort.key === key ? 'text-primary' : ''"
                 :title="help(key)"
                 :aria-sort="spec.sort.key === key ? (spec.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined"
               >
-                <button type="button" class="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" :aria-label="t('kcs.query.sortBy', { metric: label(key) })" @click="sortBy(key)">
+                <button type="button" class="group/sort inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" :aria-label="t('kcs.query.sortBy', { metric: label(key) })" @click="sortBy(key)">
                   {{ label(key) }}
-                  <ArrowUpNarrowWide v-if="spec.sort.key === key && spec.sort.dir === 'asc'" class="size-3" aria-hidden="true" />
-                  <ArrowDownWideNarrow v-else-if="spec.sort.key === key" class="size-3" aria-hidden="true" />
+                  <ArrowUpNarrowWide v-if="spec.sort.key === key && spec.sort.dir === 'asc'" class="size-3 text-primary" aria-hidden="true" />
+                  <ArrowDownWideNarrow v-else-if="spec.sort.key === key" class="size-3 text-primary" aria-hidden="true" />
+                  <ArrowUpDown v-else class="size-3 opacity-0 transition-opacity group-hover/sort:opacity-50" aria-hidden="true" />
                 </button>
               </TableHead>
             </TableRow>
@@ -735,6 +736,7 @@ import { toast } from 'vue-sonner'
 import {
   ArrowDownWideNarrow,
   ArrowLeft,
+  ArrowUpDown,
   ArrowUpNarrowWide,
   Bookmark,
   BookmarkPlus,
